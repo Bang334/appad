@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "Music App",
+    "slug": "music-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#8b5cf6"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.musicapp.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#8b5cf6"
+      },
+      "package": "com.musicapp.app"
+    },
+    "web": {}
+  }
+}
+
