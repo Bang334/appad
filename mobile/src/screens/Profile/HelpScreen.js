@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../../config/theme';
+import MiniPlayer from '../../components/Player/MiniPlayer';
 
 const HelpScreen = ({ navigation }) => {
   const [expandedItems, setExpandedItems] = useState({});
@@ -45,6 +46,10 @@ const HelpScreen = ({ navigation }) => {
     {
       question: 'Làm thế nào để đổi mật khẩu?',
       answer: 'Để đổi mật khẩu:\n1. Vào "Cá nhân" → "Chỉnh sửa hồ sơ"\n2. Nhấn "Thay đổi mật khẩu"\n3. Nhập mật khẩu hiện tại và mật khẩu mới\n4. Xác nhận và lưu thay đổi'
+    },
+    {
+      question: 'Làm thế nào để sắp xếp lại thứ tự bài hát trong playlist?',
+      answer: 'Để sắp xếp lại thứ tự bài hát trong playlist:\n1. Mở playlist bạn muốn chỉnh sửa\n2. Nhấn và giữ vào biểu tượng 3 gạch ngang (☰) bên trái bài hát\n3. Kéo bài hát lên hoặc xuống đến vị trí mong muốn\n4. Thả tay để xác nhận\n5. Thứ tự sẽ tự động được lưu lại'
     }
   ];
 
@@ -104,7 +109,11 @@ const HelpScreen = ({ navigation }) => {
   );
 
   return (
-    <ScrollView style={styles.container}>
+    <View style={styles.container}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+      >
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
@@ -143,7 +152,9 @@ const HelpScreen = ({ navigation }) => {
           Không tìm thấy câu trả lời? Hãy liên hệ với chúng tôi!
         </Text>
       </View>
-    </ScrollView>
+      </ScrollView>
+      <MiniPlayer bottomOffset={0} />
+    </View>
   );
 };
 
@@ -151,6 +162,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 100, // Space for MiniPlayer
   },
   header: {
     flexDirection: 'row',

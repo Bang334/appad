@@ -26,6 +26,22 @@ class GenreModel {
     return rows[0];
   }
 
+  // Get all genres with song count
+  static async findAllWithSongCount() {
+    const [rows] = await db.execute(
+      `SELECT 
+        g.genre_id,
+        g.name,
+        g.description,
+        COUNT(s.song_id) as song_count
+      FROM genres g
+      LEFT JOIN songs s ON g.genre_id = s.genre_id
+      GROUP BY g.genre_id, g.name, g.description
+      ORDER BY g.name`
+    );
+    return rows;
+  }
+
   // Update genre
   static async update(genreId, genreData) {
     const fields = [];

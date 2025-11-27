@@ -8,6 +8,7 @@ import {
   FlatList,
   Image,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../../config/theme';
@@ -16,7 +17,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useSuccessModal } from '../../hooks/useSuccessModal';
 import SuccessModal from '../Common/SuccessModal';
 
-const CommentSection = ({ songId }) => {
+const CommentSection = ({ songId, onRatingUpdate }) => {
   const { user } = useAuth();
   const { showModal, modalData, showSuccess, showError, hideModal } = useSuccessModal();
   const [comments, setComments] = useState([]);
@@ -63,10 +64,17 @@ const CommentSection = ({ songId }) => {
     setSubmitting(true);
     try {
       await commentService.createComment(songId, commentText.trim(), userRating);
-        showSuccess('Thành công', 'Đánh giá của bạn đã được gửi!');
+      showSuccess('Thành công', 'Đánh giá của bạn đã được gửi!');
       setCommentText('');
       setUserRating(0);
-      loadComments();
+      await loadComments();
+      // Notify parent to refresh song data (for rating display)
+      // Wait a bit for backend to update average_rating
+      setTimeout(() => {
+        if (onRatingUpdate) {
+          onRatingUpdate();
+        }
+      }, 300);
     } catch (error) {
       const message = error.response?.data?.message || 'Có lỗi xảy ra';
       showError('Lỗi', message);
@@ -88,7 +96,13 @@ const CommentSection = ({ songId }) => {
             try {
               await commentService.deleteComment(commentId);
               showSuccess('Thành công', 'Đã xóa bình luận');
-              loadComments();
+              await loadComments();
+              // Notify parent to refresh song rating after delete
+              setTimeout(() => {
+                if (onRatingUpdate) {
+                  onRatingUpdate();
+                }
+              }, 300);
             } catch (error) {
               showError('Lỗi', 'Không thể xóa bình luận');
             }

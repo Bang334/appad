@@ -42,5 +42,11 @@ export const playlistService = {
     const response = await api.delete(`/playlists/${playlistId}/songs/${songId}`);
     return response.data;
   },
+
+  // Update song order in playlist
+  updateSongOrder: async (playlistId, songOrders) => {
+    const response = await api.put(`/playlists/${playlistId}/songs/order`, { songOrders });
+    return response.data;
+  },
 };
 

@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../../config/theme';
 import { adminService } from '../../services/adminService';
 import { songService } from '../../services/songService';
+import MiniPlayer from '../../components/Player/MiniPlayer';
 
 const AdminSongsScreen = ({ navigation }) => {
   const [songs, setSongs] = useState([]);
@@ -166,10 +167,11 @@ const AdminSongsScreen = ({ navigation }) => {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
-          contentContainerStyle={styles.listContainer}
+          contentContainerStyle={[styles.listContainer, { paddingBottom: 100 }]}
           showsVerticalScrollIndicator={false}
         />
       )}
+      <MiniPlayer bottomOffset={0} />
     </View>
   );
 };

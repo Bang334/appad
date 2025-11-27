@@ -7,42 +7,81 @@ import {
   Image,
   TouchableOpacity,
   ActivityIndicator,
+  Modal,
+  Alert,
+  TextInput,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, SIZES } from '../../config/theme';
 import { songService } from '../../services/songService';
+import { albumService } from '../../services/albumService';
+import { premiumService } from '../../services/premiumService';
 import { usePlayer } from '../../context/PlayerContext';
+import MiniPlayer from '../../components/Player/MiniPlayer';
+import AddToPlaylistModal from '../../components/Playlist/AddToPlaylistModal';
+import AlbumPurchaseModal from '../../components/Common/AlbumPurchaseModal';
+import PremiumBadge from '../../components/Common/PremiumBadge';
+
+import { API_BASE_URL } from '../../config/api';
 
 const AlbumDetailScreen = ({ route, navigation }) => {
   const { albumId } = route.params;
-  const { playSong } = usePlayer();
+  const { playSong, currentSong, isPlaying, togglePlayPause, playlist, currentIndex, moveSongInPlaylist } = usePlayer();
   
   const [album, setAlbum] = useState(null);
   const [songs, setSongs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showMenu, setShowMenu] = useState(false);
+  const [selectedSong, setSelectedSong] = useState(null);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
+  const [showPlaylistModal, setShowPlaylistModal] = useState(false);
+  
+  // Premium states
+  const [isPremium, setIsPremium] = useState(false);
+  const [isPurchased, setIsPurchased] = useState(false);
+  const [showPurchaseModal, setShowPurchaseModal] = useState(false);
+  const [userPremiumStatus, setUserPremiumStatus] = useState(false);
+  const [purchasedSongIds, setPurchasedSongIds] = useState(new Set());
 
   useEffect(() => {
     loadAlbumData();
   }, [albumId]);
 
+  const getImageUrl = (url) => {
+    if (!url) return null;
+    if (url.startsWith('http')) return url;
+    const baseUrl = API_BASE_URL.replace('/api', '');
+    return `${baseUrl}${url}`;
+  };
+
   const loadAlbumData = async () => {
     setLoading(true);
     try {
-      const response = await songService.getSongsByAlbum(albumId);
-      const songsData = response.data || [];
-      setSongs(songsData);
+      // Load album details specifically to get price/premium info
+      const response = await albumService.getAlbumById(albumId);
       
-      // Get album info from first song
-      if (songsData.length > 0) {
-        setAlbum({
-          title: songsData[0].album_title,
-          artist_name: songsData[0].artist_name,
-          artist_id: songsData[0].artist_id,
-          cover_url: songsData[0].cover_url,
-          release_date: songsData[0].release_date,
-        });
+      if (response.success) {
+        const albumData = response.data;
+        setAlbum(albumData);
+        setIsPremium(albumData.is_premium === 1);
+        
+        // Check user premium/purchase status
+        checkAccessStatus(albumData);
       }
+
+      // Load songs
+      const songsResponse = await songService.getSongsByAlbum(albumId);
+      setSongs(songsResponse.data || []);
+
+      // Load purchased songs to check individual song access
+      const purchasedSongsRes = await premiumService.getPurchasedSongs();
+      if (purchasedSongsRes.success) {
+        const purchasedIds = new Set(purchasedSongsRes.data.map(s => s.song_id));
+        setPurchasedSongIds(purchasedIds);
+      }
+
     } catch (error) {
       console.error('Error loading album data:', error);
     } finally {
@@ -50,18 +89,105 @@ const AlbumDetailScreen = ({ route, navigation }) => {
     }
   };
 
+  const checkAccessStatus = async (albumData) => {
+    try {
+      // Check if user has premium subscription
+      const statusRes = await premiumService.checkStatus();
+      if (statusRes.success && statusRes.data.is_premium) {
+        setUserPremiumStatus(true);
+        return; // User has access via subscription
+      }
+
+      // Check if user purchased this album
+      const purchasedRes = await premiumService.getPurchasedAlbums();
+      if (purchasedRes.success) {
+        const hasPurchased = purchasedRes.data.some(a => a.album_id === albumId);
+        setIsPurchased(hasPurchased);
+      }
+    } catch (error) {
+      console.error('Error checking access:', error);
+    }
+  };
+
   const handlePlaySong = (song, index) => {
-    playSong(song, songs, index);
-    songService.playSong(song.song_id).catch(console.error);
+    // If clicking on currently playing song, toggle play/pause
+    if (currentSong?.song_id === song.song_id) {
+      togglePlayPause();
+    } else {
+      // Play new song and navigate to FullPlayer
+      playSong(song, songs, index);
+      navigation.navigate('FullPlayer');
+    }
+  };
+
+  const handleSongPress = async (song, index) => {
+    // Check premium/purchase status
+    if (song.is_premium === 1) {
+      const isSongPurchased = purchasedSongIds.has(song.song_id);
+      
+      // If user is not premium, hasn't purchased the album, and hasn't purchased the song
+      if (!userPremiumStatus && !isPurchased && !isSongPurchased) {
+        // Show purchase modal for album
+        setShowPurchaseModal(true);
+        return;
+      }
+    }
+
+    // Play song if different from current
+    if (currentSong?.song_id !== song.song_id) {
+      playSong(song, songs, index);
+      // Save flag to localStorage that we're playing from album
+      await AsyncStorage.setItem('isPlayingAlbum', '1');
+      await AsyncStorage.setItem('currentAlbumId', albumId.toString());
+    }
+    // Always open FullPlayer
     navigation.navigate('FullPlayer');
   };
 
-  const handlePlayAll = () => {
+  const handlePlayAll = async () => {
     if (songs.length > 0) {
+      // Check access for the first song (assuming all songs in album have same access rules if album is premium)
+      // Or check album premium status directly
+      if (isPremium && !userPremiumStatus && !isPurchased) {
+        // Check if user purchased ALL songs individually? 
+        // For simplicity, if album is premium and not purchased, we require purchase unless user has purchased specific songs.
+        // But "Play All" implies playing the whole album.
+        // If user purchased some songs, we could play only those, but that's complex logic.
+        // Let's stick to: if album is premium & not purchased & user not premium -> Show modal.
+        
+        // However, we should check if the user has purchased ALL songs.
+        const allSongsPurchased = songs.every(s => purchasedSongIds.has(s.song_id));
+        if (!allSongsPurchased) {
+           setShowPurchaseModal(true);
+           return;
+        }
+      }
+
       playSong(songs[0], songs, 0);
-      songService.playSong(songs[0].song_id).catch(console.error);
+      // Save flag to localStorage that we're playing from album
+      await AsyncStorage.setItem('isPlayingAlbum', '1');
+      await AsyncStorage.setItem('currentAlbumId', albumId.toString());
       navigation.navigate('FullPlayer');
     }
+  };
+
+  const openMenu = (song, index) => {
+    setSelectedSong(song);
+    setSelectedIndex(index);
+    setShowMenu(true);
+  };
+
+  const closeMenu = () => {
+    setShowMenu(false);
+    setSelectedSong(null);
+    setSelectedIndex(-1);
+  };
+
+  // Đã loại bỏ các chức năng chuyển bài hát lên đầu / chuyển đến vị trí trong playlist.
+
+  const handleAddToPlaylist = () => {
+    setShowPlaylistModal(true);
+    closeMenu();
   };
 
   const formatDuration = (seconds) => {
@@ -95,7 +221,11 @@ const AlbumDetailScreen = ({ route, navigation }) => {
   }
 
   return (
-    <ScrollView style={styles.container}>
+    <View style={styles.container}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+      >
       {/* Header with Album Cover */}
       <View style={styles.headerContainer}>
         <LinearGradient
@@ -110,7 +240,7 @@ const AlbumDetailScreen = ({ route, navigation }) => {
           </TouchableOpacity>
 
           <Image
-            source={{ uri: album.cover_url || 'https://via.placeholder.com/200' }}
+            source={{ uri: getImageUrl(album.cover_url) || 'https://via.placeholder.com/200' }}
             style={styles.albumCover}
           />
           
@@ -143,6 +273,36 @@ const AlbumDetailScreen = ({ route, navigation }) => {
               </>
             )}
           </View>
+
+
+          {/* Premium/Purchase Status */}
+          {isPremium && (
+            <View style={styles.premiumContainer}>
+              {userPremiumStatus ? (
+                <View style={styles.statusBadge}>
+                  <Ionicons name="star" size={16} color={COLORS.warning} />
+                  <Text style={styles.statusText}>Premium Member</Text>
+                </View>
+              ) : isPurchased ? (
+                <View style={styles.statusBadge}>
+                  <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
+                  <Text style={styles.statusText}>Đã sở hữu</Text>
+                </View>
+              ) : (
+                <View style={styles.purchaseContainer}>
+                  <Text style={styles.priceText}>
+                    {parseFloat(album.price).toLocaleString('vi-VN')}đ
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.buyButton}
+                    onPress={() => setShowPurchaseModal(true)}
+                  >
+                    <Text style={styles.buyButtonText}>Mua Album</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          )}
         </LinearGradient>
       </View>
 
@@ -164,34 +324,85 @@ const AlbumDetailScreen = ({ route, navigation }) => {
 
       {/* Songs List */}
       <View style={styles.songsSection}>
-        {songs.map((song, index) => (
-          <TouchableOpacity
-            key={song.song_id}
-            style={styles.songItem}
-            onPress={() => handlePlaySong(song, index)}
-          >
-            <View style={styles.songNumber}>
-              <Text style={styles.songNumberText}>{index + 1}</Text>
-            </View>
-            <View style={styles.songInfo}>
-              <Text style={styles.songTitle} numberOfLines={1}>
-                {song.title}
-              </Text>
-              <View style={styles.songMeta}>
-                <Ionicons name="headset" size={12} color={COLORS.textMuted} />
-                <Text style={styles.listenCount}>
-                  {song.listen_count?.toLocaleString() || '0'}
+        {songs.map((song, index) => {
+          const isCurrentSong = currentSong?.song_id === song.song_id;
+          const isSongPurchased = purchasedSongIds.has(song.song_id);
+          
+          return (
+            <View key={song.song_id} style={[styles.songItem, isCurrentSong && styles.songItemActive]}>
+              <TouchableOpacity
+                style={styles.songContent}
+                onPress={() => handleSongPress(song, index)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.coverContainer}>
+                  <Image
+                    source={{ uri: song.cover_url || 'https://via.placeholder.com/60' }}
+                    style={styles.songCover}
+                  />
+                  {isCurrentSong && isPlaying && (
+                    <View style={styles.playingIndicator}>
+                      <Ionicons name="volume-high" size={20} color="#FFF" />
+                    </View>
+                  )}
+                  {!isCurrentSong && (
+                    <View style={styles.songNumberOverlay}>
+                      <Text style={styles.songNumberText}>{index + 1}</Text>
+                    </View>
+                  )}
+                </View>
+                <View style={styles.songInfo}>
+                  <View style={styles.songTitleRow}>
+                    <Text style={styles.songTitle} numberOfLines={1}>
+                      {song.title}
+                    </Text>
+                    {song.is_premium === 1 && <PremiumBadge small />}
+                    {isSongPurchased && (
+                      <View style={styles.purchasedBadge}>
+                        <Ionicons name="checkmark-circle" size={14} color={COLORS.success} />
+                      </View>
+                    )}
+                  </View>
+                  
+                  <View style={styles.songMeta}>
+                    <Ionicons name="headset" size={12} color={COLORS.textMuted} />
+                    <Text style={styles.listenCount}>
+                      {song.listen_count?.toLocaleString() || '0'}
+                    </Text>
+                    
+                    {song.average_rating != null && (
+                      <>
+                        <Text style={styles.metaDot}>•</Text>
+                        <Ionicons name="star" size={12} color={COLORS.warning} />
+                        <Text style={styles.ratingText}>
+                          {Number(song.average_rating).toFixed(1)}
+                        </Text>
+                      </>
+                    )}
+                    
+                    {song.is_premium === 1 && song.price > 0 && !isSongPurchased && !userPremiumStatus && !isPurchased && (
+                      <>
+                        <Text style={styles.metaDot}>•</Text>
+                        <Text style={styles.songPriceText}>
+                          {parseFloat(song.price).toLocaleString('vi-VN')}đ
+                        </Text>
+                      </>
+                    )}
+                  </View>
+                </View>
+                <Text style={styles.duration}>
+                  {formatDuration(song.duration)}
                 </Text>
-              </View>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.moreButton}
+                onPress={() => openMenu(song, index)}
+              >
+                <Ionicons name="ellipsis-vertical" size={20} color={COLORS.textSecondary} />
+              </TouchableOpacity>
             </View>
-            <Text style={styles.duration}>
-              {formatDuration(song.duration)}
-            </Text>
-            <TouchableOpacity style={styles.moreButton}>
-              <Ionicons name="ellipsis-vertical" size={20} color={COLORS.textSecondary} />
-            </TouchableOpacity>
-          </TouchableOpacity>
-        ))}
+          );
+        })}
 
         {songs.length === 0 && (
           <View style={styles.emptySection}>
@@ -200,7 +411,68 @@ const AlbumDetailScreen = ({ route, navigation }) => {
           </View>
         )}
       </View>
-    </ScrollView>
+      </ScrollView>
+      <MiniPlayer bottomOffset={0} />
+
+      {/* Song Menu Modal */}
+      <Modal
+        visible={showMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={closeMenu}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={closeMenu}
+        >
+          <View style={styles.menuContainer}>
+            <Text style={styles.menuTitle} numberOfLines={1}>
+              {selectedSong?.title}
+            </Text>
+            
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={handleAddToPlaylist}
+            >
+              <Ionicons name="add-circle" size={24} color={COLORS.primary} />
+              <Text style={styles.menuItemText}>Thêm vào playlist</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.menuItem, styles.menuItemCancel]}
+              onPress={closeMenu}
+            >
+              <Text style={styles.menuItemCancelText}>Hủy</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+
+      {/* Add to Playlist Modal */}
+      <AddToPlaylistModal
+        visible={showPlaylistModal}
+        onClose={() => setShowPlaylistModal(false)}
+        song={selectedSong}
+      />
+      <AddToPlaylistModal
+        visible={showPlaylistModal}
+        onClose={() => setShowPlaylistModal(false)}
+        song={selectedSong}
+      />
+
+      {/* Album Purchase Modal */}
+      <AlbumPurchaseModal
+        visible={showPurchaseModal}
+        onClose={() => setShowPurchaseModal(false)}
+        album={album}
+        onSuccess={() => {
+          setIsPurchased(true);
+          loadAlbumData(); // Reload to update UI/songs access if needed
+        }}
+      />
+    </View>
   );
 };
 
@@ -208,6 +480,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 100, // Space for MiniPlayer
   },
   loadingContainer: {
     flex: 1,
@@ -320,24 +598,83 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     borderRadius: SIZES.borderRadius,
   },
-  songNumber: {
-    width: 30,
+  songItemActive: {
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  songContent: {
+    flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
+  },
+  coverContainer: {
+    position: 'relative',
     marginRight: 12,
   },
+  songCover: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    backgroundColor: COLORS.background,
+  },
+  playingIndicator: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  songNumberOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   songNumberText: {
-    color: COLORS.textSecondary,
+    color: COLORS.white,
     fontSize: SIZES.md,
-    fontWeight: '600',
+    fontWeight: '700',
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   songInfo: {
     flex: 1,
+  },
+  songTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
   },
   songTitle: {
     color: COLORS.text,
     fontSize: SIZES.md,
     fontWeight: '600',
-    marginBottom: 4,
+    flex: 1,
+  },
+  purchasedBadge: {
+    marginLeft: 4,
+  },
+  ratingText: {
+    color: COLORS.warning,
+    fontSize: SIZES.xs,
+    fontWeight: '600',
+  },
+  songPriceText: {
+    color: COLORS.warning,
+    fontSize: SIZES.xs,
+    fontWeight: '600',
   },
   songMeta: {
     flexDirection: 'row',
@@ -359,6 +696,156 @@ const styles = StyleSheet.create({
   emptySection: {
     paddingVertical: 40,
     alignItems: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  menuContainer: {
+    backgroundColor: COLORS.surface,
+    borderRadius: SIZES.borderRadius,
+    padding: 20,
+    width: '80%',
+    maxWidth: 400,
+  },
+  menuTitle: {
+    fontSize: SIZES.lg,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    borderRadius: SIZES.borderRadius,
+    marginBottom: 8,
+    gap: 12,
+  },
+  menuItemText: {
+    fontSize: SIZES.md,
+    color: COLORS.text,
+    fontWeight: '500',
+  },
+  menuItemCancel: {
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    paddingTop: 16,
+    justifyContent: 'center',
+  },
+  menuItemCancelText: {
+    fontSize: SIZES.md,
+    color: COLORS.error,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  moveModalContainer: {
+    backgroundColor: COLORS.surface,
+    borderRadius: SIZES.borderRadius,
+    padding: 24,
+    width: '80%',
+    maxWidth: 400,
+  },
+  moveModalTitle: {
+    fontSize: SIZES.xl,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  moveModalSubtitle: {
+    fontSize: SIZES.sm,
+    color: COLORS.textSecondary,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  moveInput: {
+    backgroundColor: COLORS.background,
+    borderRadius: SIZES.borderRadius,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: SIZES.lg,
+    color: COLORS.text,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  moveModalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  moveModalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: SIZES.borderRadius,
+    alignItems: 'center',
+  },
+  moveModalButtonCancel: {
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  moveModalButtonCancelText: {
+    fontSize: SIZES.md,
+    color: COLORS.text,
+    fontWeight: '600',
+  },
+  moveModalButtonConfirm: {
+    backgroundColor: COLORS.primary,
+  },
+  moveModalButtonConfirmText: {
+    fontSize: SIZES.md,
+    color: COLORS.white,
+    fontWeight: '600',
+  },
+  premiumContainer: {
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 8,
+  },
+  statusText: {
+    color: COLORS.text,
+    fontWeight: '600',
+    fontSize: SIZES.md,
+  },
+  purchaseContainer: {
+    alignItems: 'center',
+    gap: 12,
+  },
+  priceText: {
+    color: COLORS.warning,
+    fontSize: SIZES.xl,
+    fontWeight: '700',
+  },
+  buyButton: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 24,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  buyButtonText: {
+    color: COLORS.white,
+    fontSize: SIZES.md,
+    fontWeight: '700',
   },
 });
 

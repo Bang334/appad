@@ -12,6 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../../config/theme';
 import { userService } from '../../services/userService';
+import MiniPlayer from '../../components/Player/MiniPlayer';
 
 const ChangePasswordScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
@@ -71,7 +72,11 @@ const ChangePasswordScreen = ({ navigation }) => {
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <View style={styles.container}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+      >
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
@@ -175,7 +180,9 @@ const ChangePasswordScreen = ({ navigation }) => {
           )}
         </TouchableOpacity>
       </View>
-    </ScrollView>
+      </ScrollView>
+      <MiniPlayer bottomOffset={0} />
+    </View>
   );
 };
 
@@ -183,6 +190,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 100, // Space for MiniPlayer
   },
   header: {
     flexDirection: 'row',

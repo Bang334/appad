@@ -1,5 +1,7 @@
 const CommentModel = require('../models/comment.model');
 const SongModel = require('../models/song.model');
+const NotificationModel = require('../models/notification.model');
+const ArtistModel = require('../models/artist.model');
 
 class CommentController {
   // Get song comments and rating stats
@@ -62,6 +64,37 @@ class CommentController {
       // Update song average rating
       if (rating) {
         await CommentController.updateSongAverageRating(song_id);
+      }
+
+      // Get song and artist info for notification
+      const song = await SongModel.findById(song_id);
+      if (song && song.artist_id) {
+        const artist = await ArtistModel.findById(song.artist_id);
+        
+        // Notify artist about new comment/rating
+        if (artist && artist.user_id) {
+          const commenter = req.user; // User who created the comment
+          const message = rating 
+            ? `${commenter.username} đã đánh giá ${rating} sao cho bài hát "${song.title}"${content ? ' và để lại bình luận' : ''}`
+            : `${commenter.username} đã bình luận về bài hát "${song.title}"`;
+          
+          await NotificationModel.create({
+            user_id: artist.user_id,
+            type: 'new_comment',
+            title: rating ? 'Đánh giá mới' : 'Bình luận mới',
+            message: message,
+            data: {
+              comment_id: commentId,
+              song_id: song_id,
+              song_title: song.title,
+              artist_id: song.artist_id,
+              commenter_id: userId,
+              commenter_username: commenter.username,
+              rating: rating || null,
+              has_content: !!content
+            }
+          });
+        }
       }
       
       res.status(201).json({

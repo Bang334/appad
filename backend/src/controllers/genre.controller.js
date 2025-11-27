@@ -19,6 +19,24 @@ class GenreController {
     }
   }
 
+  // Get all genres with song count
+  static async getAllWithSongCount(req, res) {
+    try {
+      const genres = await GenreModel.findAllWithSongCount();
+      
+      res.json({
+        success: true,
+        data: genres
+      });
+    } catch (error) {
+      console.error('Get all genres with song count error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Server error'
+      });
+    }
+  }
+
   // Get genre by ID
   static async getById(req, res) {
     try {

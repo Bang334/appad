@@ -9,9 +9,11 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../context/AuthContext';
 import { COLORS, SIZES } from '../../config/theme';
 import { adminService } from '../../services/adminService';
+import MiniPlayer from '../../components/Player/MiniPlayer';
 import { songService } from '../../services/songService';
 
 const AdminDashboard = ({ navigation }) => {
@@ -195,41 +197,50 @@ const AdminDashboard = ({ navigation }) => {
     </TouchableOpacity>
   );
 
-  const AdminMenuItem = ({ icon, title, subtitle, onPress, color = COLORS.primary }) => (
-    <TouchableOpacity style={styles.adminMenuItem} onPress={onPress}>
-      <View style={[styles.adminMenuIcon, { backgroundColor: color + '20' }]}>
-        <Ionicons name={icon} size={24} color={color} />
-      </View>
-      <View style={styles.adminMenuText}>
-        <Text style={styles.adminMenuTitle}>{title}</Text>
-        <Text style={styles.adminMenuSubtitle}>{subtitle}</Text>
-      </View>
-      <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
-    </TouchableOpacity>
-  );
+  const AdminMenuItem = ({ icon, title, subtitle, onPress, gradientColors }) => {
+    const defaultGradient = [COLORS.primary, COLORS.accent];
+    const colors = gradientColors || defaultGradient;
+    
+    return (
+      <TouchableOpacity style={styles.adminMenuItem} onPress={onPress}>
+        <LinearGradient
+          colors={colors}
+          style={styles.adminMenuIcon}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <Ionicons name={icon} size={24} color="#FFF" />
+        </LinearGradient>
+        <View style={styles.adminMenuText}>
+          <Text style={styles.adminMenuTitle}>{title}</Text>
+          <Text style={styles.adminMenuSubtitle}>{subtitle}</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+      </TouchableOpacity>
+    );
+  };
 
   return (
-    <ScrollView 
-      style={styles.container}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-    >
+    <View style={styles.container}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
       <View style={styles.header}>
         <View>
           <Text style={styles.welcomeText}>Xin chào,</Text>
           <Text style={styles.adminName}>{user?.username || 'Admin'}</Text>
         </View>
         <TouchableOpacity
-          style={styles.logoutButton}
+          style={styles.backButton}
           onPress={() => {
-            Alert.alert('Đăng xuất', 'Bạn có chắc muốn đăng xuất?', [
-              { text: 'Hủy', style: 'cancel' },
-              { text: 'Đăng xuất', onPress: () => navigation.navigate('Login') }
-            ]);
+            navigation.navigate('MainTabs', { screen: 'Profile' });
           }}
         >
-          <Ionicons name="log-out-outline" size={24} color={COLORS.error} />
+          <Ionicons name="arrow-back-outline" size={24} color={COLORS.text} />
         </TouchableOpacity>
       </View>
 
@@ -274,7 +285,7 @@ const AdminDashboard = ({ navigation }) => {
           icon="people"
           title="Quản lý người dùng"
           subtitle="Xem, thêm, sửa, xóa người dùng"
-          color={COLORS.primary}
+          gradientColors={['#2196F3', '#21CBF3']}
           onPress={() => navigation.navigate('AdminUsers')}
         />
 
@@ -282,7 +293,7 @@ const AdminDashboard = ({ navigation }) => {
           icon="musical-notes"
           title="Quản lý bài hát"
           subtitle="Thêm, sửa, xóa bài hát"
-          color={COLORS.success}
+          gradientColors={['#4CAF50', '#8BC34A']}
           onPress={() => navigation.navigate('AdminSongs')}
         />
 
@@ -290,7 +301,7 @@ const AdminDashboard = ({ navigation }) => {
           icon="disc"
           title="Quản lý album"
           subtitle="Thêm, sửa, xóa album"
-          color={COLORS.warning}
+          gradientColors={['#FF9800', '#FFC107']}
           onPress={() => navigation.navigate('AdminAlbums')}
         />
 
@@ -298,15 +309,39 @@ const AdminDashboard = ({ navigation }) => {
           icon="analytics"
           title="Phân tích dữ liệu"
           subtitle="Thống kê và báo cáo"
-          color={COLORS.info}
+          gradientColors={['#9C27B0', '#E91E63']}
           onPress={() => navigation.navigate('AdminAnalytics')}
+        />
+
+        <AdminMenuItem
+          icon="wallet"
+          title="Quản lý nạp tiền"
+          subtitle="Duyệt yêu cầu nạp tiền của users"
+          gradientColors={['#00BCD4', '#0097A7']}
+          onPress={() => navigation.navigate('AdminTransactions')}
+        />
+
+        <AdminMenuItem
+          icon="cash"
+          title="Quản lý rút tiền"
+          subtitle="Duyệt yêu cầu rút tiền của artists"
+          gradientColors={['#4CAF50', '#66BB6A']}
+          onPress={() => navigation.navigate('AdminWithdrawals')}
+        />
+
+        <AdminMenuItem
+          icon="people"
+          title="Quản lý hội viên"
+          subtitle="Xem và quản lý hội viên của các artist"
+          gradientColors={['#E91E63', '#F06292']}
+          onPress={() => navigation.navigate('AdminMembership')}
         />
 
         <AdminMenuItem
           icon="settings"
           title="Cài đặt hệ thống"
           subtitle="Cấu hình ứng dụng"
-          color={COLORS.textSecondary}
+          gradientColors={['#607D8B', '#78909C']}
           onPress={() => Alert.alert('Thông báo', 'Tính năng cài đặt hệ thống sẽ sớm có mặt')}
         />
       </View>
@@ -319,7 +354,14 @@ const AdminDashboard = ({ navigation }) => {
             style={styles.quickActionButton}
             onPress={() => navigation.navigate('AdminEditSong', { song: null })}
           >
-            <Ionicons name="add-circle" size={32} color={COLORS.success} />
+            <LinearGradient
+              colors={['#4CAF50', '#8BC34A']}
+              style={styles.quickActionIcon}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <Ionicons name="add-circle" size={32} color="#FFF" />
+            </LinearGradient>
             <Text style={styles.quickActionText}>Thêm bài hát</Text>
           </TouchableOpacity>
 
@@ -327,7 +369,14 @@ const AdminDashboard = ({ navigation }) => {
             style={styles.quickActionButton}
             onPress={() => navigation.navigate('AdminEditAlbum', { album: null })}
           >
-            <Ionicons name="disc" size={32} color={COLORS.warning} />
+            <LinearGradient
+              colors={['#FF9800', '#FFC107']}
+              style={styles.quickActionIcon}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <Ionicons name="disc" size={32} color="#FFF" />
+            </LinearGradient>
             <Text style={styles.quickActionText}>Thêm album</Text>
           </TouchableOpacity>
 
@@ -335,7 +384,14 @@ const AdminDashboard = ({ navigation }) => {
             style={styles.quickActionButton}
             onPress={() => navigation.navigate('AdminAnalytics')}
           >
-            <Ionicons name="analytics" size={32} color={COLORS.info} />
+            <LinearGradient
+              colors={['#9C27B0', '#E91E63']}
+              style={styles.quickActionIcon}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <Ionicons name="analytics" size={32} color="#FFF" />
+            </LinearGradient>
             <Text style={styles.quickActionText}>Phân tích</Text>
           </TouchableOpacity>
 
@@ -365,6 +421,8 @@ const AdminDashboard = ({ navigation }) => {
         </View>
       </View>
     </ScrollView>
+    <MiniPlayer bottomOffset={0} />
+  </View>
   );
 };
 
@@ -372,6 +430,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 100, // Space for MiniPlayer
   },
   header: {
     flexDirection: 'row',
@@ -393,7 +457,7 @@ const styles = StyleSheet.create({
     fontSize: SIZES.lg,
     fontWeight: 'bold',
   },
-  logoutButton: {
+  backButton: {
     padding: 8,
   },
   statsSection: {
@@ -490,6 +554,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     minHeight: 100,
+  },
+  quickActionIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
   },
   quickActionText: {
     color: COLORS.text,

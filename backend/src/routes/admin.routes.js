@@ -1,5 +1,7 @@
 const express = require('express');
 const AdminController = require('../controllers/admin.controller');
+const AdminArtistController = require('../controllers/admin-artist.controller');
+const AdminTransactionController = require('../controllers/admin-transaction.controller');
 const { authenticateToken, isAdmin } = require('../middleware/auth.middleware');
 const { uploadSong, uploadCover } = require('../config/upload-cloudinary');
 
@@ -14,6 +16,7 @@ router.get('/dashboard/stats', AdminController.getDashboardStats);
 
 // User management
 router.get('/users', AdminController.getAllUsers);
+router.get('/users/search', AdminController.searchUsers);
 router.get('/users/:id', AdminController.getUserById);
 router.put('/users/:id/ban', AdminController.banUser);
 router.put('/users/:id/unban', AdminController.unbanUser);
@@ -67,5 +70,25 @@ router.post('/genres', AdminController.createGenre);
 router.get('/analytics', AdminController.getAnalytics);
 router.get('/analytics/users', AdminController.getUserAnalytics);
 router.get('/analytics/songs', AdminController.getSongAnalytics);
+
+// Artist Withdrawal Management
+router.get('/withdrawals', AdminArtistController.getAllWithdrawals);
+router.get('/withdrawals/pending-count', AdminArtistController.getPendingCount);
+router.post('/withdrawals/:id/approve', AdminArtistController.approveWithdrawal);
+router.post('/withdrawals/:id/reject', AdminArtistController.rejectWithdrawal);
+
+// Transaction Management (Deposit approvals)
+router.get('/transactions', AdminTransactionController.getAllTransactions);
+router.get('/transactions/pending-deposits', AdminTransactionController.getPendingDeposits);
+router.get('/transactions/pending-deposits/count', AdminTransactionController.getPendingDepositsCount);
+router.post('/transactions/:id/approve', AdminTransactionController.approveDeposit);
+router.post('/transactions/:id/reject', AdminTransactionController.rejectDeposit);
+
+// System Notifications
+router.post('/notifications/system', AdminController.createSystemNotification);
+
+// Artist Membership Management
+router.get('/memberships', AdminController.getAllMemberships);
+router.get('/memberships/stats', AdminController.getMembershipStats);
 
 module.exports = router;

@@ -14,8 +14,9 @@ import { useAuth } from '../../context/AuthContext';
 import { COLORS, SIZES } from '../../config/theme';
 
 const LoginScreen = ({ navigation }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  // Default values for testing
+  const [email, setEmail] = useState('1@app.com');
+  const [password, setPassword] = useState('admin123');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
 

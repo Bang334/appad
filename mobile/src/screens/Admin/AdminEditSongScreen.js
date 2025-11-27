@@ -21,6 +21,7 @@ import { adminService } from '../../services/adminService';
 import { songService } from '../../services/songService';
 import { useSuccessModal } from '../../hooks/useSuccessModal';
 import SuccessModal from '../../components/Common/SuccessModal';
+import MiniPlayer from '../../components/Player/MiniPlayer';
 
 const AdminEditSongScreen = ({ navigation, route }) => {
   const { song } = route.params;
@@ -57,20 +58,37 @@ const AdminEditSongScreen = ({ navigation, route }) => {
     description: ''
   });
   
+  // Get current date in YYYY-MM-DD format
+  const getCurrentDate = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const [formData, setFormData] = useState({
     title: song?.title || '',
     artist_id: song?.artist_id || '',
     album_id: song?.album_id || '',
     genre_id: song?.genre_id || '',
+    // Thời lượng sẽ được tính tự động từ file upload (ẩn khỏi form)
     duration: song?.duration?.toString() || '',
     lyrics: song?.lyrics || '',
-    release_date: song?.release_date ? song.release_date.split('T')[0] : '',
+    release_date: song?.release_date 
+      ? song.release_date.split('T')[0] 
+      : getCurrentDate(), // Default to current date when creating new
     file_url: song?.file_url || '',
     cover_url: song?.cover_url || '',
+    is_premium: song?.is_premium === 1 || song?.is_premium === true || false,
+    price: song?.price?.toString() || '0',
   });
 
   useEffect(() => {
     loadReferenceData();
+    if (song?.song_id) {
+      loadSongDetails();
+    }
   }, []);
 
   useEffect(() => {
@@ -79,13 +97,56 @@ const AdminEditSongScreen = ({ navigation, route }) => {
       const filtered = albums.filter(album => album.artist_id == formData.artist_id);
       setFilteredAlbums(filtered);
       // Reset album if current album doesn't belong to selected artist
-      if (formData.album_id && !filtered.find(album => album.album_id == formData.album_id)) {
-        setFormData(prev => ({ ...prev, album_id: '' }));
+      // Only reset if we are not currently loading the initial song data (which might have matching IDs)
+      // However, since we set formData from loadSongDetails, this check is still valid but we need to be careful.
+      // Actually, if we load song details, artist_id and album_id will be set together.
+      // This effect runs when artist_id changes. 
+      // If we just loaded the song, artist_id changed, so we filter albums.
+      // If the loaded album_id is valid for this artist, we shouldn't clear it.
+      
+      const isValidAlbum = filtered.find(album => album.album_id == formData.album_id);
+      if (formData.album_id && !isValidAlbum) {
+        // Only clear if it's truly invalid. 
+        // But wait, albums might not be loaded yet when this runs if loadReferenceData is slow.
+        // If albums is empty, filtered is empty.
+        // We should only clear if albums are loaded.
+        if (albums.length > 0) {
+           setFormData(prev => ({ ...prev, album_id: '' }));
+        }
       }
     } else {
       setFilteredAlbums(albums);
     }
   }, [formData.artist_id, albums]);
+
+  const loadSongDetails = async () => {
+    try {
+      setLoading(true);
+      const response = await adminService.getSongById(song.song_id);
+      if (response.data) {
+        const fullSong = response.data;
+        setFormData(prev => ({
+          ...prev,
+          title: fullSong.title,
+          artist_id: fullSong.artist_id,
+          album_id: fullSong.album_id,
+          genre_id: fullSong.genre_id,
+          duration: fullSong.duration?.toString(),
+          lyrics: fullSong.lyrics || '',
+          release_date: fullSong.release_date ? fullSong.release_date.split('T')[0] : getCurrentDate(),
+          file_url: fullSong.file_url,
+          cover_url: fullSong.cover_url,
+          is_premium: fullSong.is_premium === 1 || fullSong.is_premium === true,
+          price: fullSong.price?.toString() || '0',
+        }));
+      }
+    } catch (error) {
+      console.error('Error loading song details:', error);
+      showError('Lỗi', 'Không thể tải thông tin chi tiết bài hát');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const loadReferenceData = async () => {
     try {
@@ -117,12 +178,12 @@ const AdminEditSongScreen = ({ navigation, route }) => {
       showError('Lỗi', 'Vui lòng nhập tên bài hát');
       return false;
     }
-    if (!formData.duration || isNaN(formData.duration)) {
-      showError('Lỗi', 'Vui lòng nhập thời lượng hợp lệ (giây)');
-      return false;
-    }
     if (!formData.file_url.trim()) {
       showError('Lỗi', 'Vui lòng tải lên file nhạc');
+      return false;
+    }
+    if (formData.is_premium && (!formData.price || parseFloat(formData.price) <= 0)) {
+      showError('Lỗi', 'Vui lòng nhập giá hợp lệ cho bài hát premium');
       return false;
     }
     return true;
@@ -150,7 +211,19 @@ const AdminEditSongScreen = ({ navigation, route }) => {
     setUploadingSong(true);
     try {
       const response = await adminService.uploadSong(fileUri);
-      setFormData(prev => ({ ...prev, file_url: response.data.file_url }));
+      // API trả về { success, message, data: { url, duration } }
+      const uploadData = response?.data || response;
+      const fileInfo = uploadData?.data || {};
+
+      setFormData(prev => ({
+        ...prev,
+        file_url: fileInfo.url || prev.file_url,
+        // Lưu lại thời lượng tự động tính (ẩn, không cho nhập tay)
+        duration:
+          fileInfo.duration != null
+            ? Math.round(fileInfo.duration).toString()
+            : prev.duration,
+      }));
       showSuccess('Thành công', 'Tải lên file nhạc thành công');
     } catch (error) {
       console.error('Error uploading song:', error);
@@ -210,6 +283,8 @@ const AdminEditSongScreen = ({ navigation, route }) => {
         release_date: formData.release_date && formData.release_date !== '' ? formData.release_date : null,
         file_url: formData.file_url.trim(),
         cover_url: formData.cover_url.trim() || null,
+        is_premium: formData.is_premium ? 1 : 0,
+        price: formData.is_premium ? parseFloat(formData.price) || 0 : 0,
       };
 
       if (song) {
@@ -454,7 +529,7 @@ const AdminEditSongScreen = ({ navigation, route }) => {
         {!song && <View style={styles.placeholder} />}
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.content} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.form}>
           {/* Title */}
           <View style={styles.inputGroup}>
@@ -562,19 +637,6 @@ const AdminEditSongScreen = ({ navigation, route }) => {
             </View>
           </View>
 
-          {/* Duration */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Thời lượng (giây) *</Text>
-            <TextInput
-              style={styles.input}
-              value={formData.duration}
-              onChangeText={(value) => handleInputChange('duration', value)}
-              placeholder="Ví dụ: 240"
-              keyboardType="numeric"
-              placeholderTextColor={COLORS.textSecondary}
-            />
-          </View>
-
           {/* Song File Upload */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>File nhạc *</Text>
@@ -635,6 +697,37 @@ const AdminEditSongScreen = ({ navigation, route }) => {
             />
           </View>
 
+          {/* Premium Toggle */}
+          <View style={styles.inputGroup}>
+            <View style={styles.switchContainer}>
+              <View style={styles.switchLabelContainer}>
+                <Ionicons name="star" size={20} color={formData.is_premium ? COLORS.warning : COLORS.textSecondary} />
+                <Text style={styles.label}>Bài hát Premium</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.switch, formData.is_premium && styles.switchActive]}
+                onPress={() => handleInputChange('is_premium', !formData.is_premium)}
+              >
+                <View style={[styles.switchThumb, formData.is_premium && styles.switchThumbActive]} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Price (only if premium) */}
+          {formData.is_premium && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Giá (VNĐ) *</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.price}
+                onChangeText={(value) => handleInputChange('price', value.replace(/[^0-9]/g, ''))}
+                placeholder="Nhập giá (ví dụ: 10000)"
+                placeholderTextColor={COLORS.textSecondary}
+                keyboardType="numeric"
+              />
+            </View>
+          )}
+
           {/* Lyrics */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Lời bài hát</Text>
@@ -662,10 +755,8 @@ const AdminEditSongScreen = ({ navigation, route }) => {
             <ActivityIndicator color={COLORS.white} />
           ) : (
             <>
-              <Ionicons name="checkmark-outline" size={20} color={COLORS.white} />
-              <Text style={styles.buttonText}>
-                {song ? 'Cập nhật' : 'Tạo bài hát'}
-              </Text>
+              <Ionicons name="save-outline" size={20} color={COLORS.white} />
+              <Text style={styles.buttonText}>Lưu</Text>
             </>
           )}
         </TouchableOpacity>
@@ -993,6 +1084,7 @@ const AdminEditSongScreen = ({ navigation, route }) => {
         message={modalData.message}
         icon={modalData.icon}
       />
+      <MiniPlayer bottomOffset={0} />
     </KeyboardAvoidingView>
   );
 };
@@ -1027,6 +1119,9 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: SIZES.padding,
+  },
+  scrollContent: {
+    paddingBottom: 100, // Space for MiniPlayer
   },
   form: {
     paddingVertical: SIZES.padding,
@@ -1294,6 +1389,42 @@ const styles = StyleSheet.create({
     fontSize: SIZES.sm,
     marginTop: 8,
     fontWeight: '500',
+  },
+  switchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  switchLabelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  switch: {
+    width: 50,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.card,
+    justifyContent: 'center',
+    padding: 2,
+  },
+  switchActive: {
+    backgroundColor: COLORS.primary,
+  },
+  switchThumb: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: COLORS.white,
+    alignSelf: 'flex-start',
+  },
+  switchThumbActive: {
+    alignSelf: 'flex-end',
   },
 });
 

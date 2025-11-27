@@ -12,6 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../../config/theme';
 import { adminService } from '../../services/adminService';
+import MiniPlayer from '../../components/Player/MiniPlayer';
 
 const AdminAnalyticsScreen = ({ navigation }) => {
   const [analytics, setAnalytics] = useState(null);
@@ -34,13 +35,15 @@ const AdminAnalyticsScreen = ({ navigation }) => {
         adminService.getSongAnalytics(),
       ]);
       
-      console.log('Analytics Response:', analyticsRes);
-      console.log('User Analytics Response:', userRes);
-      console.log('Song Analytics Response:', songRes);
-      
-      setAnalytics(analyticsRes.data);
-      setUserAnalytics(userRes.data);
-      setSongAnalytics(songRes.data);
+      if (analyticsRes.success) {
+        setAnalytics(analyticsRes.data);
+      }
+      if (userRes.success) {
+        setUserAnalytics(userRes.data);
+      }
+      if (songRes.success) {
+        setSongAnalytics(songRes.data);
+      }
     } catch (error) {
       console.error('Error loading analytics:', error);
       Alert.alert(
@@ -107,12 +110,14 @@ const AdminAnalyticsScreen = ({ navigation }) => {
   );
 
   return (
-    <ScrollView 
-      style={styles.container}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-    >
+    <View style={styles.container}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
@@ -255,7 +260,9 @@ const AdminAnalyticsScreen = ({ navigation }) => {
           </View>
         </>
       )}
-    </ScrollView>
+      </ScrollView>
+      <MiniPlayer bottomOffset={0} />
+    </View>
   );
 };
 
@@ -263,6 +270,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 100, // Space for MiniPlayer
   },
   header: {
     flexDirection: 'row',

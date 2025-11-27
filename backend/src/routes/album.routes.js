@@ -11,7 +11,9 @@ const router = express.Router();
 const createAlbumValidation = [
   body('title').trim().notEmpty().withMessage('Title is required'),
   body('artist_id').optional().isInt(),
-  body('release_date').optional().isDate()
+  body('release_date').optional().isDate(),
+  body('is_premium').optional().isBoolean(),
+  body('price').optional().isFloat({ min: 0 })
 ];
 
 // Public routes

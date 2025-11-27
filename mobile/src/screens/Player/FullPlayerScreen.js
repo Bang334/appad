@@ -15,30 +15,34 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePlayer } from '../../context/PlayerContext';
 import { COLORS, SIZES } from '../../config/theme';
 import { formatTime } from '../../utils/formatTime';
 import AddToPlaylistModal from '../../components/Playlist/AddToPlaylistModal';
 import CommentSection from '../../components/Player/CommentSection';
 import SuccessModal from '../../components/Common/SuccessModal';
+import ReportModal from '../../components/Common/ReportModal';
 import { songService } from '../../services/songService';
 import { favoriteService } from '../../services/favoriteService';
 
 const { width, height } = Dimensions.get('window');
 
 const FullPlayerScreen = ({ navigation, route }) => {
-  const { currentSong, isPlaying, togglePlayPause, playNext, playPrevious, seekTo, position, duration, currentPlaylist, playlist, currentIndex, playSong } = usePlayer();
+  const { currentSong, isPlaying, togglePlayPause, playNext, playPrevious, seekTo, position, duration, currentPlaylist, playlist, currentIndex, playSong, refreshCurrentSong, isRepeat, toggleRepeat, isShuffle, toggleShuffle } = usePlayer();
   const [showLyrics, setShowLyrics] = useState(false);
+  const [isLyricsExpanded, setIsLyricsExpanded] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
-  const [isRepeat, setIsRepeat] = useState(false);
-  const [isShuffle, setIsShuffle] = useState(false);
   const [showAddToPlaylist, setShowAddToPlaylist] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
   const [nextSongs, setNextSongs] = useState([]);
   const [loadingNextSongs, setLoadingNextSongs] = useState(false);
   const [loadingFavorite, setLoadingFavorite] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [isPlayingAlbum, setIsPlayingAlbum] = useState(false);
+  const [isPlayingPlaylist, setIsPlayingPlaylist] = useState(false);
 
   const coverScale = new Animated.Value(1);
 
@@ -71,20 +75,64 @@ const FullPlayerScreen = ({ navigation, route }) => {
   const loadNextSongs = async () => {
     setLoadingNextSongs(true);
     try {
-      if (currentPlaylist && playlist.length > 0) {
+      // Check if playing from playlist
+      const isPlayingPlaylistFlag = await AsyncStorage.getItem('isPlayingPlaylist');
+      const currentPlaylistId = await AsyncStorage.getItem('currentPlaylistId');
+      
+      if (isPlayingPlaylistFlag === '1' && currentPlaylistId && playlist.length > 0) {
+        setIsPlayingPlaylist(true);
+        setIsPlayingAlbum(false);
         // Load next songs from current playlist
-        const nextSongsFromPlaylist = playlist.slice(currentIndex + 1, currentIndex + 4);
+        const nextSongsFromPlaylist = playlist.slice(currentIndex + 1, currentIndex + 6);
         setNextSongs(nextSongsFromPlaylist);
       } else {
-        // Load trending songs as "You might also like"
-        const response = await songService.getTrendingSongs(6);
-        // Filter out current song
-        const filteredSongs = response.data?.filter(song => song.song_id !== currentSong?.song_id) || [];
-        setNextSongs(filteredSongs.slice(0, 5));
+        setIsPlayingPlaylist(false);
+        // Check if playing from album
+        const isPlayingAlbumFlag = await AsyncStorage.getItem('isPlayingAlbum');
+        const currentAlbumId = await AsyncStorage.getItem('currentAlbumId');
+        
+        if (isPlayingAlbumFlag === '1' && currentAlbumId && currentSong?.album_id) {
+          setIsPlayingAlbum(true);
+          // Load next songs from the same album
+          const response = await songService.getSongsByAlbum(currentAlbumId);
+          const albumSongs = response.data || [];
+          
+          // Find current song index in album
+          const currentSongIndex = albumSongs.findIndex(s => s.song_id === currentSong.song_id);
+          
+          if (currentSongIndex >= 0) {
+            // Get next songs from album (excluding current song)
+            const nextSongsFromAlbum = albumSongs
+              .slice(currentSongIndex + 1, currentSongIndex + 6)
+              .filter(song => song.song_id !== currentSong?.song_id);
+            setNextSongs(nextSongsFromAlbum);
+          } else {
+            setIsPlayingAlbum(false);
+            // Fallback to trending if current song not found in album
+            const response = await songService.getTrendingSongs(6);
+            const filteredSongs = response.data?.filter(song => song.song_id !== currentSong?.song_id) || [];
+            setNextSongs(filteredSongs.slice(0, 5));
+          }
+        } else {
+          setIsPlayingAlbum(false);
+          if (currentPlaylist && playlist.length > 0) {
+            // Load next songs from current playlist
+            const nextSongsFromPlaylist = playlist.slice(currentIndex + 1, currentIndex + 4);
+            setNextSongs(nextSongsFromPlaylist);
+          } else {
+            // Load trending songs as "You might also like"
+            const response = await songService.getTrendingSongs(6);
+            // Filter out current song
+            const filteredSongs = response.data?.filter(song => song.song_id !== currentSong?.song_id) || [];
+            setNextSongs(filteredSongs.slice(0, 5));
+          }
+        }
       }
     } catch (error) {
       console.error('Error loading next songs:', error);
       setNextSongs([]);
+      setIsPlayingAlbum(false);
+      setIsPlayingPlaylist(false);
     } finally {
       setLoadingNextSongs(false);
     }
@@ -200,10 +248,18 @@ WHERE song_id = ${currentSong.song_id};`;
               </Text>
             </TouchableOpacity>
             <View style={styles.songMeta}>
-              <View style={styles.metaItem}>
+              <TouchableOpacity
+                style={styles.metaItem}
+                onPress={() => {
+                  if (currentSong.album_id) {
+                    navigation.navigate('AlbumDetail', { albumId: currentSong.album_id });
+                  }
+                }}
+                activeOpacity={currentSong.album_id ? 0.7 : 1}
+              >
                 <Ionicons name="musical-note" size={14} color={COLORS.textMuted} />
                 <Text style={styles.metaText}>{currentSong.album_title || 'Single'}</Text>
-              </View>
+              </TouchableOpacity>
               <View style={styles.metaItem}>
                 <Ionicons name="headset" size={14} color={COLORS.textMuted} />
                 <Text style={styles.metaText}>
@@ -245,7 +301,7 @@ WHERE song_id = ${currentSong.song_id};`;
 
           {/* Controls */}
           <View style={styles.controls}>
-            <TouchableOpacity onPress={() => setIsShuffle(!isShuffle)} style={styles.controlButton}>
+            <TouchableOpacity onPress={toggleShuffle} style={styles.controlButton}>
               <Ionicons
                 name="shuffle"
                 size={24}
@@ -276,7 +332,7 @@ WHERE song_id = ${currentSong.song_id};`;
               <Ionicons name="play-skip-forward" size={36} color={COLORS.text} />
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={() => setIsRepeat(!isRepeat)} style={styles.controlButton}>
+            <TouchableOpacity onPress={toggleRepeat} style={styles.controlButton}>
               <Ionicons
                 name={isRepeat ? 'repeat' : 'repeat-outline'}
                 size={24}
@@ -337,25 +393,51 @@ WHERE song_id = ${currentSong.song_id};`;
             >
               <Ionicons name="add-circle-outline" size={26} color={COLORS.text} />
             </TouchableOpacity>
+
+            <TouchableOpacity 
+              onPress={() => setShowReportModal(true)}
+              style={styles.actionButton}
+            >
+              <Ionicons name="flag-outline" size={26} color={COLORS.text} />
+            </TouchableOpacity>
           </View>
 
           {/* Lyrics */}
           {showLyrics && (
             <View style={styles.lyricsContainer}>
               <Text style={styles.lyricsTitle}>Lời bài hát</Text>
-              <Text style={styles.lyricsText} selectable={true}>{lyrics}</Text>
+              <Text style={styles.lyricsText} selectable={true}>
+                {isLyricsExpanded ? lyrics : (
+                  lyrics.split('\n').length > 6 
+                    ? lyrics.split('\n').slice(0, 6).join('\n') + '...' 
+                    : lyrics
+                )}
+              </Text>
+              {lyrics.split('\n').length > 6 && (
+                <TouchableOpacity 
+                  onPress={() => setIsLyricsExpanded(!isLyricsExpanded)}
+                  style={styles.seeMoreButton}
+                >
+                  <Text style={styles.seeMoreText}>
+                    {isLyricsExpanded ? 'Thu gọn' : 'Xem thêm'}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
 
           {/* Comments Section */}
           {showComments && (
-            <CommentSection songId={currentSong?.song_id} />
+            <CommentSection 
+              songId={currentSong?.song_id} 
+              onRatingUpdate={refreshCurrentSong}
+            />
           )}
 
           {/* Up Next / Playlist */}
           <View style={styles.upNextContainer}>
             <Text style={styles.upNextTitle}>
-              {currentPlaylist ? 'Tiếp theo' : 'Có thể bạn cũng thích'}
+              {currentPlaylist || isPlayingAlbum || isPlayingPlaylist ? 'Tiếp theo' : 'Có thể bạn cũng thích'}
             </Text>
             {loadingNextSongs ? (
               <View style={styles.loadingContainer}>
@@ -391,9 +473,16 @@ WHERE song_id = ${currentSong.song_id};`;
                     </Text>
                     <Text style={styles.nextSongArtist} numberOfLines={1}>
                       {song.artist_name}
+                      {song.album_title ? ` • ${song.album_title}` : ''}
                     </Text>
+                    <View style={styles.nextSongMetaRow}>
+                      <Ionicons name="time-outline" size={12} color={COLORS.textMuted} style={{ marginRight: 4 }} />
+                      <Text style={styles.nextSongDuration}>
+                        {formatTime(song.duration > 10000 ? song.duration : song.duration * 1000)}
+                      </Text>
+                    </View>
                   </View>
-                  <Ionicons name="play-circle-outline" size={24} color={COLORS.textSecondary} />
+                  <Ionicons name="play-circle-outline" size={28} color={COLORS.primary} />
                 </TouchableOpacity>
               ))
             ) : (
@@ -409,6 +498,13 @@ WHERE song_id = ${currentSong.song_id};`;
       <AddToPlaylistModal
         visible={showAddToPlaylist}
         onClose={() => setShowAddToPlaylist(false)}
+        song={currentSong}
+      />
+
+      {/* Report Modal */}
+      <ReportModal
+        visible={showReportModal}
+        onClose={() => setShowReportModal(false)}
         song={currentSong}
       />
 
@@ -634,6 +730,17 @@ const styles = StyleSheet.create({
     lineHeight: 26,
     textAlign: 'left',
     flexWrap: 'wrap',
+    marginBottom: 8,
+  },
+  seeMoreButton: {
+    alignSelf: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  seeMoreText: {
+    color: COLORS.primary,
+    fontSize: SIZES.base,
+    fontWeight: '600',
   },
   upNextContainer: {
     marginHorizontal: SIZES.padding * 2,
@@ -657,33 +764,54 @@ const styles = StyleSheet.create({
   nextSongItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
+    padding: 12,
     borderRadius: SIZES.borderRadius,
-    marginBottom: 8,
+    marginBottom: 12,
+    backgroundColor: COLORS.surfaceLight,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   nextSongImage: {
-    width: 40,
-    height: 40,
-    borderRadius: 6,
-    marginRight: 12,
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    marginRight: 16,
   },
   nextSongInfo: {
     flex: 1,
+    justifyContent: 'center',
   },
   nextSongTitle: {
     color: COLORS.text,
     fontSize: SIZES.md,
     fontWeight: '600',
-    marginBottom: 2,
+    marginBottom: 4,
   },
   nextSongArtist: {
     color: COLORS.textSecondary,
     fontSize: SIZES.sm,
+    marginBottom: 4,
+  },
+  nextSongMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  nextSongDuration: {
+    color: COLORS.textMuted,
+    fontSize: SIZES.xs,
   },
   emptyNextContainer: {
     paddingVertical: 20,
     alignItems: 'center',
+    backgroundColor: COLORS.surfaceLight,
+    borderRadius: SIZES.borderRadius,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   emptyNextText: {
     color: COLORS.textSecondary,

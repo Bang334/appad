@@ -1,5 +1,6 @@
 const SongModel = require('../models/song.model');
 const HistoryModel = require('../models/history.model');
+const UserModel = require('../models/user.model');
 
 class SongController {
   // Get all songs
@@ -159,16 +160,92 @@ class SongController {
     try {
       const { id } = req.params;
       const userId = req.user.user_id;
+      const { duration_listened = 0, is_completed = false } = req.body;
 
-      // Increment listen count
-      await SongModel.incrementListenCount(id);
+      console.log('🎵 [BACKEND] Play song request:', {
+        song_id: id,
+        user_id: userId,
+        duration_listened,
+        is_completed,
+        body: req.body,
+      });
 
-      // Add to listening history
-      await HistoryModel.add(userId, id);
+      // Check if user has access to this song
+      const accessInfo = await SongModel.checkAccess(id, userId);
+
+      if (!accessInfo.hasAccess) {
+        return res.status(403).json({
+          success: false,
+          message: accessInfo.reason || 'You do not have access to this song',
+          song: accessInfo.song,
+          requires_premium: true
+        });
+      }
+
+      // Get song info for history
+      const song = accessInfo.song;
+      const isPremium = song.is_premium && accessInfo.accessType === 'premium' 
+        ? await UserModel.isPremiumActive(userId) 
+        : false;
+
+      // Calculate duration_listened and is_completed
+      // Only use data from frontend, don't assume completed
+      let calculatedDuration = 0;
+      let calculatedCompleted = false;
+      
+      if (duration_listened > 0) {
+        // Frontend sent duration data - use it
+        calculatedDuration = duration_listened;
+        calculatedCompleted = is_completed; // Only true if frontend says so
+      } else if (song.duration && isPremium) {
+        // For premium streams only: if no data from frontend, use song duration as fallback
+        // song.duration could be in seconds (INT) or milliseconds
+        // Check if it's > 10000 (likely seconds) or < 10000 (likely milliseconds)
+        if (song.duration > 10000) {
+          // Likely in seconds already
+          calculatedDuration = song.duration;
+        } else {
+          // Likely in milliseconds, convert to seconds
+          calculatedDuration = Math.floor(song.duration / 1000);
+        }
+        // DON'T assume completed - only frontend knows if user finished listening
+        calculatedCompleted = false;
+      }
+
+      // Calculate listen percentage to determine if we should increment count
+      // User must listen to > 50% of the song to count as a listen
+      let shouldIncrementCount = false;
+      if (song.duration > 0) {
+         // Normalize song duration to seconds
+         // If > 10000, assume milliseconds (e.g. 180000ms = 3min)
+         // If <= 10000, assume seconds (e.g. 180s = 3min)
+         const songDurationSec = song.duration > 10000 ? Math.floor(song.duration / 1000) : song.duration;
+         
+         if (songDurationSec > 0) {
+             const percentage = calculatedDuration / songDurationSec;
+             shouldIncrementCount = percentage >= 0.5;
+         }
+      }
+
+      // Increment listen count (global song count) only if threshold met
+      if (shouldIncrementCount) {
+        await SongModel.incrementListenCount(id);
+      }
+
+      // Add to listening history (unified - handles both regular and premium)
+      // Always add to history, but only increment user's listen count if threshold met
+      await HistoryModel.add(userId, id, {
+        artist_id: song.artist_id,
+        duration_listened: calculatedDuration,
+        is_completed: calculatedCompleted,
+        is_premium_stream: isPremium,
+        increment_count: shouldIncrementCount
+      });
 
       res.json({
         success: true,
-        message: 'Song played'
+        message: 'Song played',
+        access_type: accessInfo.accessType
       });
     } catch (error) {
       console.error('Play song error:', error);

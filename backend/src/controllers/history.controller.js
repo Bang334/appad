@@ -22,6 +22,27 @@ class HistoryController {
     }
   }
 
+  // Get user listening history grouped by day
+  static async getUserHistoryByDay(req, res) {
+    try {
+      const userId = req.user.user_id;
+      const { limit = 100 } = req.query;
+      
+      const history = await HistoryModel.getUserHistoryByDay(userId, parseInt(limit));
+      
+      res.json({
+        success: true,
+        data: history
+      });
+    } catch (error) {
+      console.error('Get user history by day error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Server error'
+      });
+    }
+  }
+
   // Get recently played songs
   static async getRecentlyPlayed(req, res) {
     try {

@@ -19,9 +19,21 @@ const favoriteRoutes = require('./src/routes/favorite.routes');
 const historyRoutes = require('./src/routes/history.routes');
 const commentRoutes = require('./src/routes/comment.routes');
 const adminRoutes = require('./src/routes/admin.routes');
+const premiumRoutes = require('./src/routes/premium.routes');
+const walletRoutes = require('./src/routes/wallet.routes');
+const revenueRoutes = require('./src/routes/revenue.routes');
+const notificationRoutes = require('./src/routes/notification.routes');
+const followRoutes = require('./src/routes/follow.routes');
+const reportRoutes = require('./src/routes/report.routes');
 
 // Import database connection
 const db = require('./src/config/database');
+
+// Import cron jobs
+const cron = require('node-cron');
+const MonthlyRevenueJob = require('./src/jobs/monthly-revenue.job');
+const PremiumExpiringJob = require('./src/jobs/premium-expiring.job');
+const ArtistMembershipExpiringJob = require('./src/jobs/artist-membership-expiring.job');
 
 const app = express();
 
@@ -61,6 +73,12 @@ app.use('/api/favorites', favoriteRoutes);
 app.use('/api/history', historyRoutes);
 app.use('/api/comments', commentRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/premium', premiumRoutes);
+app.use('/api/wallet', walletRoutes);
+app.use('/api/revenue', revenueRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/follows', followRoutes);
+app.use('/api/reports', reportRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -85,6 +103,44 @@ app.use((req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
+
+// ===== CRON JOBS =====
+// Monthly Revenue Job: Chạy vào 1h sáng ngày đầu tiên của mỗi tháng
+// Format: minute hour day month day-of-week
+cron.schedule('0 1 1 * *', async () => {
+  console.log('[Cron] Starting monthly revenue calculation job...');
+  const result = await MonthlyRevenueJob.processLastMonth();
+  console.log('[Cron] Monthly revenue job completed:', result);
+}, {
+  scheduled: true,
+  timezone: "Asia/Ho_Chi_Minh"
+});
+
+// Premium Expiring Job: Chạy mỗi ngày lúc 9h sáng
+cron.schedule('0 9 * * *', async () => {
+  console.log('[Cron] Starting premium expiring notification job...');
+  const result = await PremiumExpiringJob.checkAndNotify();
+  console.log('[Cron] Premium expiring job completed:', result);
+}, {
+  scheduled: true,
+  timezone: "Asia/Ho_Chi_Minh"
+});
+
+// Artist Membership Expiring Job: Chạy mỗi ngày lúc 0h (nửa đêm)
+cron.schedule('0 0 * * *', async () => {
+  console.log('[Cron] Starting artist membership expiring job...');
+  const result = await ArtistMembershipExpiringJob.updateExpired();
+  console.log('[Cron] Artist membership expiring job completed:', result);
+}, {
+  scheduled: true,
+  timezone: "Asia/Ho_Chi_Minh"
+});
+
+// Log cron job schedules
+console.log('📅 Cron jobs scheduled:');
+console.log('  - Monthly Revenue: 1:00 AM on 1st of every month');
+console.log('  - Premium Expiring: 9:00 AM every day');
+console.log('  - Artist Membership Expiring: 12:00 AM (midnight) every day');
 
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on port ${PORT}`);

@@ -19,21 +19,65 @@ const RegisterScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [registerAsArtist, setRegisterAsArtist] = useState(false);
+  const [artistBio, setArtistBio] = useState('');
+  const [artistCountry, setArtistCountry] = useState('');
+  const [artistImageUrl, setArtistImageUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const { register } = useAuth();
 
   const handleRegister = async () => {
-    if (!username || !email || !password) {
-      Alert.alert('Lỗi', 'Vui lòng nhập đầy đủ thông tin bắt buộc');
+    // Validation
+    if (!username || !username.trim()) {
+      Alert.alert('Lỗi', 'Vui lòng nhập tên đăng nhập');
+      return;
+    }
+
+    if (username.length < 3 || username.length > 50) {
+      Alert.alert('Lỗi', 'Tên đăng nhập phải từ 3-50 ký tự');
+      return;
+    }
+
+    if (!email || !email.trim()) {
+      Alert.alert('Lỗi', 'Vui lòng nhập email');
+      return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      Alert.alert('Lỗi', 'Email không hợp lệ');
+      return;
+    }
+
+    if (!password || password.length < 6) {
+      Alert.alert('Lỗi', 'Mật khẩu phải có ít nhất 6 ký tự');
       return;
     }
 
     setLoading(true);
-    const result = await register(username, email, password, fullName);
-    setLoading(false);
+    try {
+      const result = await register(
+        username.trim(),
+        email.trim().toLowerCase(),
+        password,
+        fullName?.trim() || '',
+        registerAsArtist,
+        registerAsArtist ? artistBio.trim() : '',
+        registerAsArtist ? artistCountry.trim() : '',
+        registerAsArtist ? artistImageUrl.trim() : '',
+      );
+      setLoading(false);
 
-    if (!result.success) {
-      Alert.alert('Đăng ký thất bại', result.message);
+      if (result.success) {
+        Alert.alert('Thành công', 'Đăng ký tài khoản thành công!');
+      } else {
+        Alert.alert('Đăng ký thất bại', result.message || 'Có lỗi xảy ra. Vui lòng thử lại.');
+      }
+    } catch (error) {
+      setLoading(false);
+      console.error('Register error:', error);
+      Alert.alert('Lỗi', 'Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng.');
     }
   };
 
@@ -88,6 +132,56 @@ const RegisterScreen = ({ navigation }) => {
               onChangeText={setPassword}
               secureTextEntry
             />
+
+            {/* Đăng ký làm nghệ sĩ */}
+            <TouchableOpacity
+              style={styles.artistToggle}
+              onPress={() => setRegisterAsArtist(!registerAsArtist)}
+              disabled={loading}
+            >
+              <View
+                style={[
+                  styles.checkbox,
+                  registerAsArtist && styles.checkboxChecked,
+                ]}
+              >
+                {registerAsArtist && <Text style={styles.checkboxIcon}>✓</Text>}
+              </View>
+              <View style={styles.artistTextContainer}>
+                <Text style={styles.artistTitle}>Đăng ký làm nghệ sĩ</Text>
+                <Text style={styles.artistSubtitle}>
+                  Tài khoản sẽ được chuyển cho admin duyệt trước khi hoạt động.
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            {registerAsArtist && (
+              <View style={styles.artistExtraFields}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Quốc gia (VD: Việt Nam)"
+                  placeholderTextColor={COLORS.textMuted}
+                  value={artistCountry}
+                  onChangeText={setArtistCountry}
+                />
+                <TextInput
+                  style={[styles.input, styles.artistBioInput]}
+                  placeholder="Giới thiệu / tiểu sử (bio) của nghệ sĩ"
+                  placeholderTextColor={COLORS.textMuted}
+                  value={artistBio}
+                  onChangeText={setArtistBio}
+                  multiline
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Ảnh đại diện (URL hình ảnh, có thể thêm sau)"
+                  placeholderTextColor={COLORS.textMuted}
+                  value={artistImageUrl}
+                  onChangeText={setArtistImageUrl}
+                  autoCapitalize="none"
+                />
+              </View>
+            )}
 
             <TouchableOpacity
               style={styles.registerButton}
@@ -171,6 +265,52 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: SIZES.base,
     fontWeight: 'bold',
+  },
+  artistToggle: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 4,
+    gap: 10,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: COLORS.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  checkboxChecked: {
+    backgroundColor: COLORS.white,
+  },
+  checkboxIcon: {
+    color: COLORS.primary,
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  artistTextContainer: {
+    flex: 1,
+  },
+  artistTitle: {
+    color: COLORS.white,
+    fontSize: SIZES.md,
+    fontWeight: '600',
+  },
+  artistSubtitle: {
+    color: COLORS.white,
+    fontSize: SIZES.sm,
+    opacity: 0.9,
+    marginTop: 2,
+  },
+  artistExtraFields: {
+    gap: 12,
+    marginTop: 4,
+  },
+  artistBioInput: {
+    height: 80,
+    textAlignVertical: 'top',
   },
 });
 

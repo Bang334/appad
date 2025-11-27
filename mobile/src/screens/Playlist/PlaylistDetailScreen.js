@@ -3,24 +3,28 @@ import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   TouchableOpacity,
   Image,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
 import { playlistService } from '../../services/playlistService';
 import { songService } from '../../services/songService';
 import { usePlayer } from '../../context/PlayerContext';
 import { COLORS, SIZES } from '../../config/theme';
+import MiniPlayer from '../../components/Player/MiniPlayer';
 
 const PlaylistDetailScreen = ({ navigation, route }) => {
   const { playlistId, playlistName } = route.params;
   const [playlist, setPlaylist] = useState(null);
   const [songs, setSongs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { playSong } = usePlayer();
+  const [savingOrder, setSavingOrder] = useState(false);
+  const { playSong, currentSong, isPlaying, togglePlayPause } = usePlayer();
 
   useEffect(() => {
     loadPlaylist();
@@ -39,10 +43,19 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
     }
   };
 
-  const handlePlaySong = (song, index) => {
-    playSong(song, songs, index);
-    songService.playSong(song.song_id).catch(console.error);
-    navigation.navigate('FullPlayer');
+  const handlePlaySong = async (song, index) => {
+    // If clicking on currently playing song, toggle play/pause
+    if (currentSong?.song_id === song.song_id) {
+      togglePlayPause();
+      // Don't navigate, just toggle
+    } else {
+      // Play new song and navigate to FullPlayer
+      playSong(song, songs, index, playlist);
+      // Save flag to localStorage that we're playing from playlist
+      await AsyncStorage.setItem('isPlayingPlaylist', '1');
+      await AsyncStorage.setItem('currentPlaylistId', playlistId.toString());
+      navigation.navigate('FullPlayer');
+    }
   };
 
   const handleRemoveSong = (songId) => {
@@ -68,44 +81,133 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
     );
   };
 
-  const handlePlayAll = () => {
+  const handlePlayAll = async () => {
     if (songs.length > 0) {
-      playSong(songs[0], songs, 0);
-      songService.playSong(songs[0].song_id).catch(console.error);
+      playSong(songs[0], songs, 0, playlist);
+      // Save flag to localStorage that we're playing from playlist
+      await AsyncStorage.setItem('isPlayingPlaylist', '1');
+      await AsyncStorage.setItem('currentPlaylistId', playlistId.toString());
       navigation.navigate('FullPlayer');
     }
   };
 
-  const renderSongItem = ({ item, index }) => (
-    <View style={styles.songItem}>
-      <TouchableOpacity
-        style={styles.songContent}
-        onPress={() => handlePlaySong(item, index)}
-        activeOpacity={0.7}
-      >
-        <Image
-          source={{ uri: item.cover_url || 'https://via.placeholder.com/60' }}
-          style={styles.songImage}
-        />
-        <View style={styles.songInfo}>
-          <Text style={styles.songTitle} numberOfLines={1}>
-            {item.title}
-          </Text>
-          <Text style={styles.songArtist} numberOfLines={1}>
-            {item.artist_name || 'Unknown Artist'}
-          </Text>
-        </View>
-        <Ionicons name="play-circle" size={32} color={COLORS.primary} />
-      </TouchableOpacity>
+  const handleDeletePlaylist = () => {
+    Alert.alert(
+      'Xóa playlist',
+      `Bạn có chắc muốn xóa playlist "${playlist?.name || playlistName}"? Hành động này không thể hoàn tác.`,
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Xóa',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await playlistService.deletePlaylist(playlistId);
+              Alert.alert('Thành công', 'Đã xóa playlist');
+              navigation.goBack();
+            } catch (error) {
+              console.error('Error deleting playlist:', error);
+              Alert.alert('Lỗi', 'Không thể xóa playlist');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleMoreOptions = () => {
+    Alert.alert(
+      'Tùy chọn',
+      'Chọn hành động',
+      [
+        {
+          text: 'Xóa playlist',
+          style: 'destructive',
+          onPress: handleDeletePlaylist,
+        },
+        { text: 'Hủy', style: 'cancel' },
+      ]
+    );
+  };
+
+  const handleDragEnd = async ({ data }) => {
+    // Update local state immediately
+    setSongs(data);
+    
+    // Save order to backend
+    setSavingOrder(true);
+    try {
+      const songOrders = data.map((song, index) => ({
+        song_id: song.song_id,
+        order: index
+      }));
       
-      <TouchableOpacity
-        onPress={() => handleRemoveSong(item.song_id)}
-        style={styles.removeButton}
-      >
-        <Ionicons name="close-circle" size={24} color={COLORS.error} />
-      </TouchableOpacity>
-    </View>
-  );
+      await playlistService.updateSongOrder(playlistId, songOrders);
+    } catch (error) {
+      console.error('Error updating song order:', error);
+      Alert.alert('Lỗi', 'Không thể lưu thứ tự bài hát');
+      // Reload to get correct order
+      loadPlaylist();
+    } finally {
+      setSavingOrder(false);
+    }
+  };
+
+  const renderSongItem = ({ item, index, drag, isActive }) => {
+    const isCurrentSong = currentSong?.song_id === item.song_id;
+    
+    return (
+      <ScaleDecorator>
+        <View style={[styles.songItem, isActive && styles.songItemActive]}>
+          <TouchableOpacity
+            style={styles.dragHandle}
+            onLongPress={drag}
+            disabled={isActive}
+          >
+            <Ionicons 
+              name="reorder-three-outline" 
+              size={24} 
+              color={COLORS.textSecondary} 
+            />
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={styles.songContent}
+            onPress={() => handlePlaySong(item, index)}
+            activeOpacity={0.7}
+            disabled={isActive}
+          >
+            <Image
+              source={{ uri: item.cover_url || 'https://via.placeholder.com/60' }}
+              style={styles.songImage}
+            />
+            <View style={styles.songInfo}>
+              <Text style={styles.songTitle} numberOfLines={1}>
+                {item.title}
+              </Text>
+              <Text style={styles.songArtist} numberOfLines={1}>
+                {item.artist_name || 'Unknown Artist'}
+              </Text>
+            </View>
+            {isCurrentSong && isPlaying && (
+              <Ionicons name="volume-high" size={20} color={COLORS.primary} />
+            )}
+            {!isCurrentSong && (
+              <Ionicons name="play-circle" size={32} color={COLORS.primary} />
+            )}
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            onPress={() => handleRemoveSong(item.song_id)}
+            style={styles.removeButton}
+            disabled={isActive}
+          >
+            <Ionicons name="close-circle" size={24} color={COLORS.error} />
+          </TouchableOpacity>
+        </View>
+      </ScaleDecorator>
+    );
+  };
 
   if (loading) {
     return (
@@ -136,7 +238,7 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
           </Text>
         </View>
 
-        <TouchableOpacity style={styles.moreButton}>
+        <TouchableOpacity style={styles.moreButton} onPress={handleMoreOptions}>
           <Ionicons name="ellipsis-vertical" size={24} color={COLORS.white} />
         </TouchableOpacity>
       </LinearGradient>
@@ -158,12 +260,21 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
 
       {/* Songs List */}
       {songs.length > 0 ? (
-        <FlatList
-          data={songs}
-          renderItem={renderSongItem}
-          keyExtractor={(item) => item.song_id.toString()}
-          contentContainerStyle={styles.songsList}
-        />
+        <View style={styles.songsListContainer}>
+          {savingOrder && (
+            <View style={styles.savingIndicator}>
+              <ActivityIndicator size="small" color={COLORS.primary} />
+              <Text style={styles.savingText}>Đang lưu thứ tự...</Text>
+            </View>
+          )}
+          <DraggableFlatList
+            data={songs}
+            onDragEnd={handleDragEnd}
+            keyExtractor={(item) => item.song_id.toString()}
+            renderItem={renderSongItem}
+            contentContainerStyle={styles.songsList}
+          />
+        </View>
       ) : (
         <View style={styles.emptyContainer}>
           <Ionicons name="musical-notes-outline" size={64} color={COLORS.textMuted} />
@@ -171,6 +282,7 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
           <Text style={styles.emptySubtext}>Thêm bài hát vào playlist này</Text>
         </View>
       )}
+      <MiniPlayer bottomOffset={0} />
     </View>
   );
 };
@@ -249,8 +361,26 @@ const styles = StyleSheet.create({
     fontSize: SIZES.md,
     fontWeight: '700',
   },
+  songsListContainer: {
+    flex: 1,
+  },
   songsList: {
     paddingBottom: 100,
+  },
+  savingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    gap: 8,
+    backgroundColor: COLORS.surface,
+    marginHorizontal: SIZES.padding,
+    marginTop: 8,
+    borderRadius: SIZES.borderRadius,
+  },
+  savingText: {
+    color: COLORS.textSecondary,
+    fontSize: SIZES.sm,
   },
   songItem: {
     flexDirection: 'row',
@@ -260,6 +390,14 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     borderRadius: SIZES.borderRadius,
     paddingRight: 8,
+  },
+  songItemActive: {
+    backgroundColor: COLORS.card,
+    opacity: 0.8,
+  },
+  dragHandle: {
+    padding: 8,
+    justifyContent: 'center',
   },
   songContent: {
     flex: 1,

@@ -13,6 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../../config/theme';
 import { adminService } from '../../services/adminService';
+import MiniPlayer from '../../components/Player/MiniPlayer';
 
 const AdminAlbumsScreen = ({ navigation }) => {
   const [albums, setAlbums] = useState([]);
@@ -172,10 +173,11 @@ const AdminAlbumsScreen = ({ navigation }) => {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
-          contentContainerStyle={styles.listContainer}
+          contentContainerStyle={[styles.listContainer, { paddingBottom: 100 }]}
           showsVerticalScrollIndicator={false}
         />
       )}
+      <MiniPlayer bottomOffset={0} />
     </View>
   );
 };

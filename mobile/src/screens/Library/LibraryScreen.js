@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,26 +9,52 @@ import {
   RefreshControl,
   TextInput,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { favoriteService } from '../../services/favoriteService';
 import { playlistService } from '../../services/playlistService';
 import { songService } from '../../services/songService';
+import { premiumService } from '../../services/premiumService';
+import { historyService } from '../../services/historyService';
 import { usePlayer } from '../../context/PlayerContext';
 import { COLORS, SIZES } from '../../config/theme';
 import { LinearGradient } from 'expo-linear-gradient';
+import PremiumBadge from '../../components/Common/PremiumBadge';
+import AccessBadge from '../../components/Common/AccessBadge';
+import PremiumAccessModal from '../../components/Common/PremiumAccessModal';
+import MiniPlayer from '../../components/Player/MiniPlayer';
+import { API_BASE_URL } from '../../config/api';
 
 const LibraryScreen = ({ navigation }) => {
-  const [activeTab, setActiveTab] = useState('favorites'); // favorites, playlists
+  const [activeTab, setActiveTab] = useState('favorites'); // favorites, playlists, premium
+  const [showDropdown, setShowDropdown] = useState(false);
   const [favorites, setFavorites] = useState([]);
+  const [filteredFavorites, setFilteredFavorites] = useState([]);
   const [playlists, setPlaylists] = useState([]);
+  const [filteredPlaylists, setFilteredPlaylists] = useState([]);
+  const [purchasedSongs, setPurchasedSongs] = useState([]);
+  const [filteredPurchasedSongs, setFilteredPurchasedSongs] = useState([]);
+  const [purchasedAlbums, setPurchasedAlbums] = useState([]);
+  const [filteredPurchasedAlbums, setFilteredPurchasedAlbums] = useState([]);
+  const [historyByDay, setHistoryByDay] = useState([]);
+  const [filteredHistory, setFilteredHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showCreatePlaylist, setShowCreatePlaylist] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [creatingPlaylist, setCreatingPlaylist] = useState(false);
-  const { playSong } = usePlayer();
+  const [songAccessTypes, setSongAccessTypes] = useState({}); // { songId: accessType }
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [selectedSong, setSelectedSong] = useState(null);
+  const [selectedSongList, setSelectedSongList] = useState([]);
+  
+  // Search and filter
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState('title'); // 'title', 'artist', 'recent'
+  
+  const { playSong, currentSong, isPlaying, togglePlayPause } = usePlayer();
 
   useFocusEffect(
     React.useCallback(() => {
@@ -36,16 +62,60 @@ const LibraryScreen = ({ navigation }) => {
     }, [])
   );
 
+  const getImageUrl = (url) => {
+    if (!url) return null;
+    if (url.startsWith('http')) return url;
+    const baseUrl = API_BASE_URL.replace('/api', '');
+    return `${baseUrl}${url}`;
+  };
+
   const loadData = async () => {
     try {
       console.log('Loading library data...');
-      const [favoritesData, playlistsData] = await Promise.all([
+      const [favoritesData, playlistsData, purchasedData, purchasedAlbumsData, historyData] = await Promise.all([
         favoriteService.getUserFavorites(),
         playlistService.getUserPlaylists(),
+        premiumService.getPurchasedSongs().catch(() => ({ data: [] })),
+        premiumService.getPurchasedAlbums().catch(() => ({ data: [] })),
+        historyService.getUserHistoryByDay(100).catch(() => ({ success: true, data: [] })),
       ]);
       console.log('Favorites data:', favoritesData);
-      setFavorites(favoritesData.data || []);
-      setPlaylists(playlistsData.data || []);
+      const favs = favoritesData.data || [];
+      const pls = playlistsData.data || [];
+      const purchased = purchasedData.data || [];
+      const purchasedAlbs = purchasedAlbumsData.data || [];
+      const history = historyData.data || [];
+      
+      setFavorites(favs);
+      setFilteredFavorites(favs);
+      setPlaylists(pls);
+      setFilteredPlaylists(pls);
+      setPurchasedSongs(purchased);
+      setFilteredPurchasedSongs(purchased);
+      setPurchasedAlbums(purchasedAlbs);
+      setFilteredPurchasedAlbums(purchasedAlbs);
+      setHistoryByDay(history);
+      setFilteredHistory(history);
+      
+      // Check access types for premium songs in favorites and purchased songs
+      const accessTypesMap = {};
+      const allSongs = [...favs, ...purchased];
+      const premiumSongs = allSongs.filter(s => s.is_premium === 1);
+      
+      // Check access for premium songs in parallel (limit to avoid too many requests)
+      const accessChecks = premiumSongs.slice(0, 100).map(async (song) => {
+        try {
+          const accessRes = await premiumService.checkSongAccess(song.song_id);
+          if (accessRes.success && accessRes.data?.hasAccess && accessRes.data?.accessType) {
+            accessTypesMap[song.song_id] = accessRes.data.accessType;
+          }
+        } catch (error) {
+          // Silent fail for access checks
+        }
+      });
+      
+      await Promise.all(accessChecks);
+      setSongAccessTypes(accessTypesMap);
     } catch (error) {
       console.error('Error loading library:', error);
     } finally {
@@ -79,32 +149,624 @@ const LibraryScreen = ({ navigation }) => {
     }
   };
 
-  const handlePlaySong = (song, index, list) => {
+  const handleSongPress = async (song, index, list) => {
+    // If clicking on currently playing song, navigate to FullPlayer
+    if (currentSong?.song_id === song.song_id) {
+      navigation.navigate('FullPlayer');
+      return;
+    }
+
+    // Check access for premium songs
+    if (song.is_premium === 1) {
+      try {
+        const response = await premiumService.checkSongAccess(song.song_id);
+        if (!response.data?.hasAccess) {
+          // Show premium access modal with 3 options
+          setSelectedSong(song);
+          setSelectedSongList(list);
+          setShowPremiumModal(true);
+          return;
+        }
+        // Update access type if we just checked it and user has access
+        if (response.success && response.data?.accessType) {
+          setSongAccessTypes(prev => ({
+            ...prev,
+            [song.song_id]: response.data.accessType
+          }));
+        }
+      } catch (error) {
+        console.error('Error checking song access:', error);
+        // If error, try to play anyway
+      }
+    }
+
+    // Play song and navigate to FullPlayer
     playSong(song, list, index);
-    songService.playSong(song.song_id).catch(console.error);
     navigation.navigate('FullPlayer');
   };
 
-  const renderFavoriteItem = ({ item, index }) => (
-    <TouchableOpacity
-      style={styles.songItem}
-      onPress={() => handlePlaySong(item, index, favorites)}
-    >
-      <Image
-        source={{ uri: item.cover_url || 'https://via.placeholder.com/60' }}
-        style={styles.songImage}
-      />
-      <View style={styles.songInfo}>
-        <Text style={styles.songTitle} numberOfLines={1}>
-          {item.title}
-        </Text>
-        <Text style={styles.songArtist} numberOfLines={1}>
-          {item.artist_name}
-        </Text>
+  const handlePlayButtonPress = async (song, index, list) => {
+    if (currentSong?.song_id === song.song_id) {
+      togglePlayPause();
+      return;
+    }
+
+    // Check access for premium songs
+    if (song.is_premium === 1) {
+      try {
+        const response = await premiumService.checkSongAccess(song.song_id);
+        if (!response.data?.hasAccess) {
+          // Show premium access modal with 3 options
+          setSelectedSong(song);
+          setSelectedSongList(list);
+          setShowPremiumModal(true);
+          return;
+        }
+        // Update access type if we just checked it and user has access
+        if (response.success && response.data?.accessType) {
+          setSongAccessTypes(prev => ({
+            ...prev,
+            [song.song_id]: response.data.accessType
+          }));
+        }
+      } catch (error) {
+        console.error('Error checking song access:', error);
+        // If error, try to play anyway
+      }
+    }
+
+    // Play song
+    playSong(song, list, index);
+  };
+
+  const handlePlayAll = (list) => {
+    if (list.length > 0) {
+      playSong(list[0], list, 0);
+      navigation.navigate('FullPlayer');
+    }
+  };
+
+  // Filter and sort logic for favorites & premium
+  useEffect(() => {
+    // Xác định nguồn dữ liệu theo tab
+    let source = [];
+    if (activeTab === 'favorites') {
+      source = favorites;
+    } else if (activeTab === 'premium') {
+      source = purchasedSongs;
+    } else if (activeTab === 'albums') {
+      source = purchasedAlbums;
+    } else {
+      return;
+    }
+
+    let filtered = [...source];
+
+    // Search
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        song =>
+          song.title?.toLowerCase().includes(query) ||
+          song.artist_name?.toLowerCase().includes(query) ||
+          song.album_title?.toLowerCase().includes(query)
+      );
+    }
+    
+    // Sort and Group by Artist if applicable
+    if (sortBy === 'artist' && (activeTab === 'favorites' || activeTab === 'premium')) {
+      // Group by artist
+      const groupedByArtist = {};
+      filtered.forEach(song => {
+        const artistName = song.artist_name || 'Nghệ sĩ không xác định';
+        if (!groupedByArtist[artistName]) {
+          groupedByArtist[artistName] = [];
+        }
+        groupedByArtist[artistName].push(song);
+      });
+      
+      // Convert to array of sections, sorted by artist name
+      const sections = Object.keys(groupedByArtist)
+        .sort((a, b) => a.localeCompare(b))
+        .map(artistName => ({
+          artistName,
+          songs: groupedByArtist[artistName].sort((a, b) => 
+            (a.title || '').localeCompare(b.title || '')
+          )
+        }));
+      
+      if (activeTab === 'favorites') {
+        setFilteredFavorites(sections);
+      } else if (activeTab === 'premium') {
+        setFilteredPurchasedSongs(sections);
+      }
+    } else {
+      // Regular sorting for non-artist sort or albums tab
+      if (sortBy === 'title') {
+        filtered.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+      } else if (sortBy === 'artist') {
+        filtered.sort((a, b) => (a.artist_name || '').localeCompare(b.artist_name || ''));
+      } else if (sortBy === 'recent') {
+        filtered.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+      }
+      
+      if (activeTab === 'favorites') {
+        setFilteredFavorites(filtered);
+      } else if (activeTab === 'premium') {
+        setFilteredPurchasedSongs(filtered);
+      } else if (activeTab === 'albums') {
+        setFilteredPurchasedAlbums(filtered);
+      }
+    }
+  }, [searchQuery, sortBy, favorites, purchasedSongs, purchasedAlbums, activeTab]);
+
+  // Filter playlists
+  useEffect(() => {
+    let filtered = [...playlists];
+    if (searchQuery.trim() && activeTab === 'playlists') {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        playlist => playlist.name?.toLowerCase().includes(query)
+      );
+    }
+    
+    if (sortBy === 'title') {
+      filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    } else if (sortBy === 'recent') {
+      filtered.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    }
+    
+    if (activeTab === 'playlists') {
+      setFilteredPlaylists(filtered);
+    }
+  }, [searchQuery, sortBy, playlists, activeTab]);
+
+  // Filter history
+  useEffect(() => {
+    if (activeTab === 'history') {
+      let filtered = [...historyByDay];
+      
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        filtered = filtered.map(daySection => ({
+          ...daySection,
+          songs: daySection.songs.filter(
+            song =>
+              song.title?.toLowerCase().includes(query) ||
+              song.artist_name?.toLowerCase().includes(query) ||
+              song.album_title?.toLowerCase().includes(query)
+          )
+        })).filter(daySection => daySection.songs.length > 0);
+      }
+      
+      setFilteredHistory(filtered);
+    }
+  }, [searchQuery, historyByDay, activeTab]);
+
+  const getTabLabel = () => {
+    switch (activeTab) {
+      case 'favorites':
+        return 'Yêu thích';
+      case 'playlists':
+        return 'Playlist';
+      case 'premium':
+        return 'Bài hát đã mua';
+      case 'albums':
+        return 'Album đã mua';
+      case 'history':
+        return 'Lịch sử';
+      default:
+        return 'Yêu thích';
+    }
+  };
+
+  const getTabIconColor = (tab) => {
+    switch (tab) {
+      case 'favorites':
+        return '#E91E63';
+      case 'playlists':
+        return '#2196F3';
+      case 'premium':
+        return '#FFD700';
+      case 'albums':
+        return '#9C27B0';
+      case 'history':
+        return '#4CAF50';
+      default:
+        return COLORS.primary;
+    }
+  };
+
+  const getTabIcon = () => {
+    switch (activeTab) {
+      case 'favorites':
+        return 'heart';
+      case 'playlists':
+        return 'list';
+      case 'premium':
+        return 'musical-note';
+      case 'albums':
+        return 'disc';
+      case 'history':
+        return 'time';
+      default:
+        return 'heart';
+    }
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return '';
+    try {
+      let normalizedDate = '';
+      if (typeof dateString === 'string') {
+        normalizedDate = dateString.split('T')[0].split(' ')[0];
+      } else if (dateString instanceof Date) {
+        const year = dateString.getFullYear();
+        const month = String(dateString.getMonth() + 1).padStart(2, '0');
+        const day = String(dateString.getDate()).padStart(2, '0');
+        normalizedDate = `${year}-${month}-${day}`;
+      } else {
+        normalizedDate = String(dateString).split('T')[0].split(' ')[0];
+      }
+      
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedDate)) {
+        return String(dateString);
+      }
+      
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const todayStr = `${year}-${month}-${day}`;
+      
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayYear = yesterday.getFullYear();
+      const yesterdayMonth = String(yesterday.getMonth() + 1).padStart(2, '0');
+      const yesterdayDay = String(yesterday.getDate()).padStart(2, '0');
+      const yesterdayStr = `${yesterdayYear}-${yesterdayMonth}-${yesterdayDay}`;
+      
+      if (normalizedDate === todayStr) {
+        return 'Hôm nay';
+      }
+      if (normalizedDate === yesterdayStr) {
+        return 'Hôm qua';
+      }
+      
+      const [dateYear, dateMonth, dateDay] = normalizedDate.split('-').map(Number);
+      const date = new Date(dateYear, dateMonth - 1, dateDay);
+      return date.toLocaleDateString('vi-VN', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
+    } catch (error) {
+      console.error('Error formatting date:', error, dateString);
+      return String(dateString);
+    }
+  };
+
+  const getAllHistorySongs = () => {
+    const allSongs = [];
+    filteredHistory.forEach(daySection => {
+      daySection.songs.forEach(song => {
+        allSongs.push(song);
+      });
+    });
+    return allSongs;
+  };
+
+  const renderHistorySongItem = (song, songIndex, allSongs) => {
+    const isCurrentSong = currentSong?.song_id === song.song_id;
+    const isCurrentPlaying = isCurrentSong && isPlaying;
+    const globalIndex = allSongs.findIndex(s => s.song_id === song.song_id);
+    
+    return (
+      <TouchableOpacity
+        key={song.song_id || songIndex}
+        style={[styles.songItem, isCurrentSong && styles.songItemActive]}
+        onPress={() => {
+          if (currentSong?.song_id !== song.song_id) {
+            playSong(song, allSongs, globalIndex >= 0 ? globalIndex : songIndex);
+          }
+          navigation.navigate('FullPlayer');
+        }}
+      >
+        <View style={styles.songLeft}>
+          <Image
+            source={{ uri: song.cover_url || 'https://via.placeholder.com/60' }}
+            style={styles.songImage}
+          />
+          {isCurrentPlaying && (
+            <View style={styles.playingIndicator}>
+              <Ionicons name="volume-high" size={16} color={COLORS.primary} />
+            </View>
+          )}
+        </View>
+        <View style={styles.songInfo}>
+          <View style={styles.titleRow}>
+            <Text style={styles.songTitle} numberOfLines={1}>
+              {song.title}
+            </Text>
+            {song.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
+          </View>
+          <Text style={styles.songArtist} numberOfLines={1}>
+            {song.artist_name || 'Nghệ sĩ không xác định'}
+          </Text>
+          <View style={styles.songMeta}>
+            {song.count > 1 && (
+              <>
+                <Ionicons name="repeat" size={12} color={COLORS.textMuted} />
+                <Text style={styles.metaText}>{song.count} lần</Text>
+                <Text style={styles.metaDot}>•</Text>
+              </>
+            )}
+            {song.total_duration > 0 && (
+              <Text style={styles.metaText}>
+                {Math.floor(song.total_duration / 60)} phút
+              </Text>
+            )}
+          </View>
+        </View>
+        <TouchableOpacity
+          style={styles.playButton}
+          onPress={(e) => {
+            e.stopPropagation();
+            if (currentSong?.song_id === song.song_id) {
+              togglePlayPause();
+            } else {
+              playSong(song, allSongs, globalIndex >= 0 ? globalIndex : songIndex);
+            }
+          }}
+        >
+          <Ionicons
+            name={isCurrentPlaying ? 'pause' : 'play'}
+            size={24}
+            color={COLORS.primary}
+          />
+        </TouchableOpacity>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderHistorySection = ({ item: daySection, index: sectionIndex }) => {
+    if (!daySection.songs || daySection.songs.length === 0) return null;
+    
+    const allSongs = getAllHistorySongs();
+    
+    return (
+      <View key={daySection.day || sectionIndex} style={styles.historySection}>
+        {sectionIndex === 0 && <View style={styles.daySectionSpacer} />}
+        <View style={styles.dayHeader}>
+          <Text style={styles.dayTitle}>{formatDate(daySection.day)}</Text>
+          <Text style={styles.dayCount}>{daySection.total_listens || daySection.songs.length} bài hát</Text>
+        </View>
+        {daySection.songs.map((song, songIndex) => 
+          renderHistorySongItem(song, songIndex, allSongs)
+        )}
       </View>
-      <Ionicons name="play-circle" size={32} color={COLORS.primary} />
-    </TouchableOpacity>
-  );
+    );
+  };
+
+  // Helper to check if data is sections (for artist grouping)
+  const isSectionData = (data) => {
+    return data.length > 0 && data[0].artistName !== undefined && data[0].songs !== undefined;
+  };
+
+  // Get all songs from sections or flat list
+  const getAllSongsFromData = (data) => {
+    if (isSectionData(data)) {
+      const allSongs = [];
+      data.forEach(section => {
+        section.songs.forEach(song => allSongs.push(song));
+      });
+      return allSongs;
+    }
+    return data;
+  };
+
+  // Render artist section
+  const renderArtistSection = ({ item: artistSection, index: sectionIndex }, allSongs, renderSongItem) => {
+    if (!artistSection.songs || artistSection.songs.length === 0) return null;
+    
+    return (
+      <View key={artistSection.artistName || sectionIndex} style={styles.historySection}>
+        {sectionIndex === 0 && <View style={styles.daySectionSpacer} />}
+        <View style={styles.dayHeader}>
+          <Text style={styles.dayTitle}>{artistSection.artistName}</Text>
+          <Text style={styles.dayCount}>{artistSection.songs.length} bài hát</Text>
+        </View>
+        {artistSection.songs.map((song, songIndex) => {
+          const globalIndex = allSongs.findIndex(s => s.song_id === song.song_id);
+          return renderSongItem(song, globalIndex >= 0 ? globalIndex : songIndex, allSongs);
+        })}
+      </View>
+    );
+  };
+
+  const renderFavoriteSongItem = (item, index, filteredFavorites) => {
+    const isCurrentSong = currentSong?.song_id === item.song_id;
+    const isCurrentPlaying = isCurrentSong && isPlaying;
+    
+    return (
+      <TouchableOpacity
+        style={[styles.songItem, isCurrentSong && styles.songItemActive]}
+        onPress={() => handleSongPress(item, index, filteredFavorites)}
+      >
+        <View style={styles.songLeft}>
+          <Image
+            source={{ uri: item.cover_url || 'https://via.placeholder.com/60' }}
+            style={styles.songImage}
+          />
+          {isCurrentPlaying && (
+            <View style={styles.playingIndicator}>
+              <Ionicons name="volume-high" size={16} color={COLORS.primary} />
+            </View>
+          )}
+        </View>
+        <View style={styles.songInfo}>
+          <View style={styles.titleRow}>
+            <Text style={styles.songTitle} numberOfLines={1}>
+              {item.title}
+            </Text>
+            {item.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
+            {item.is_premium === 1 && songAccessTypes[item.song_id] && (
+              <AccessBadge accessType={songAccessTypes[item.song_id]} size={16} />
+            )}
+          </View>
+          <Text style={styles.songArtist} numberOfLines={1}>
+            {item.artist_name}
+          </Text>
+          {item.is_premium === 1 && item.price > 0 && (
+            <View style={styles.songMeta}>
+              <Ionicons name="cash" size={12} color={COLORS.primary} />
+              <Text style={styles.priceText}>
+                {parseFloat(item.price).toLocaleString('vi-VN')}đ
+              </Text>
+            </View>
+          )}
+        </View>
+        <TouchableOpacity
+          style={styles.playButton}
+          onPress={(e) => {
+            e.stopPropagation();
+            handlePlayButtonPress(item, index, filteredFavorites);
+          }}
+        >
+          <Ionicons
+            name={isCurrentPlaying ? 'pause' : 'play'}
+            size={24}
+            color={COLORS.primary}
+          />
+        </TouchableOpacity>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderPurchasedSongItem = (item, index, allSongs) => {
+    const isCurrentSong = currentSong?.song_id === item.song_id;
+    const isCurrentPlaying = isCurrentSong && isPlaying;
+    
+    return (
+      <TouchableOpacity
+        key={item.song_id}
+        style={[styles.songItem, isCurrentSong && styles.songItemActive]}
+        onPress={() => {
+          if (currentSong?.song_id !== item.song_id) {
+            playSong(item, allSongs, index);
+          }
+          navigation.navigate('FullPlayer');
+        }}
+      >
+        <View style={styles.songLeft}>
+          <Image
+            source={{ uri: item.cover_url || 'https://via.placeholder.com/60' }}
+            style={styles.songImage}
+          />
+          {isCurrentPlaying && (
+            <View style={styles.playingIndicator}>
+              <Ionicons name="volume-high" size={16} color={COLORS.primary} />
+            </View>
+          )}
+        </View>
+        <View style={styles.songInfo}>
+          <View style={styles.titleRow}>
+            <Text style={styles.songTitle} numberOfLines={1}>
+              {item.title}
+            </Text>
+            {item.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
+            {songAccessTypes[item.song_id] && (
+              <AccessBadge accessType={songAccessTypes[item.song_id]} size={16} />
+            )}
+          </View>
+          <Text style={styles.songArtist} numberOfLines={1}>
+            {item.artist_name}
+          </Text>
+          <View style={styles.songMeta}>
+            <Ionicons name="cash" size={12} color={COLORS.primary} />
+            <Text style={styles.priceText}>
+              Đã mua: {parseFloat(item.price_paid || item.price || 0).toLocaleString('vi-VN')}đ
+            </Text>
+          </View>
+        </View>
+        <TouchableOpacity
+          style={styles.playButton}
+          onPress={(e) => {
+            e.stopPropagation();
+            if (currentSong?.song_id === item.song_id) {
+              togglePlayPause();
+            } else {
+              playSong(item, allSongs, index);
+            }
+          }}
+        >
+          <Ionicons
+            name={isCurrentPlaying ? 'pause' : 'play'}
+            size={24}
+            color={COLORS.primary}
+          />
+        </TouchableOpacity>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderPurchasedItem = ({ item, index }) => {
+    const isCurrentSong = currentSong?.song_id === item.song_id;
+    const isCurrentPlaying = isCurrentSong && isPlaying;
+    
+    return (
+      <TouchableOpacity
+        style={[styles.songItem, isCurrentSong && styles.songItemActive]}
+        onPress={() => handleSongPress(item, index, filteredPurchasedSongs)}
+      >
+        <View style={styles.songLeft}>
+          <Image
+            source={{ uri: item.cover_url || 'https://via.placeholder.com/60' }}
+            style={styles.songImage}
+          />
+          {isCurrentPlaying && (
+            <View style={styles.playingIndicator}>
+              <Ionicons name="volume-high" size={16} color={COLORS.primary} />
+            </View>
+          )}
+        </View>
+        <View style={styles.songInfo}>
+          <View style={styles.titleRow}>
+            <Text style={styles.songTitle} numberOfLines={1}>
+              {item.title}
+            </Text>
+            {item.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
+            {songAccessTypes[item.song_id] && (
+              <AccessBadge accessType={songAccessTypes[item.song_id]} size={16} />
+            )}
+          </View>
+          <Text style={styles.songArtist} numberOfLines={1}>
+            {item.artist_name}
+          </Text>
+          <View style={styles.songMeta}>
+            <Ionicons name="cash" size={12} color={COLORS.primary} />
+            <Text style={styles.priceText}>
+              Đã mua: {parseFloat(item.price_paid || item.price || 0).toLocaleString('vi-VN')}đ
+            </Text>
+          </View>
+        </View>
+        <TouchableOpacity
+          style={styles.playButton}
+          onPress={(e) => {
+            e.stopPropagation();
+            handlePlayButtonPress(item, index, filteredPurchasedSongs);
+          }}
+        >
+          <Ionicons
+            name={isCurrentPlaying ? 'pause' : 'play'}
+            size={24}
+            color={COLORS.primary}
+          />
+        </TouchableOpacity>
+      </TouchableOpacity>
+    );
+  };
 
   const handleOpenPlaylist = (playlist) => {
     navigation.navigate('PlaylistDetail', {
@@ -119,12 +781,43 @@ const LibraryScreen = ({ navigation }) => {
       onPress={() => handleOpenPlaylist(item)}
       activeOpacity={0.7}
     >
-      <View style={styles.playlistIcon}>
-        <Ionicons name="musical-notes" size={32} color={COLORS.primary} />
-      </View>
+      {item.cover_url ? (
+        <Image
+          source={{ uri: item.cover_url }}
+          style={styles.playlistCover}
+        />
+      ) : (
+        <View style={styles.playlistIcon}>
+          <Ionicons name="musical-notes" size={32} color={COLORS.primary} />
+        </View>
+      )}
       <View style={styles.playlistInfo}>
         <Text style={styles.playlistName}>{item.name}</Text>
         <Text style={styles.playlistCount}>{item.song_count} bài hát</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={24} color={COLORS.textSecondary} />
+    </TouchableOpacity>
+  );
+
+  const renderAlbumItem = ({ item }) => (
+    <TouchableOpacity 
+      style={styles.playlistItem}
+      onPress={() => navigation.navigate('AlbumDetail', { albumId: item.album_id })}
+      activeOpacity={0.7}
+    >
+      <Image
+        source={{ uri: getImageUrl(item.cover_url) || 'https://via.placeholder.com/60' }}
+        style={styles.playlistCover}
+      />
+      <View style={styles.playlistInfo}>
+        <Text style={styles.playlistName}>{item.title}</Text>
+        <Text style={styles.playlistCount}>{item.artist_name}</Text>
+        <View style={styles.songMeta}>
+          <Ionicons name="cash" size={12} color={COLORS.primary} />
+          <Text style={styles.priceText}>
+            Đã mua: {parseFloat(item.price_paid || item.price || 0).toLocaleString('vi-VN')}đ
+          </Text>
+        </View>
       </View>
       <Ionicons name="chevron-forward" size={24} color={COLORS.textSecondary} />
     </TouchableOpacity>
@@ -140,104 +833,456 @@ const LibraryScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.tabs}>
+      {/* Fixed Dropdown Navigation */}
+      <View style={styles.dropdownContainer}>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'favorites' && styles.activeTab]}
-          onPress={() => setActiveTab('favorites')}
+          style={styles.dropdownButton}
+          onPress={() => setShowDropdown(!showDropdown)}
         >
-          <Text style={[styles.tabText, activeTab === 'favorites' && styles.activeTabText]}>
-            Yêu thích
-          </Text>
+          <Ionicons
+            name={getTabIcon()}
+            size={20}
+            color={getTabIconColor(activeTab)}
+          />
+          <Text style={styles.dropdownButtonText}>{getTabLabel()}</Text>
+          <Ionicons
+            name={showDropdown ? "chevron-up" : "chevron-down"}
+            size={20}
+            color={COLORS.textSecondary}
+          />
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'playlists' && styles.activeTab]}
-          onPress={() => setActiveTab('playlists')}
-        >
-          <Text style={[styles.tabText, activeTab === 'playlists' && styles.activeTabText]}>
-            Playlist
-          </Text>
-        </TouchableOpacity>
+
+        {showDropdown && (
+          <View style={styles.dropdownMenu}>
+            <TouchableOpacity
+              style={[styles.dropdownItem, activeTab === 'favorites' && styles.dropdownItemActive]}
+              onPress={() => {
+                setActiveTab('favorites');
+                setShowDropdown(false);
+              }}
+            >
+              <Ionicons
+                name="heart"
+                size={20}
+                color={getTabIconColor('favorites')}
+              />
+              <Text style={[styles.dropdownItemText, activeTab === 'favorites' && styles.dropdownItemTextActive]}>
+                Yêu thích
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.dropdownItem, activeTab === 'playlists' && styles.dropdownItemActive]}
+              onPress={() => {
+                setActiveTab('playlists');
+                setShowDropdown(false);
+              }}
+            >
+              <Ionicons
+                name="list"
+                size={20}
+                color={getTabIconColor('playlists')}
+              />
+              <Text style={[styles.dropdownItemText, activeTab === 'playlists' && styles.dropdownItemTextActive]}>
+                Playlist
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.dropdownItem, activeTab === 'premium' && styles.dropdownItemActive]}
+              onPress={() => {
+                setActiveTab('premium');
+                setShowDropdown(false);
+              }}
+            >
+              <Ionicons
+                name="star"
+                size={20}
+                color={getTabIconColor('premium')}
+              />
+              <Text style={[styles.dropdownItemText, activeTab === 'premium' && styles.dropdownItemTextActive]}>
+                Premium
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.dropdownItem, activeTab === 'albums' && styles.dropdownItemActive]}
+              onPress={() => {
+                setActiveTab('albums');
+                setShowDropdown(false);
+              }}
+            >
+              <Ionicons
+                name="disc"
+                size={20}
+                color={getTabIconColor('albums')}
+              />
+              <Text style={[styles.dropdownItemText, activeTab === 'albums' && styles.dropdownItemTextActive]}>
+                Album đã mua
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.dropdownItem, activeTab === 'history' && styles.dropdownItemActive]}
+              onPress={() => {
+                setActiveTab('history');
+                setShowDropdown(false);
+              }}
+            >
+              <Ionicons
+                name="time"
+                size={20}
+                color={getTabIconColor('history')}
+              />
+              <Text style={[styles.dropdownItemText, activeTab === 'history' && styles.dropdownItemTextActive]}>
+                Lịch sử
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
-      {activeTab === 'favorites' ? (
-        favorites.length > 0 ? (
-          <FlatList
-            data={favorites}
-            renderItem={renderFavoriteItem}
-            keyExtractor={(item) => item.song_id.toString()}
-            contentContainerStyle={styles.list}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                colors={[COLORS.primary]}
-                tintColor={COLORS.primary}
-              />
-            }
-          />
-        ) : (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="heart-outline" size={64} color={COLORS.textMuted} />
-            <Text style={styles.emptyText}>Chưa có bài hát yêu thích</Text>
-          </View>
-        )
-      ) : (
-        <View style={{ flex: 1 }}>
-          {/* Create Playlist Button */}
-          {showCreatePlaylist ? (
-            <View style={styles.createPlaylistContainer}>
-              <View style={styles.createPlaylistForm}>
-                <TextInput
-                  style={styles.playlistInput}
-                  placeholder="Tên playlist mới"
-                  placeholderTextColor={COLORS.textMuted}
-                  value={newPlaylistName}
-                  onChangeText={setNewPlaylistName}
-                  autoFocus
-                />
-                <View style={styles.createPlaylistButtons}>
-                  <TouchableOpacity
-                    style={styles.cancelButton}
-                    onPress={() => {
-                      setShowCreatePlaylist(false);
-                      setNewPlaylistName('');
-                    }}
-                  >
-                    <Text style={styles.cancelButtonText}>Hủy</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.createButton}
-                    onPress={handleCreatePlaylist}
-                    disabled={creatingPlaylist}
-                  >
-                    <LinearGradient
-                      colors={COLORS.gradient.primary}
-                      style={styles.createButtonGradient}
+      {/* Scrollable Content Container */}
+      <View style={styles.scrollableContent}>
+        {activeTab === 'favorites' ? (
+          filteredFavorites.length > 0 ? (
+            isSectionData(filteredFavorites) ? (
+              <FlatList
+                data={filteredFavorites}
+                renderItem={(props) => renderArtistSection(props, getAllSongsFromData(filteredFavorites), renderFavoriteSongItem)}
+                keyExtractor={(item, index) => item.artistName || `artist-${index}`}
+                contentContainerStyle={styles.list}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
+                    colors={[COLORS.primary]}
+                    tintColor={COLORS.primary}
+                  />
+                }
+                ListHeaderComponent={
+                  <>
+                    {/* Play All Button */}
+                    <TouchableOpacity
+                      style={styles.playAllButton}
+                      onPress={() => handlePlayAll(getAllSongsFromData(filteredFavorites))}
                     >
-                      <Text style={styles.createButtonText}>
-                        {creatingPlaylist ? 'Đang tạo...' : 'Tạo'}
-                      </Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={styles.addPlaylistButton}
-              onPress={() => setShowCreatePlaylist(true)}
-            >
-              <Ionicons name="add-circle" size={24} color={COLORS.primary} />
-              <Text style={styles.addPlaylistText}>Tạo playlist mới</Text>
-            </TouchableOpacity>
-          )}
+                      <Ionicons name="play-circle" size={24} color={COLORS.text} />
+                      <Text style={styles.playAllText}>Phát tất cả</Text>
+                    </TouchableOpacity>
 
-          {/* Playlists List */}
-          {playlists.length > 0 ? (
+                    {/* Search Bar */}
+                    <View style={styles.searchContainer}>
+                      <Ionicons name="search" size={20} color={COLORS.textSecondary} style={styles.searchIcon} />
+                      <TextInput
+                        style={styles.searchInput}
+                        placeholder="Tìm bài hát yêu thích..."
+                        placeholderTextColor={COLORS.textSecondary}
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                      />
+                      {searchQuery.length > 0 && (
+                        <TouchableOpacity onPress={() => setSearchQuery('')}>
+                          <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
+                        </TouchableOpacity>
+                      )}
+                  </View>
+
+                  {/* Filter Bar */}
+                  <View style={styles.filterContainer}>
+                    <View style={styles.filterRow}>
+                      <Text style={styles.filterLabel}>Sắp xếp:</Text>
+                      <TouchableOpacity
+                        style={[styles.filterButton, sortBy === 'title' && styles.activeFilter]}
+                        onPress={() => setSortBy('title')}
+                      >
+                        <Text style={[styles.filterText, sortBy === 'title' && styles.activeFilterText]}>
+                          Tên A-Z
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.filterButton, sortBy === 'artist' && styles.activeFilter]}
+                        onPress={() => setSortBy('artist')}
+                      >
+                        <Text style={[styles.filterText, sortBy === 'artist' && styles.activeFilterText]}>
+                          Nghệ sĩ
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.filterButton, sortBy === 'recent' && styles.activeFilter]}
+                        onPress={() => setSortBy('recent')}
+                      >
+                        <Text style={[styles.filterText, sortBy === 'recent' && styles.activeFilterText]}>
+                          Mới nhất
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </>
+              }
+            />
+            ) : (
+              <FlatList
+                data={filteredFavorites}
+                renderItem={({ item, index }) => renderFavoriteSongItem(item, index, filteredFavorites)}
+                keyExtractor={(item) => item.song_id.toString()}
+                contentContainerStyle={styles.list}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
+                    colors={[COLORS.primary]}
+                    tintColor={COLORS.primary}
+                  />
+                }
+                ListHeaderComponent={
+                  <>
+                    {/* Play All Button */}
+                    <TouchableOpacity
+                      style={styles.playAllButton}
+                      onPress={() => handlePlayAll(filteredFavorites)}
+                    >
+                      <Ionicons name="play-circle" size={24} color={COLORS.text} />
+                      <Text style={styles.playAllText}>Phát tất cả</Text>
+                    </TouchableOpacity>
+
+                    {/* Search Bar */}
+                    <View style={styles.searchContainer}>
+                      <Ionicons name="search" size={20} color={COLORS.textSecondary} style={styles.searchIcon} />
+                      <TextInput
+                        style={styles.searchInput}
+                        placeholder="Tìm bài hát yêu thích..."
+                        placeholderTextColor={COLORS.textSecondary}
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                      />
+                      {searchQuery.length > 0 && (
+                        <TouchableOpacity onPress={() => setSearchQuery('')}>
+                          <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+
+                    {/* Filter Bar */}
+                    <View style={styles.filterContainer}>
+                      <View style={styles.filterRow}>
+                        <Text style={styles.filterLabel}>Sắp xếp:</Text>
+                        <TouchableOpacity
+                          style={[styles.filterButton, sortBy === 'title' && styles.activeFilter]}
+                          onPress={() => setSortBy('title')}
+                        >
+                          <Text style={[styles.filterText, sortBy === 'title' && styles.activeFilterText]}>
+                            Tên A-Z
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.filterButton, sortBy === 'artist' && styles.activeFilter]}
+                          onPress={() => setSortBy('artist')}
+                        >
+                          <Text style={[styles.filterText, sortBy === 'artist' && styles.activeFilterText]}>
+                            Nghệ sĩ
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.filterButton, sortBy === 'recent' && styles.activeFilter]}
+                          onPress={() => setSortBy('recent')}
+                        >
+                          <Text style={[styles.filterText, sortBy === 'recent' && styles.activeFilterText]}>
+                            Mới nhất
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </>
+                }
+              />
+            )
+          ) : (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="heart-outline" size={64} color={COLORS.textMuted} />
+              <Text style={styles.emptyText}>
+                {searchQuery ? 'Không tìm thấy bài hát yêu thích' : 'Chưa có bài hát yêu thích'}
+              </Text>
+            </View>
+          )
+        ) : activeTab === 'premium' ? (
+          filteredPurchasedSongs.length > 0 ? (
+            isSectionData(filteredPurchasedSongs) ? (
+              <FlatList
+                data={filteredPurchasedSongs}
+                renderItem={(props) => renderArtistSection(props, getAllSongsFromData(filteredPurchasedSongs), renderPurchasedSongItem)}
+                keyExtractor={(item, index) => item.artistName || `artist-${index}`}
+                contentContainerStyle={styles.list}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
+                    colors={[COLORS.primary]}
+                    tintColor={COLORS.primary}
+                  />
+                }
+                ListHeaderComponent={
+                  <>
+                    {/* Play All Button */}
+                    <TouchableOpacity
+                      style={styles.playAllButton}
+                      onPress={() => handlePlayAll(getAllSongsFromData(filteredPurchasedSongs))}
+                    >
+                      <Ionicons name="play-circle" size={24} color={COLORS.text} />
+                      <Text style={styles.playAllText}>Phát tất cả</Text>
+                    </TouchableOpacity>
+
+                    {/* Search Bar */}
+                    <View style={styles.searchContainer}>
+                      <Ionicons name="search" size={20} color={COLORS.textSecondary} style={styles.searchIcon} />
+                      <TextInput
+                        style={styles.searchInput}
+                        placeholder="Tìm bài hát premium..."
+                        placeholderTextColor={COLORS.textSecondary}
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                      />
+                      {searchQuery.length > 0 && (
+                        <TouchableOpacity onPress={() => setSearchQuery('')}>
+                          <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+
+                    {/* Filter Bar */}
+                    <View style={styles.filterContainer}>
+                      <View style={styles.filterRow}>
+                        <Text style={styles.filterLabel}>Sắp xếp:</Text>
+                        <TouchableOpacity
+                          style={[styles.filterButton, sortBy === 'title' && styles.activeFilter]}
+                          onPress={() => setSortBy('title')}
+                        >
+                          <Text style={[styles.filterText, sortBy === 'title' && styles.activeFilterText]}>
+                            Tên A-Z
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.filterButton, sortBy === 'artist' && styles.activeFilter]}
+                          onPress={() => setSortBy('artist')}
+                        >
+                          <Text style={[styles.filterText, sortBy === 'artist' && styles.activeFilterText]}>
+                            Nghệ sĩ
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.filterButton, sortBy === 'recent' && styles.activeFilter]}
+                          onPress={() => setSortBy('recent')}
+                        >
+                          <Text style={[styles.filterText, sortBy === 'recent' && styles.activeFilterText]}>
+                            Mới nhất
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </>
+                }
+              />
+            ) : (
+              <FlatList
+                data={filteredPurchasedSongs}
+                renderItem={renderPurchasedItem}
+                keyExtractor={(item) => item.song_id?.toString() || item.purchase_id?.toString()}
+                contentContainerStyle={styles.list}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
+                    colors={[COLORS.primary]}
+                    tintColor={COLORS.primary}
+                  />
+                }
+                ListHeaderComponent={
+                <>
+                  {/* Play All Button */}
+                  <TouchableOpacity
+                    style={styles.playAllButton}
+                    onPress={() => handlePlayAll(filteredPurchasedSongs)}
+                  >
+                    <Ionicons name="play-circle" size={24} color={COLORS.text} />
+                    <Text style={styles.playAllText}>Phát tất cả</Text>
+                  </TouchableOpacity>
+
+                  {/* Search Bar */}
+                  <View style={styles.searchContainer}>
+                    <Ionicons name="search" size={20} color={COLORS.textSecondary} style={styles.searchIcon} />
+                    <TextInput
+                      style={styles.searchInput}
+                      placeholder="Tìm bài hát premium..."
+                      placeholderTextColor={COLORS.textSecondary}
+                      value={searchQuery}
+                      onChangeText={setSearchQuery}
+                    />
+                    {searchQuery.length > 0 && (
+                      <TouchableOpacity onPress={() => setSearchQuery('')}>
+                        <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* Filter Bar */}
+                  <View style={styles.filterContainer}>
+                    <View style={styles.filterRow}>
+                      <Text style={styles.filterLabel}>Sắp xếp:</Text>
+                      <TouchableOpacity
+                        style={[styles.filterButton, sortBy === 'title' && styles.activeFilter]}
+                        onPress={() => setSortBy('title')}
+                      >
+                        <Text style={[styles.filterText, sortBy === 'title' && styles.activeFilterText]}>
+                          Tên A-Z
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.filterButton, sortBy === 'artist' && styles.activeFilter]}
+                        onPress={() => setSortBy('artist')}
+                      >
+                        <Text style={[styles.filterText, sortBy === 'artist' && styles.activeFilterText]}>
+                          Nghệ sĩ
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.filterButton, sortBy === 'recent' && styles.activeFilter]}
+                        onPress={() => setSortBy('recent')}
+                      >
+                        <Text style={[styles.filterText, sortBy === 'recent' && styles.activeFilterText]}>
+                          Mới nhất
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </>
+              }
+            />
+            )
+          ) : (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="star-outline" size={64} color={COLORS.textMuted} />
+              <Text style={styles.emptyText}>
+                {searchQuery ? 'Không tìm thấy bài hát premium' : 'Chưa có bài hát premium nào'}
+              </Text>
+              {!searchQuery && (
+                <>
+                  <Text style={styles.emptySubtext}>Mua bài hát premium để nghe không giới hạn</Text>
+                  <TouchableOpacity
+                    style={styles.buyButton}
+                    onPress={() => navigation.navigate('Premium')}
+                  >
+                    <Text style={styles.buyButtonText}>Xem Premium</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          )
+        ) : activeTab === 'albums' ? (
+          filteredPurchasedAlbums.length > 0 ? (
             <FlatList
-              data={playlists}
-              renderItem={renderPlaylistItem}
-              keyExtractor={(item) => item.playlist_id.toString()}
+              data={filteredPurchasedAlbums}
+              renderItem={renderAlbumItem}
+              keyExtractor={(item) => item.album_id?.toString() || item.purchase_id?.toString()}
               contentContainerStyle={styles.list}
               refreshControl={
                 <RefreshControl
@@ -247,16 +1292,292 @@ const LibraryScreen = ({ navigation }) => {
                   tintColor={COLORS.primary}
                 />
               }
+              ListHeaderComponent={
+                <>
+                  {/* Search Bar */}
+                  <View style={[styles.searchContainer, { marginTop: 10 }]}>
+                    <Ionicons name="search" size={20} color={COLORS.textSecondary} style={styles.searchIcon} />
+                    <TextInput
+                      style={styles.searchInput}
+                      placeholder="Tìm album đã mua..."
+                      placeholderTextColor={COLORS.textSecondary}
+                      value={searchQuery}
+                      onChangeText={setSearchQuery}
+                    />
+                    {searchQuery.length > 0 && (
+                      <TouchableOpacity onPress={() => setSearchQuery('')}>
+                        <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* Filter Bar */}
+                  <View style={styles.filterContainer}>
+                    <View style={styles.filterRow}>
+                      <Text style={styles.filterLabel}>Sắp xếp:</Text>
+                      <TouchableOpacity
+                        style={[styles.filterButton, sortBy === 'title' && styles.activeFilter]}
+                        onPress={() => setSortBy('title')}
+                      >
+                        <Text style={[styles.filterText, sortBy === 'title' && styles.activeFilterText]}>
+                          Tên A-Z
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.filterButton, sortBy === 'artist' && styles.activeFilter]}
+                        onPress={() => setSortBy('artist')}
+                      >
+                        <Text style={[styles.filterText, sortBy === 'artist' && styles.activeFilterText]}>
+                          Nghệ sĩ
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.filterButton, sortBy === 'recent' && styles.activeFilter]}
+                        onPress={() => setSortBy('recent')}
+                      >
+                        <Text style={[styles.filterText, sortBy === 'recent' && styles.activeFilterText]}>
+                          Mới nhất
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </>
+              }
             />
           ) : (
             <View style={styles.emptyContainer}>
-              <Ionicons name="list-outline" size={64} color={COLORS.textMuted} />
-              <Text style={styles.emptyText}>Chưa có playlist nào</Text>
-              <Text style={styles.emptySubtext}>Tạo playlist mới để bắt đầu</Text>
+              <Ionicons name="disc-outline" size={64} color={COLORS.textMuted} />
+              <Text style={styles.emptyText}>
+                {searchQuery ? 'Không tìm thấy album' : 'Chưa có album đã mua nào'}
+              </Text>
             </View>
-          )}
-        </View>
-      )}
+          )
+        ) : activeTab === 'playlists' ? (
+          <>
+            {/* Create Playlist Button */}
+            {showCreatePlaylist ? (
+              <View style={styles.createPlaylistContainer}>
+                <View style={styles.createPlaylistForm}>
+                  <TextInput
+                    style={styles.playlistInput}
+                    placeholder="Tên playlist mới"
+                    placeholderTextColor={COLORS.textMuted}
+                    value={newPlaylistName}
+                    onChangeText={setNewPlaylistName}
+                    autoFocus
+                  />
+                  <View style={styles.createPlaylistButtons}>
+                    <TouchableOpacity
+                      style={styles.cancelButton}
+                      onPress={() => {
+                        setShowCreatePlaylist(false);
+                        setNewPlaylistName('');
+                      }}
+                    >
+                      <Text style={styles.cancelButtonText}>Hủy</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.createButton}
+                      onPress={handleCreatePlaylist}
+                      disabled={creatingPlaylist}
+                    >
+                      <LinearGradient
+                        colors={COLORS.gradient.primary}
+                        style={styles.createButtonGradient}
+                      >
+                        <Text style={styles.createButtonText}>
+                          {creatingPlaylist ? 'Đang tạo...' : 'Tạo'}
+                        </Text>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.addPlaylistButton}
+                onPress={() => setShowCreatePlaylist(true)}
+              >
+                <Ionicons name="add-circle" size={24} color={COLORS.primary} />
+                <Text style={styles.addPlaylistText}>Tạo playlist mới</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Playlists List */}
+            {filteredPlaylists.length > 0 ? (
+              <FlatList
+                data={filteredPlaylists}
+                renderItem={renderPlaylistItem}
+                keyExtractor={(item) => item.playlist_id.toString()}
+                contentContainerStyle={styles.list}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
+                    colors={[COLORS.primary]}
+                    tintColor={COLORS.primary}
+                  />
+                }
+                ListHeaderComponent={
+                  <>
+                    {/* Search Bar */}
+                    <View style={styles.searchContainer}>
+                      <Ionicons name="search" size={20} color={COLORS.textSecondary} style={styles.searchIcon} />
+                      <TextInput
+                        style={styles.searchInput}
+                        placeholder="Tìm playlist..."
+                        placeholderTextColor={COLORS.textSecondary}
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                      />
+                      {searchQuery.length > 0 && (
+                        <TouchableOpacity onPress={() => setSearchQuery('')}>
+                          <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+
+                    {/* Filter Bar */}
+                    <View style={styles.filterContainer}>
+                      <View style={styles.filterRow}>
+                        <Text style={styles.filterLabel}>Sắp xếp:</Text>
+                        <TouchableOpacity
+                          style={[styles.filterButton, sortBy === 'title' && styles.activeFilter]}
+                          onPress={() => setSortBy('title')}
+                        >
+                          <Text style={[styles.filterText, sortBy === 'title' && styles.activeFilterText]}>
+                            Tên A-Z
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.filterButton, sortBy === 'recent' && styles.activeFilter]}
+                          onPress={() => setSortBy('recent')}
+                        >
+                          <Text style={[styles.filterText, sortBy === 'recent' && styles.activeFilterText]}>
+                            Mới nhất
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </>
+                }
+              />
+            ) : (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="list-outline" size={64} color={COLORS.textMuted} />
+                <Text style={styles.emptyText}>
+                  {searchQuery ? 'Không tìm thấy playlist' : 'Chưa có playlist nào'}
+                </Text>
+                {!searchQuery && (
+                  <Text style={styles.emptySubtext}>Tạo playlist mới để bắt đầu</Text>
+                )}
+              </View>
+            )}
+          </>
+        ) : activeTab === 'history' ? (
+          filteredHistory.length > 0 ? (
+            <FlatList
+              data={filteredHistory}
+              renderItem={renderHistorySection}
+              keyExtractor={(item, index) => item.day || `history-${index}`}
+              contentContainerStyle={styles.list}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  colors={[COLORS.primary]}
+                  tintColor={COLORS.primary}
+                />
+              }
+              ListHeaderComponent={
+                <>
+                  {/* Play All Button */}
+                  <TouchableOpacity
+                    style={styles.playAllButton}
+                    onPress={() => handlePlayAll(getAllHistorySongs())}
+                  >
+                    <Ionicons name="play-circle" size={24} color={COLORS.text} />
+                    <Text style={styles.playAllText}>Phát tất cả</Text>
+                  </TouchableOpacity>
+
+                  {/* Search Bar */}
+                  <View style={styles.searchContainer}>
+                    <Ionicons name="search" size={20} color={COLORS.textSecondary} style={styles.searchIcon} />
+                    <TextInput
+                      style={styles.searchInput}
+                      placeholder="Tìm bài hát..."
+                      placeholderTextColor={COLORS.textSecondary}
+                      value={searchQuery}
+                      onChangeText={setSearchQuery}
+                    />
+                    {searchQuery.length > 0 && (
+                      <TouchableOpacity onPress={() => setSearchQuery('')}>
+                        <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* Filter Bar */}
+                  <View style={styles.filterContainer}>
+                    <View style={styles.filterRow}>
+                      <Text style={styles.filterLabel}>Sắp xếp:</Text>
+                      <TouchableOpacity
+                        style={[styles.filterButton, sortBy === 'title' && styles.activeFilter]}
+                        onPress={() => setSortBy('title')}
+                      >
+                        <Text style={[styles.filterText, sortBy === 'title' && styles.activeFilterText]}>
+                          Tên A-Z
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.filterButton, sortBy === 'recent' && styles.activeFilter]}
+                        onPress={() => setSortBy('recent')}
+                      >
+                        <Text style={[styles.filterText, sortBy === 'recent' && styles.activeFilterText]}>
+                          Mới nhất
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </>
+              }
+            />
+          ) : (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="time-outline" size={64} color={COLORS.textMuted} />
+              <Text style={styles.emptyText}>
+                {searchQuery ? 'Không tìm thấy bài hát' : 'Chưa có lịch sử nghe nhạc'}
+              </Text>
+            </View>
+          )
+        ) : null}
+      </View>
+
+      <PremiumAccessModal
+        visible={showPremiumModal}
+        song={selectedSong}
+        songList={selectedSongList}
+        playSong={playSong}
+        onClose={() => setShowPremiumModal(false)}
+        onPurchaseSong={async () => {
+          // Handle song purchase
+          if (selectedSong) {
+            try {
+              await premiumService.purchaseSong(selectedSong.song_id);
+              setShowPremiumModal(false);
+              loadData();
+            } catch (error) {
+              console.error('Error purchasing song:', error);
+            }
+          }
+        }}
+        onSubscribePremium={() => {
+          setShowPremiumModal(false);
+          navigation.navigate('Premium');
+        }}
+      />
+
+      <MiniPlayer bottomOffset={0} />
     </View>
   );
 };
@@ -276,28 +1597,139 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: SIZES.md,
   },
-  tabs: {
-    flexDirection: 'row',
-    padding: SIZES.padding,
-    gap: 12,
+  dropdownContainer: {
+    // Đặt giống SearchScreen, nhưng thêm zIndex để dropdown nổi trên list
+    position: 'relative',
+    paddingHorizontal: SIZES.padding,
+    paddingTop: SIZES.padding,
+    paddingBottom: 8,
+    backgroundColor: COLORS.background,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    zIndex: 10,
   },
-  tab: {
+  scrollableContent: {
     flex: 1,
-    paddingVertical: 12,
+    marginTop: 0,
+    zIndex: 0,
+  },
+  dropdownButton: {
+    flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.surface,
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderRadius: SIZES.borderRadius,
+    backgroundColor: COLORS.surface,
+    gap: 8,
   },
-  activeTab: {
-    backgroundColor: COLORS.primary,
+  dropdownButtonText: {
+    flex: 1,
+    color: COLORS.text,
+    fontSize: SIZES.md,
+    fontWeight: '600',
   },
-  tabText: {
+  dropdownMenu: {
+    position: 'absolute',
+    top: '120%',
+    left: SIZES.padding,
+    right: SIZES.padding,
+    marginTop: 10,
+    borderRadius: SIZES.borderRadius,
+    backgroundColor: COLORS.surface,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 10,
+    zIndex: 300,
+    overflow: 'hidden',
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  dropdownItemActive: {
+    backgroundColor: COLORS.primary + '20',
+  },
+  dropdownItemText: {
+    flex: 1,
     color: COLORS.textSecondary,
     fontSize: SIZES.md,
     fontWeight: '600',
   },
-  activeTabText: {
-    color: COLORS.white,
+  dropdownItemTextActive: {
+    color: COLORS.primary,
+  },
+  playAllButton: {
+    top: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+    marginHorizontal: SIZES.padding,
+    marginBottom: SIZES.padding,
+    paddingVertical: 12,
+    borderRadius: SIZES.borderRadius,
+    gap: 8,
+  },
+  playAllText: {
+    color: COLORS.text,
+    fontSize: SIZES.md,
+    fontWeight: '700',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    marginHorizontal: SIZES.padding,
+    marginBottom: SIZES.padding,
+    paddingHorizontal: SIZES.padding,
+    borderRadius: SIZES.borderRadius,
+    height: 48,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    color: COLORS.text,
+    fontSize: SIZES.md,
+  },
+  filterContainer: {
+    paddingHorizontal: SIZES.padding,
+    marginBottom: SIZES.padding,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  filterLabel: {
+    color: COLORS.textSecondary,
+    fontSize: SIZES.sm,
+    fontWeight: '600',
+    minWidth: 60,
+  },
+  filterButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: SIZES.borderRadius,
+    backgroundColor: COLORS.surface,
+  },
+  activeFilter: {
+    backgroundColor: COLORS.primary,
+  },
+  filterText: {
+    color: COLORS.textSecondary,
+    fontSize: SIZES.sm,
+    fontWeight: '600',
+  },
+  activeFilterText: {
+    color: COLORS.text,
   },
   list: {
     paddingBottom: 100,
@@ -307,6 +1739,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SIZES.padding,
     paddingVertical: 8,
+    backgroundColor: COLORS.surface,
+    marginHorizontal: SIZES.padding,
+    marginBottom: 8,
+    borderRadius: SIZES.borderRadius,
+  },
+  songItemActive: {
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  songLeft: {
+    position: 'relative',
   },
   songImage: {
     width: 60,
@@ -314,18 +1757,79 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginRight: 12,
   },
+  playingIndicator: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 8,
+    marginRight: 12,
+  },
+  playButton: {
+    padding: 8,
+  },
   songInfo: {
     flex: 1,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
   },
   songTitle: {
     color: COLORS.text,
     fontSize: SIZES.md,
     fontWeight: '600',
-    marginBottom: 4,
+    flex: 1,
+  },
+  premiumBadge: {
+    marginLeft: 6,
+  },
+  purchasedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 6,
+    backgroundColor: '#E8F5E9',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    gap: 4,
+  },
+  purchasedText: {
+    color: '#4CAF50',
+    fontSize: 10,
+    fontWeight: '600',
   },
   songArtist: {
     color: COLORS.textSecondary,
     fontSize: SIZES.sm,
+    marginBottom: 4,
+  },
+  songMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  priceText: {
+    color: COLORS.primary,
+    fontSize: SIZES.xs,
+    fontWeight: '700',
+  },
+  buyButton: {
+    marginTop: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    backgroundColor: COLORS.primary,
+    borderRadius: SIZES.borderRadius,
+  },
+  buyButtonText: {
+    color: COLORS.white,
+    fontSize: SIZES.md,
+    fontWeight: '700',
   },
   playlistItem: {
     flexDirection: 'row',
@@ -341,6 +1845,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
+  },
+  playlistCover: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    marginRight: 12,
+    backgroundColor: COLORS.surface,
   },
   playlistInfo: {
     flex: 1,
@@ -440,6 +1951,38 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: SIZES.md,
     fontWeight: '700',
+  },
+  historySection: {
+    marginBottom: 24,
+  },
+  daySectionSpacer: {
+    height: 24,
+  },
+  dayHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SIZES.padding,
+    paddingVertical: 8,
+    marginBottom: 8,
+  },
+  dayTitle: {
+    color: COLORS.text,
+    fontSize: SIZES.md,
+    fontWeight: '700',
+  },
+  dayCount: {
+    color: COLORS.textSecondary,
+    fontSize: SIZES.sm,
+  },
+  metaText: {
+    color: COLORS.textMuted,
+    fontSize: SIZES.xs,
+  },
+  metaDot: {
+    color: COLORS.textMuted,
+    fontSize: SIZES.xs,
+    marginHorizontal: 4,
   },
 });
 

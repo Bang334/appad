@@ -41,7 +41,13 @@ class PlaylistModel {
   // Get user playlists
   static async findByUser(userId) {
     const [rows] = await db.execute(
-      `SELECT p.*, COUNT(ps.song_id) as song_count
+      `SELECT p.*, COUNT(ps.song_id) as song_count,
+       (SELECT s.cover_url 
+        FROM playlist_songs ps2 
+        JOIN songs s ON ps2.song_id = s.song_id 
+        WHERE ps2.playlist_id = p.playlist_id 
+        ORDER BY ps2.\`order\` ASC, ps2.song_id ASC 
+        LIMIT 1) as cover_url
        FROM playlists p
        LEFT JOIN playlist_songs ps ON p.playlist_id = ps.playlist_id
        WHERE p.user_id = ?
@@ -55,12 +61,13 @@ class PlaylistModel {
   // Get playlist songs
   static async getSongs(playlistId) {
     const [rows] = await db.execute(
-      `SELECT s.*, a.name as artist_name, al.title as album_title
+      `SELECT s.*, a.name as artist_name, al.title as album_title, ps.\`order\`
        FROM playlist_songs ps
        JOIN songs s ON ps.song_id = s.song_id
        LEFT JOIN artists a ON s.artist_id = a.artist_id
        LEFT JOIN albums al ON s.album_id = al.album_id
-       WHERE ps.playlist_id = ?`,
+       WHERE ps.playlist_id = ?
+       ORDER BY ps.\`order\` ASC, ps.song_id ASC`,
       [playlistId]
     );
     return rows;
@@ -69,9 +76,16 @@ class PlaylistModel {
   // Add song to playlist
   static async addSong(playlistId, songId) {
     try {
+      // Get max order for this playlist
+      const [maxOrderRows] = await db.execute(
+        'SELECT MAX(`order`) as max_order FROM playlist_songs WHERE playlist_id = ?',
+        [playlistId]
+      );
+      const nextOrder = (maxOrderRows[0]?.max_order ?? -1) + 1;
+      
       await db.execute(
-        'INSERT INTO playlist_songs (playlist_id, song_id) VALUES (?, ?)',
-        [playlistId, songId]
+        'INSERT INTO playlist_songs (playlist_id, song_id, `order`) VALUES (?, ?, ?)',
+        [playlistId, songId, nextOrder]
       );
       return true;
     } catch (error) {
@@ -129,6 +143,30 @@ class PlaylistModel {
       [playlistId]
     );
     return rows[0]?.user_id === userId;
+  }
+
+  // Update song order in playlist
+  static async updateSongOrder(playlistId, songOrders) {
+    // songOrders is an array of {song_id, order}
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+      
+      for (const { song_id, order } of songOrders) {
+        await connection.execute(
+          'UPDATE playlist_songs SET `order` = ? WHERE playlist_id = ? AND song_id = ?',
+          [order, playlistId, song_id]
+        );
+      }
+      
+      await connection.commit();
+      return true;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   }
 }
 

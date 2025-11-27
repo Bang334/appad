@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../../config/theme';
+import MiniPlayer from '../../components/Player/MiniPlayer';
 
 const SettingsScreen = ({ navigation }) => {
   const [settings, setSettings] = useState({
@@ -74,7 +75,11 @@ const SettingsScreen = ({ navigation }) => {
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <View style={styles.container}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+      >
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
@@ -207,7 +212,9 @@ const SettingsScreen = ({ navigation }) => {
           rightComponent={<Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />}
         />
       </View>
-    </ScrollView>
+      </ScrollView>
+      <MiniPlayer bottomOffset={0} />
+    </View>
   );
 };
 
@@ -215,6 +222,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 100, // Space for MiniPlayer
   },
   header: {
     flexDirection: 'row',

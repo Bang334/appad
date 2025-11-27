@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../../config/theme';
 import { adminService } from '../../services/adminService';
 import { songService } from '../../services/songService';
+import MiniPlayer from '../../components/Player/MiniPlayer';
 
 const AdminAlbumDetailScreen = ({ route, navigation }) => {
   const { album } = route.params;
@@ -104,7 +105,11 @@ const AdminAlbumDetailScreen = ({ route, navigation }) => {
   );
 
   return (
-    <ScrollView style={styles.container}>
+    <View style={styles.container}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+      >
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
@@ -182,7 +187,9 @@ const AdminAlbumDetailScreen = ({ route, navigation }) => {
           />
         )}
       </View>
-    </ScrollView>
+      </ScrollView>
+      <MiniPlayer bottomOffset={0} />
+    </View>
   );
 };
 
@@ -190,6 +197,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 100, // Space for MiniPlayer
   },
   header: {
     flexDirection: 'row',

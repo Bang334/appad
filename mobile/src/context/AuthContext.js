@@ -57,47 +57,109 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const register = async (username, email, password, full_name) => {
+  const register = async (
+    username,
+    email,
+    password,
+    full_name,
+    artist_register = false,
+    artist_bio = '',
+    artist_country = '',
+    artist_image_url = '',
+  ) => {
     try {
+      console.log('Register attempt:', { username, email, apiUrl: api.defaults.baseURL });
+      
       const response = await api.post('/auth/register', {
         username,
         email,
         password,
-        full_name
+        full_name,
+        artist_register,
+        artist_bio,
+        artist_country,
+        artist_image_url,
       });
       
-      const { token, ...userData } = response.data.data;
+      console.log('Register response:', response.data);
       
-      await AsyncStorage.setItem('token', token);
-      await AsyncStorage.setItem('user', JSON.stringify(userData));
-      
-      setToken(token);
-      setUser(userData);
-      
-      return { success: true };
+      if (response.data.success && response.data.data) {
+        const { token, ...userData } = response.data.data;
+        
+        await AsyncStorage.setItem('token', token);
+        await AsyncStorage.setItem('user', JSON.stringify(userData));
+        
+        setToken(token);
+        setUser(userData);
+        
+        return { success: true };
+      } else {
+        return {
+          success: false,
+          message: response.data.message || 'Registration failed'
+        };
+      }
     } catch (error) {
+      console.error('Register error details:', {
+        message: error.message,
+        code: error.code,
+        response: error.response?.data,
+        status: error.response?.status,
+        url: error.config?.url,
+        baseURL: error.config?.baseURL
+      });
+      
+      // Handle network errors
+      if (error.message === 'Network Error' || error.code === 'ECONNREFUSED' || error.code === 'ERR_NETWORK') {
+        return {
+          success: false,
+          message: `Không thể kết nối đến server.\nVui lòng kiểm tra:\n- Server đang chạy\n- IP: ${api.defaults.baseURL}\n- Cùng mạng WiFi`
+        };
+      }
+      
+      // Handle validation errors
+      if (error.response?.data?.errors && Array.isArray(error.response.data.errors)) {
+        const errorMessages = error.response.data.errors.map(err => err.message).join('\n');
+        return {
+          success: false,
+          message: errorMessages || 'Validation failed'
+        };
+      }
+      
+      // Handle other errors
       return {
         success: false,
-        message: error.response?.data?.message || 'Registration failed'
+        message: error.response?.data?.message || error.message || 'Registration failed. Please check your connection.'
       };
     }
   };
 
   const logout = async () => {
     try {
-      await AsyncStorage.removeItem('token');
-      await AsyncStorage.removeItem('user');
+      // Clear all AsyncStorage items (cache)
+      const allKeys = await AsyncStorage.getAllKeys();
+      await AsyncStorage.multiRemove(allKeys);
+      
+      // Clear state
       setToken(null);
       setUser(null);
     } catch (error) {
       console.error('Error logging out:', error);
+      // Fallback: at least clear auth items
+      try {
+        await AsyncStorage.removeItem('token');
+        await AsyncStorage.removeItem('user');
+      } catch (fallbackError) {
+        console.error('Error clearing auth items:', fallbackError);
+      }
     }
   };
 
   const updateUser = async (userData) => {
     try {
-      setUser({ ...user, ...userData });
-      await AsyncStorage.setItem('user', JSON.stringify({ ...user, ...userData }));
+      const updatedUser = { ...user, ...userData };
+      setUser(updatedUser);
+      await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
     } catch (error) {
       console.error('Error updating user:', error);
     }

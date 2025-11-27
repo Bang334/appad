@@ -1,12 +1,13 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const UserModel = require('../models/user.model');
+const ArtistModel = require('../models/artist.model');
 
 class AuthController {
-  // Register new user
+  // Register new user (normal user or artist)
   static async register(req, res) {
     try {
-      const { username, email, password, full_name } = req.body;
+      const { username, email, password, full_name, artist_register, artist_bio, artist_country, artist_image_url } = req.body;
 
       // Check if user exists
       const existingUser = await UserModel.findByEmail(email);
@@ -28,17 +29,39 @@ class AuthController {
       // Hash password
       const hashedPassword = await bcrypt.hash(password, 10);
 
-      // Create user
+      const isArtistRegister = !!artist_register;
+
       const userId = await UserModel.create({
         username,
         email,
         password: hashedPassword,
-        full_name
+        full_name,
+        role: 'user',
+        is_banned: isArtistRegister ? 2 : 0,
       });
+
+      if (isArtistRegister) {
+        try {
+          await ArtistModel.create({
+            name: full_name || username,
+            bio: artist_bio || null,
+            image_url: artist_image_url || null,
+            country: artist_country || null,
+            user_id: userId,
+          });
+        } catch (artistError) {
+          console.error('Error creating artist profile during register:', artistError);
+        }
+      }
 
       // Generate token
       const token = jwt.sign(
-        { user_id: userId, username, email, role: 'user' },
+        {
+          user_id: userId,
+          username,
+          email,
+          role: isArtistRegister ? 'artist' : 'user',
+        },
         process.env.JWT_SECRET,
         { expiresIn: process.env.JWT_EXPIRE }
       );
@@ -58,7 +81,8 @@ class AuthController {
       console.error('Register error:', error);
       res.status(500).json({
         success: false,
-        message: 'Server error'
+        message: error.message || 'Server error',
+        error: process.env.NODE_ENV === 'development' ? error.stack : undefined
       });
     }
   }
@@ -77,6 +101,14 @@ class AuthController {
         });
       }
 
+      // Check if banned
+      if (user.is_banned === 1) {
+        return res.status(403).json({
+          success: false,
+          message: 'Tài khoản của bạn đã bị khóa'
+        });
+      }
+
       // Check password
       const isMatch = await bcrypt.compare(password, user.password);
       if (!isMatch) {
@@ -86,9 +118,30 @@ class AuthController {
         });
       }
 
+      // Get artist_id if user is artist
+      let artist_id = null;
+      // Only treat as artist if not pending (is_banned !== 2)
+      if (user.role === 'artist' && user.is_banned !== 2) {
+        const ArtistModel = require('../models/artist.model');
+        const artist = await ArtistModel.findByUserId(user.user_id);
+        if (artist) {
+          artist_id = artist.artist_id;
+        }
+      }
+
+      // Determine effective role
+      // If is_banned is 2 (pending artist), treat as user
+      const effectiveRole = user.is_banned === 2 ? 'user' : user.role;
+
       // Generate token
       const token = jwt.sign(
-        { user_id: user.user_id, username: user.username, email: user.email, role: user.role },
+        { 
+          user_id: user.user_id, 
+          username: user.username, 
+          email: user.email, 
+          role: effectiveRole, 
+          artist_id 
+        },
         process.env.JWT_SECRET,
         { expiresIn: process.env.JWT_EXPIRE }
       );
@@ -102,8 +155,11 @@ class AuthController {
           email: user.email,
           full_name: user.full_name,
           avatar_url: user.avatar_url,
-          role: user.role,
-          token
+          background_video_url: user.background_video_url,
+          role: effectiveRole,
+          artist_id,
+          token,
+          is_pending_artist: user.is_banned === 2
         }
       });
     } catch (error) {
@@ -126,9 +182,27 @@ class AuthController {
         });
       }
 
+      // Get artist_id if user is artist
+      // Get artist_id if user is artist
+      let artist_id = null;
+      if (user.role === 'artist' && user.is_banned !== 2) {
+        const ArtistModel = require('../models/artist.model');
+        const artist = await ArtistModel.findByUserId(user.user_id);
+        if (artist) {
+          artist_id = artist.artist_id;
+        }
+      }
+
+      const effectiveRole = user.is_banned === 2 ? 'user' : user.role;
+
       res.json({
         success: true,
-        data: user
+        data: {
+          ...user,
+          role: effectiveRole,
+          artist_id,
+          is_pending_artist: user.is_banned === 2
+        }
       });
     } catch (error) {
       console.error('Get current user error:', error);

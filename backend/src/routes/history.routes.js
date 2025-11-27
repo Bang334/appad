@@ -6,6 +6,7 @@ const router = express.Router();
 
 // Routes
 router.get('/', authenticateToken, HistoryController.getUserHistory);
+router.get('/by-day', authenticateToken, HistoryController.getUserHistoryByDay);
 router.get('/recently-played', authenticateToken, HistoryController.getRecentlyPlayed);
 router.delete('/clear', authenticateToken, HistoryController.clearHistory);
 

@@ -3,10 +3,10 @@ const db = require('../config/database');
 class AlbumModel {
   // Create new album
   static async create(albumData) {
-    const { title, artist_id, release_date, cover_url } = albumData;
+    const { title, artist_id, release_date, cover_url, is_premium, price } = albumData;
     const [result] = await db.execute(
-      'INSERT INTO albums (title, artist_id, release_date, cover_url) VALUES (?, ?, ?, ?)',
-      [title, artist_id || null, release_date || null, cover_url || null]
+      'INSERT INTO albums (title, artist_id, release_date, cover_url, is_premium, price) VALUES (?, ?, ?, ?, ?, ?)',
+      [title, artist_id || null, release_date || null, cover_url || null, is_premium || 0, price || 0]
     );
     return result.insertId;
   }
@@ -25,15 +25,25 @@ class AlbumModel {
 
   // Get all albums
   static async findAll(limit = 50, offset = 0) {
-    const rows = await db.query(
-      `SELECT al.*, a.name as artist_name
+    const limitNum = Math.max(1, Math.min(parseInt(limit) || 50, 1000));
+    const offsetNum = Math.max(0, parseInt(offset) || 0);
+    
+    const [rows] = await db.execute(
+      `SELECT al.*, 
+              a.name as artist_name,
+              COUNT(s.song_id) as song_count
        FROM albums al
        LEFT JOIN artists a ON al.artist_id = a.artist_id
+       LEFT JOIN songs s ON al.album_id = s.album_id
+       GROUP BY al.album_id, al.title, al.artist_id, al.release_date, al.cover_url, al.is_premium, al.price, a.name
        ORDER BY al.album_id DESC
-       LIMIT ? OFFSET ?`,
-      [parseInt(limit), parseInt(offset)]
+       LIMIT ${limitNum} OFFSET ${offsetNum}`
     );
-    return rows[0];
+    // Convert song_count to number
+    return rows.map(row => ({
+      ...row,
+      song_count: parseInt(row.song_count) || 0
+    }));
   }
 
   // Get album songs

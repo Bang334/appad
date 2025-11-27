@@ -25,6 +25,7 @@ router.put('/:id', authenticateToken, PlaylistController.update);
 router.delete('/:id', authenticateToken, PlaylistController.delete);
 router.post('/:id/songs', authenticateToken, addSongValidation, validate, PlaylistController.addSong);
 router.delete('/:id/songs/:songId', authenticateToken, PlaylistController.removeSong);
+router.put('/:id/songs/order', authenticateToken, PlaylistController.updateSongOrder);
 
 module.exports = router;
 

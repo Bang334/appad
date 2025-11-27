@@ -14,6 +14,7 @@ const createGenreValidation = [
 
 // Public routes
 router.get('/', GenreController.getAll);
+router.get('/with-count', GenreController.getAllWithSongCount);
 router.get('/:id', GenreController.getById);
 
 // Admin routes

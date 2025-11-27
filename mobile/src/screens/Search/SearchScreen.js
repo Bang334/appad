@@ -10,30 +10,67 @@ import {
   ActivityIndicator,
   ScrollView,
   RefreshControl,
-  PanResponder,
-  Animated as RNAnimated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { songService } from '../../services/songService';
+import { artistService } from '../../services/artistService';
+import { albumService } from '../../services/albumService';
+import { followService } from '../../services/followService';
+import { genreService } from '../../services/genreService';
 import { usePlayer } from '../../context/PlayerContext';
+import { useAlert } from '../../context/AlertContext';
 import { COLORS, SIZES } from '../../config/theme';
+import PremiumBadge from '../../components/Common/PremiumBadge';
+import AccessBadge from '../../components/Common/AccessBadge';
+import { premiumService } from '../../services/premiumService';
+import MiniPlayer from '../../components/Player/MiniPlayer';
+import PremiumAccessModal from '../../components/Common/PremiumAccessModal';
 
 const ITEMS_PER_PAGE = 12;
 
 const SearchScreen = ({ navigation }) => {
+  // Tab state
+  const [activeTab, setActiveTab] = useState('songs'); // 'songs', 'artists', or 'genres'
+  const [showDropdown, setShowDropdown] = useState(false);
+  
+  // Common
   const [searchQuery, setSearchQuery] = useState('');
-  const [albums, setAlbums] = useState([]);
-  const [allSongs, setAllSongs] = useState([]);
-  const [filteredSongs, setFilteredSongs] = useState([]);
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Songs
+  const [allSongs, setAllSongs] = useState([]);
+  const [filteredSongs, setFilteredSongs] = useState([]);
+  const [premiumFilter, setPremiumFilter] = useState('all'); // 'all', 'premium', 'free'
+  const [purchasedSongIds, setPurchasedSongIds] = useState(new Set());
   const [currentPage, setCurrentPage] = useState(1);
-  const { playSong } = usePlayer();
-  const albumCarouselRef = useRef(null);
-  const scrollPosition = useRef(0);
-  const panValue = useRef(new RNAnimated.Value(0)).current;
+  const [userIsPremium, setUserIsPremium] = useState(false);
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [selectedSong, setSelectedSong] = useState(null);
+  const [selectedSongList, setSelectedSongList] = useState([]);
+  const [songAccessTypes, setSongAccessTypes] = useState({}); // { songId: accessType }
+  
+  // Artists
+  const [allArtists, setAllArtists] = useState([]);
+  const [filteredArtists, setFilteredArtists] = useState([]);
+  const [artistSortBy, setArtistSortBy] = useState('name'); // 'name', 'popular', 'recent'
+  const [followedArtists, setFollowedArtists] = useState(new Set());
+  const [artistCurrentPage, setArtistCurrentPage] = useState(1);
+  
+  // Albums
+  const [allAlbums, setAllAlbums] = useState([]);
+  const [filteredAlbums, setFilteredAlbums] = useState([]);
+  const [albumCurrentPage, setAlbumCurrentPage] = useState(1);
+  const [albumPremiumFilter, setAlbumPremiumFilter] = useState('all'); // 'all', 'premium', 'free'
+  
+  // Genres
+  const [genres, setGenres] = useState([]);
+  const [genreAvatars, setGenreAvatars] = useState({}); // { genreId: cover_url }
+  
+  const { playSong, currentSong, isPlaying, togglePlayPause } = usePlayer();
+  const { showSuccess, showError } = useAlert();
 
-  // Load initial data (albums and songs)
+  // Load initial data
   useEffect(() => {
     loadInitialData();
   }, []);
@@ -41,13 +78,72 @@ const SearchScreen = ({ navigation }) => {
   const loadInitialData = async () => {
     setLoadingInitial(true);
     try {
-      const [albumsRes, songsRes] = await Promise.all([
-        songService.getAlbums(),
+      const [songsRes, artistsRes, genresRes, albumsRes, purchased, followed, premiumStatus] = await Promise.all([
         songService.getAllSongs(100, 0),
+        artistService.getArtists(),
+        genreService.getAllGenresWithSongCount().catch(() => ({ data: [] })),
+        albumService.getAllAlbums(50, 0).catch(() => ({ data: [] })),
+        premiumService.getPurchasedSongs().catch(() => ({ data: [] })),
+        followService.getMyFollowedArtists().catch(() => ({ data: [] })),
+        premiumService.checkStatus().catch(() => ({ data: { is_premium: false } })),
       ]);
-      setAlbums(albumsRes.data || []);
-      setAllSongs(songsRes.data || []);
-      setFilteredSongs(songsRes.data || []);
+      
+      const songsData = songsRes.data || [];
+      setAllSongs(songsData);
+      setFilteredSongs(songsData);
+      
+      setAllArtists(artistsRes.data || []);
+      setAllArtists(artistsRes.data || []);
+      setFilteredArtists(artistsRes.data || []);
+      
+      setAllAlbums(albumsRes.data || []);
+      setFilteredAlbums(albumsRes.data || []);
+      
+      const genresData = genresRes.data || [];
+      setGenres(genresData);
+      
+      // Lấy ngẫu nhiên một bài hát cho mỗi genre làm avatar
+      const avatars = {};
+      genresData.forEach(genre => {
+        const genreSongs = songsData.filter(song => song.genre_id === genre.genre_id);
+        if (genreSongs.length > 0) {
+          const randomIndex = Math.floor(Math.random() * genreSongs.length);
+          const randomSong = genreSongs[randomIndex];
+          if (randomSong?.cover_url) {
+            avatars[genre.genre_id] = randomSong.cover_url;
+          }
+        }
+      });
+      setGenreAvatars(avatars);
+      
+      // Create Set of purchased song IDs for quick lookup
+      const purchasedIds = new Set((purchased.data || []).map(song => song.song_id));
+      setPurchasedSongIds(purchasedIds);
+      
+      // Create Set of followed artist IDs
+      const followedIds = new Set((followed.data || []).map(artist => artist.artist_id));
+      setFollowedArtists(followedIds);
+      
+      // Check if user has premium
+      setUserIsPremium(premiumStatus.data?.is_premium || false);
+
+      // Check access types for premium songs (limit to first 50 to avoid too many requests)
+      const accessTypesMap = {};
+      const premiumSongs = songsData.filter(s => s.is_premium === 1).slice(0, 50);
+      
+      const accessChecks = premiumSongs.map(async (song) => {
+        try {
+          const accessRes = await premiumService.checkSongAccess(song.song_id);
+          if (accessRes.success && accessRes.data?.hasAccess && accessRes.data?.accessType) {
+            accessTypesMap[song.song_id] = accessRes.data.accessType;
+          }
+        } catch (error) {
+          // Silent fail for access checks
+        }
+      });
+      
+      await Promise.all(accessChecks);
+      setSongAccessTypes(accessTypesMap);
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -61,121 +157,554 @@ const SearchScreen = ({ navigation }) => {
     setRefreshing(false);
   };
 
-  // Auto-scroll carousel
+  // Filter songs based on search query and premium filter
   useEffect(() => {
-    if (albums.length === 0) return;
+    if (activeTab !== 'songs') return;
+    
+    let filtered = allSongs;
 
-    const interval = setInterval(() => {
-      if (albumCarouselRef.current && albums.length > 0) {
-        scrollPosition.current = (scrollPosition.current + 1) % albums.length;
-        
-        albumCarouselRef.current.scrollToIndex({
-          index: scrollPosition.current,
-          animated: true,
-        });
-      }
-    }, 3000);
+    // Apply premium filter
+    if (premiumFilter === 'premium') {
+      filtered = filtered.filter(song => song.is_premium === 1);
+    } else if (premiumFilter === 'free') {
+      filtered = filtered.filter(song => song.is_premium === 0 || !song.is_premium);
+    }
 
-    return () => clearInterval(interval);
-  }, [albums]);
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        song =>
+          song.title?.toLowerCase().includes(query) ||
+          song.artist_name?.toLowerCase().includes(query) ||
+          song.album_title?.toLowerCase().includes(query)
+      );
+    }
 
-  // Filter songs based on search query
+    setFilteredSongs(filtered);
+    setCurrentPage(1);
+  }, [searchQuery, premiumFilter, allSongs, activeTab]);
+
+  // Filter and sort artists
   useEffect(() => {
-    if (searchQuery.trim().length === 0) {
-      setFilteredSongs(allSongs);
-      setCurrentPage(1); // Reset to page 1
+    if (activeTab !== 'artists') return;
+    
+    let filtered = allArtists;
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        artist =>
+          artist.name?.toLowerCase().includes(query) ||
+          artist.country?.toLowerCase().includes(query) ||
+          artist.bio?.toLowerCase().includes(query)
+      );
+    }
+
+    // Apply sorting
+    if (artistSortBy === 'name') {
+      filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    } else if (artistSortBy === 'popular') {
+      filtered.sort((a, b) => (b.song_count || 0) - (a.song_count || 0));
+    } else if (artistSortBy === 'recent') {
+      filtered.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    }
+
+    setFilteredArtists(filtered);
+    setArtistCurrentPage(1);
+  }, [searchQuery, artistSortBy, allArtists, activeTab]);
+
+  // Filter albums
+  useEffect(() => {
+    if (activeTab !== 'albums') return;
+    
+    let filtered = allAlbums;
+
+    // Apply premium filter
+    if (albumPremiumFilter === 'premium') {
+      filtered = filtered.filter(album => album.is_premium === 1);
+    } else if (albumPremiumFilter === 'free') {
+      filtered = filtered.filter(album => album.is_premium === 0 || !album.is_premium);
+    }
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        album =>
+          album.title?.toLowerCase().includes(query) ||
+          album.artist_name?.toLowerCase().includes(query)
+      );
+    }
+
+    setFilteredAlbums(filtered);
+    setAlbumCurrentPage(1);
+  }, [searchQuery, allAlbums, activeTab, albumPremiumFilter]);
+
+  const handlePlaySong = (song, index) => {
+    if (currentSong?.song_id === song.song_id) {
+      togglePlayPause();
+    } else {
+      playSong(song, filteredSongs, index);
+    }
+  };
+
+  const handleSongPress = async (song, index) => {
+    // If clicking on currently playing song, navigate to FullPlayer
+    if (currentSong?.song_id === song.song_id) {
+      navigation.navigate('FullPlayer');
       return;
     }
 
-    const query = searchQuery.toLowerCase();
-    const filtered = allSongs.filter(song => 
-      song.title.toLowerCase().includes(query) ||
-      (song.artist_name && song.artist_name.toLowerCase().includes(query)) ||
-      (song.album_title && song.album_title.toLowerCase().includes(query))
-    );
-    setFilteredSongs(filtered);
-    setCurrentPage(1); // Reset to page 1 when searching
-  }, [searchQuery, allSongs]);
-
-  // Calculate pagination
-  const totalPages = Math.ceil(filteredSongs.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = startIndex + ITEMS_PER_PAGE;
-  const currentSongs = filteredSongs.slice(startIndex, endIndex);
-
-  // Pan Responder for swipe gestures
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (evt, gestureState) => {
-        return Math.abs(gestureState.dx) > 30; // Minimum swipe distance
-      },
-      onPanResponderRelease: (evt, gestureState) => {
-        if (gestureState.dx < -50 && currentPage < totalPages) {
-          // Swipe left (next page)
-          setCurrentPage(currentPage + 1);
-        } else if (gestureState.dx > 50 && currentPage > 1) {
-          // Swipe right (previous page)
-          setCurrentPage(currentPage - 1);
+    // Check access for premium songs
+    if (song.is_premium === 1) {
+      try {
+        const response = await premiumService.checkSongAccess(song.song_id);
+        if (!response.data?.hasAccess) {
+          // Show premium access modal with 3 options
+          setSelectedSong(song);
+          setSelectedSongList(filteredSongs);
+          setShowPremiumModal(true);
+          return;
         }
-      },
-    })
-  ).current;
+      } catch (error) {
+        console.error('Error checking song access:', error);
+        // If error, try to play anyway
+      }
+    }
 
-  const handleSearch = (query) => {
-    setSearchQuery(query);
-  };
-
-  const handlePlaySong = (song, index) => {
+    // Play song and navigate to FullPlayer
     playSong(song, filteredSongs, index);
-    songService.playSong(song.song_id).catch(console.error);
+    
+    // Update access type if we just checked it
+    try {
+      const accessRes = await premiumService.checkSongAccess(song.song_id);
+      if (accessRes.success && accessRes.data?.hasAccess && accessRes.data?.accessType) {
+        setSongAccessTypes(prev => ({
+          ...prev,
+          [song.song_id]: accessRes.data.accessType
+        }));
+      }
+    } catch (error) {
+      // Silent fail
+    }
+    
     navigation.navigate('FullPlayer');
   };
 
-  const renderSongItem = ({ item, index }) => (
-    <TouchableOpacity
-      style={styles.songItem}
-      onPress={() => handlePlaySong(item, index)}
-    >
-      <Image
-        source={{ uri: item.cover_url || 'https://via.placeholder.com/60' }}
-        style={styles.songImage}
-      />
-      <View style={styles.songInfo}>
-        <Text style={styles.songTitle} numberOfLines={1}>
-          {item.title}
-        </Text>
-        <Text style={styles.songArtist} numberOfLines={1}>
-          {item.artist_name}
-        </Text>
-        {item.average_rating != null && (
-          <View style={styles.songRating}>
-            <Ionicons name="star" size={12} color="#FFD700" />
-            <Text style={styles.songRatingText}>
-              {Number(item.average_rating).toFixed(1)}
+  const handleFollowToggle = async (artistId) => {
+    try {
+      if (followedArtists.has(artistId)) {
+        await followService.unfollowArtist(artistId);
+        setFollowedArtists(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(artistId);
+          return newSet;
+        });
+        showSuccess('Thành công', 'Đã bỏ theo dõi');
+      } else {
+        await followService.followArtist(artistId);
+        setFollowedArtists(prev => new Set([...prev, artistId]));
+        showSuccess('Thành công', 'Đã theo dõi nghệ sĩ');
+      }
+    } catch (error) {
+      console.error('Error toggling follow:', error);
+      showError('Lỗi', 'Không thể thực hiện');
+    }
+  };
+
+  const formatListenCount = (count) => {
+    if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
+    if (count >= 1000) return `${(count / 1000).toFixed(1)}K`;
+    return count?.toString() || '0';
+  };
+
+  const getPaginatedSongs = () => {
+    return filteredSongs.slice(0, currentPage * ITEMS_PER_PAGE);
+  };
+
+  const loadMoreSongs = () => {
+    if (currentPage * ITEMS_PER_PAGE < filteredSongs.length) {
+      setCurrentPage(prev => prev + 1);
+    }
+  };
+
+  const getPaginatedArtists = () => {
+    return filteredArtists.slice(0, artistCurrentPage * ITEMS_PER_PAGE);
+  };
+
+  const loadMoreArtists = () => {
+    if (artistCurrentPage * ITEMS_PER_PAGE < filteredArtists.length) {
+      setArtistCurrentPage(prev => prev + 1);
+    }
+  };
+
+  const getPaginatedAlbums = () => {
+    return filteredAlbums.slice(0, albumCurrentPage * ITEMS_PER_PAGE);
+  };
+
+  const loadMoreAlbums = () => {
+    if (albumCurrentPage * ITEMS_PER_PAGE < filteredAlbums.length) {
+      setAlbumCurrentPage(prev => prev + 1);
+    }
+  };
+
+  const renderAlbumItem = ({ item }) => {
+    return (
+      <TouchableOpacity
+        style={styles.artistItem} // Reuse artist item style for consistency
+        onPress={() => navigation.navigate('AlbumDetail', { albumId: item.album_id })}
+      >
+        <Image
+          source={{ uri: item.cover_url || 'https://via.placeholder.com/150' }}
+          style={styles.artistImage}
+        />
+        
+        <View style={styles.artistInfo}>
+          <View style={styles.songTitleRow}>
+            <Text style={styles.artistName} numberOfLines={1}>
+              {item.title}
             </Text>
+            {item.is_premium === 1 && <PremiumBadge small />}
+          </View>
+          
+          <Text style={styles.artistStatText} numberOfLines={1}>
+            {item.artist_name}
+          </Text>
+          
+          <View style={styles.artistStats}>
+            <Text style={styles.artistStatText}>
+              {item.release_date ? new Date(item.release_date).getFullYear() : ''}
+            </Text>
+            {item.is_premium === 1 && item.price > 0 && (
+              <>
+                <Text style={styles.metaDot}>•</Text>
+                <Ionicons name="cash-outline" size={12} color={COLORS.textMuted} />
+                <Text style={styles.priceText}>
+                  {parseFloat(item.price).toLocaleString('vi-VN')}đ
+                </Text>
+              </>
+            )}
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderSongItem = ({ item, index }) => {
+    const isCurrentSong = currentSong?.song_id === item.song_id;
+    const isCurrentPlaying = isCurrentSong && isPlaying;
+    const isPurchased = purchasedSongIds.has(item.song_id);
+
+    return (
+      <TouchableOpacity
+        style={[styles.songItem, isCurrentSong && styles.songItemActive]}
+        onPress={() => handleSongPress(item, index)}
+      >
+        <View style={styles.songLeft}>
+          <Image
+            source={{ uri: item.cover_url || 'https://via.placeholder.com/50' }}
+            style={styles.songCover}
+          />
+          {isCurrentPlaying && (
+            <View style={styles.playingIndicator}>
+              <Ionicons name="volume-high" size={16} color={COLORS.primary} />
+            </View>
+          )}
+        </View>
+
+        <View style={styles.songInfo}>
+          <View style={styles.songTitleRow}>
+            <Text style={styles.songTitle} numberOfLines={1}>
+              {item.title}
+            </Text>
+            {item.is_premium === 1 && <PremiumBadge small />}
+            {item.is_premium === 1 && songAccessTypes[item.song_id] && (
+              <AccessBadge accessType={songAccessTypes[item.song_id]} size={16} />
+            )}
+          </View>
+          <View style={styles.songMeta}>
+            <Text style={styles.songArtist} numberOfLines={1}>
+              {item.artist_name}
+            </Text>
+            {item.album_title && (
+              <>
+                <Text style={styles.metaDot}>•</Text>
+                <Text style={styles.songAlbum} numberOfLines={1}>
+                  {item.album_title}
+                </Text>
+              </>
+            )}
+          </View>
+          <View style={styles.songStats}>
+            <Ionicons name="headset" size={12} color={COLORS.textMuted} />
+            <Text style={styles.listenCount}>{formatListenCount(item.listen_count)}</Text>
+            
+            {item.average_rating != null && (
+              <>
+                <Text style={styles.metaDot}>•</Text>
+                <Ionicons name="star" size={12} color={COLORS.warning} />
+                <Text style={styles.ratingText}>
+                  {Number(item.average_rating).toFixed(1)}
+                </Text>
+              </>
+            )}
+            
+            {item.is_premium === 1 && item.price && (
+              <>
+                <Text style={styles.metaDot}>•</Text>
+                <Ionicons name="cash-outline" size={12} color={COLORS.textMuted} />
+                <Text style={styles.priceText}>
+                  {item.price.toLocaleString('vi-VN')}đ
+                </Text>
+              </>
+            )}
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={styles.playButton}
+          onPress={(e) => {
+            e.stopPropagation();
+            handlePlaySong(item, index);
+          }}
+        >
+          <Ionicons
+            name={isCurrentPlaying ? 'pause' : 'play'}
+            size={24}
+            color={COLORS.primary}
+          />
+        </TouchableOpacity>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderArtistItem = ({ item }) => {
+    const isFollowing = followedArtists.has(item.artist_id);
+    
+    return (
+      <TouchableOpacity
+        style={styles.artistItem}
+        onPress={() => navigation.navigate('ArtistDetail', { artistId: item.artist_id })}
+      >
+        <Image
+          source={{ uri: item.image_url || 'https://via.placeholder.com/80' }}
+          style={styles.artistImage}
+        />
+        
+        <View style={styles.artistInfo}>
+          <Text style={styles.artistName} numberOfLines={1}>
+            {item.name}
+          </Text>
+          
+          {item.country && (
+            <View style={styles.artistCountryRow}>
+              <Ionicons name="location-outline" size={14} color={COLORS.textSecondary} />
+              <Text style={styles.artistCountry}>{item.country}</Text>
+            </View>
+          )}
+          
+          <View style={styles.artistStats}>
+            <Ionicons name="musical-notes" size={14} color={COLORS.textMuted} />
+            <Text style={styles.artistStatText}>{item.song_count || 0} bài hát</Text>
+            <Text style={styles.metaDot}>•</Text>
+            <Ionicons name="disc" size={14} color={COLORS.textMuted} />
+            <Text style={styles.artistStatText}>{item.album_count || 0} album</Text>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.followButton, isFollowing && styles.followingButton]}
+          onPress={(e) => {
+            e.stopPropagation();
+            handleFollowToggle(item.artist_id);
+          }}
+        >
+          <Ionicons
+            name={isFollowing ? "checkmark" : "add"}
+            size={20}
+            color={isFollowing ? COLORS.primary : COLORS.text}
+          />
+        </TouchableOpacity>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderGenreItem = ({ item }) => {
+    const avatarUrl = genreAvatars[item.genre_id];
+    
+    return (
+      <TouchableOpacity
+        style={styles.genreItem}
+        onPress={() => navigation.navigate('GenreDetail', { genreId: item.genre_id })}
+      >
+        {avatarUrl ? (
+          <Image
+            source={{ uri: avatarUrl }}
+            style={styles.genreAvatar}
+          />
+        ) : (
+          <View style={styles.genreIconContainer}>
+            <Ionicons name="musical-notes" size={32} color={COLORS.primary} />
           </View>
         )}
-      </View>
-      <Ionicons name="play-circle" size={32} color={COLORS.primary} />
-    </TouchableOpacity>
-  );
+        
+        <View style={styles.genreInfo}>
+          <Text style={styles.genreName} numberOfLines={1}>
+            {item.name}
+          </Text>
+          {item.description && (
+            <Text style={styles.genreDescription} numberOfLines={2}>
+              {item.description}
+            </Text>
+          )}
+        </View>
 
-  const renderAlbumItem = ({ item }) => (
-    <TouchableOpacity
-      style={styles.albumCarouselItem}
-      onPress={() => navigation.navigate('AlbumDetail', { albumId: item.album_id })}
-    >
-      <Image
-        source={{ uri: item.cover_url || 'https://via.placeholder.com/120' }}
-        style={styles.albumCarouselImage}
-      />
-      <Text style={styles.albumCarouselTitle} numberOfLines={1}>
-        {item.title}
-      </Text>
-      <Text style={styles.albumCarouselArtist} numberOfLines={1}>
-        {item.artist_name}
-      </Text>
-    </TouchableOpacity>
+        <View style={styles.genreCountContainer}>
+          <Text style={styles.genreCount}>{item.song_count || 0}</Text>
+          <Text style={styles.genreCountLabel}>bài hát</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const getTabLabel = () => {
+    switch (activeTab) {
+      case 'songs':
+        return 'Nhạc';
+      case 'artists':
+        return 'Nghệ sĩ';
+      case 'genres':
+        return 'Thể loại';
+      case 'albums':
+        return 'Album';
+      default:
+        return 'Nhạc';
+    }
+  };
+
+  const getTabIconColor = () => {
+    switch (activeTab) {
+      case 'songs':
+        return '#2196F3';
+      case 'artists':
+        return '#E91E63';
+      case 'genres':
+        return '#FF9800';
+      case 'albums':
+        return '#9C27B0';
+      default:
+        return COLORS.primary;
+    }
+  };
+
+  const getTabIcon = () => {
+    switch (activeTab) {
+      case 'songs':
+        return 'musical-notes';
+      case 'artists':
+        return 'mic';
+      case 'genres':
+        return 'albums';
+      case 'albums':
+        return 'disc';
+      default:
+        return 'musical-notes';
+    }
+  };
+
+  const renderDropdown = () => (
+    <View style={styles.dropdownContainer}>
+      <TouchableOpacity
+        style={styles.dropdownButton}
+        onPress={() => setShowDropdown(!showDropdown)}
+      >
+        <Ionicons
+          name={getTabIcon()}
+          size={20}
+          color={getTabIconColor()}
+        />
+        <Text style={styles.dropdownButtonText}>{getTabLabel()}</Text>
+        <Ionicons
+          name={showDropdown ? "chevron-up" : "chevron-down"}
+          size={20}
+          color={COLORS.textSecondary}
+        />
+      </TouchableOpacity>
+
+      {showDropdown && (
+        <View style={styles.dropdownMenu}>
+          <TouchableOpacity
+            style={[styles.dropdownItem, activeTab === 'songs' && styles.dropdownItemActive]}
+            onPress={() => {
+              setActiveTab('songs');
+              setShowDropdown(false);
+            }}
+          >
+            <Ionicons
+              name="musical-notes"
+              size={20}
+              color={activeTab === 'songs' ? '#2196F3' : '#2196F3'}
+            />
+            <Text style={[styles.dropdownItemText, activeTab === 'songs' && styles.dropdownItemTextActive]}>
+              Nhạc
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.dropdownItem, activeTab === 'artists' && styles.dropdownItemActive]}
+            onPress={() => {
+              setActiveTab('artists');
+              setShowDropdown(false);
+            }}
+          >
+            <Ionicons
+              name="mic"
+              size={20}
+              color={activeTab === 'artists' ? '#E91E63' : '#E91E63'}
+            />
+            <Text style={[styles.dropdownItemText, activeTab === 'artists' && styles.dropdownItemTextActive]}>
+              Nghệ sĩ
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.dropdownItem, activeTab === 'genres' && styles.dropdownItemActive]}
+            onPress={() => {
+              setActiveTab('genres');
+              setShowDropdown(false);
+            }}
+          >
+            <Ionicons
+              name="albums"
+              size={20}
+              color={activeTab === 'genres' ? '#FF9800' : '#FF9800'}
+            />
+            <Text style={[styles.dropdownItemText, activeTab === 'genres' && styles.dropdownItemTextActive]}>
+              Thể loại
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.dropdownItem, activeTab === 'albums' && styles.dropdownItemActive]}
+            onPress={() => {
+              setActiveTab('albums');
+              setShowDropdown(false);
+            }}
+          >
+            <Ionicons
+              name="disc"
+              size={20}
+              color={activeTab === 'albums' ? '#9C27B0' : '#9C27B0'}
+            />
+            <Text style={[styles.dropdownItemText, activeTab === 'albums' && styles.dropdownItemTextActive]}>
+              Album
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
   );
 
   if (loadingInitial) {
@@ -191,146 +720,305 @@ const SearchScreen = ({ navigation }) => {
     <View style={styles.container}>
       {/* Search Bar */}
       <View style={styles.searchContainer}>
-        <Ionicons name="search" size={20} color={COLORS.textSecondary} />
+        <Ionicons name="search" size={20} color={COLORS.textSecondary} style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Tìm bài hát, nghệ sĩ, album..."
+          placeholder={`Tìm ${activeTab === 'songs' ? 'bài hát' : activeTab === 'artists' ? 'nghệ sĩ' : 'thể loại'}...`}
           placeholderTextColor={COLORS.textSecondary}
           value={searchQuery}
-          onChangeText={handleSearch}
+          onChangeText={setSearchQuery}
         />
         {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => handleSearch('')}>
+          <TouchableOpacity onPress={() => setSearchQuery('')}>
             <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
           </TouchableOpacity>
         )}
       </View>
 
-      <ScrollView 
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={[COLORS.primary]}
-            tintColor={COLORS.primary}
-          />
-        }
-      >
-        {/* Albums Carousel */}
-        <View style={styles.carouselSection}>
-          <Text style={styles.sectionTitle}>💿 Albums</Text>
-          <FlatList
-            ref={albumCarouselRef}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            data={albums}
-            keyExtractor={(item) => item.album_id.toString()}
-            pagingEnabled
-            snapToInterval={112 + SIZES.padding}
-            decelerationRate="fast"
-            onScrollToIndexFailed={(info) => {
-              const wait = new Promise(resolve => setTimeout(resolve, 500));
-              wait.then(() => {
-                albumCarouselRef.current?.scrollToIndex({ index: info.index, animated: true });
-              });
-            }}
-            renderItem={renderAlbumItem}
-          />
-        </View>
-
-        {/* All Songs List with Pagination */}
-        <View style={styles.songsSection}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>
-              🎵 Tất cả bài hát {searchQuery && `(${filteredSongs.length})`}
-            </Text>
-            {totalPages > 1 && (
-              <Text style={styles.pageInfo}>
-                Trang {currentPage}/{totalPages}
+      {/* Songs Tab Content */}
+      {activeTab === 'songs' && (
+        <FlatList
+          data={getPaginatedSongs()}
+          renderItem={renderSongItem}
+          keyExtractor={item => item.song_id.toString()}
+          contentContainerStyle={styles.songsList}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[COLORS.primary]}
+              tintColor={COLORS.primary}
+            />
+          }
+          onEndReached={loadMoreSongs}
+          onEndReachedThreshold={0.5}
+          removeClippedSubviews={false}
+          ListHeaderComponentStyle={{ zIndex: 1000 }}
+          ListHeaderComponent={
+            <View style={{ zIndex: 1000 }}>
+              {renderDropdown()}
+              {/* Premium Filter */}
+              <View style={styles.filterContainer}>
+                <TouchableOpacity
+                  style={[styles.filterButton, premiumFilter === 'all' && styles.activeFilter]}
+                  onPress={() => setPremiumFilter('all')}
+                >
+                  <Text style={[styles.filterText, premiumFilter === 'all' && styles.activeFilterText]}>
+                    Tất cả
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.filterButton, premiumFilter === 'premium' && styles.activeFilter]}
+                  onPress={() => setPremiumFilter('premium')}
+                >
+                  <Text style={[styles.filterText, premiumFilter === 'premium' && styles.activeFilterText]}>
+                    Premium
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.filterButton, premiumFilter === 'free' && styles.activeFilter]}
+                  onPress={() => setPremiumFilter('free')}
+                >
+                  <Text style={[styles.filterText, premiumFilter === 'free' && styles.activeFilterText]}>
+                    Miễn phí
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          }
+          ListFooterComponent={
+            currentPage * ITEMS_PER_PAGE < filteredSongs.length ? (
+              <View style={styles.loadingMore}>
+                <ActivityIndicator size="small" color={COLORS.primary} />
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="musical-notes-outline" size={80} color={COLORS.textSecondary} />
+              <Text style={styles.emptyText}>
+                {searchQuery ? 'Không tìm thấy bài hát' : 'Chưa có bài hát nào'}
               </Text>
-            )}
-          </View>
-          
-          {filteredSongs.length > 0 ? (
-            <View {...panResponder.panHandlers}>
-              {currentSongs.map((song, index) => (
-                <View key={song.song_id}>
-                  {renderSongItem({ item: song, index: startIndex + index })}
-                </View>
-              ))}
-              
-              {/* Pagination Controls */}
-              {totalPages > 1 && (
-                <View style={styles.paginationContainer}>
-                  <TouchableOpacity
-                    style={[styles.pageButton, currentPage === 1 && styles.pageButtonDisabled]}
-                    onPress={() => currentPage > 1 && setCurrentPage(currentPage - 1)}
-                    disabled={currentPage === 1}
-                  >
-                    <Ionicons
-                      name="chevron-back"
-                      size={20}
-                      color={currentPage === 1 ? COLORS.textMuted : COLORS.primary}
-                    />
-                    <Text style={[styles.pageButtonText, currentPage === 1 && styles.pageButtonTextDisabled]}>
-                      Trước
+            </View>
+          }
+        />
+      )}
+
+      {/* Artists Tab Content */}
+      {activeTab === 'artists' && (
+        <FlatList
+          data={getPaginatedArtists()}
+          renderItem={renderArtistItem}
+          keyExtractor={item => item.artist_id.toString()}
+          contentContainerStyle={styles.artistsList}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[COLORS.primary]}
+              tintColor={COLORS.primary}
+            />
+          }
+          onEndReached={loadMoreArtists}
+          onEndReachedThreshold={0.5}
+          removeClippedSubviews={false}
+          ListHeaderComponentStyle={{ zIndex: 1000 }}
+          ListHeaderComponent={
+            <View style={{ zIndex: 1000 }}>
+              {renderDropdown()}
+              {/* Sort Filter */}
+              <View style={styles.filterContainer}>
+                <TouchableOpacity
+                  style={[styles.filterButton, artistSortBy === 'name' && styles.activeFilter]}
+                  onPress={() => setArtistSortBy('name')}
+                >
+                  <Text style={[styles.filterText, artistSortBy === 'name' && styles.activeFilterText]}>
+                    Tên A-Z
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.filterButton, artistSortBy === 'popular' && styles.activeFilter]}
+                  onPress={() => setArtistSortBy('popular')}
+                >
+                  <Text style={[styles.filterText, artistSortBy === 'popular' && styles.activeFilterText]}>
+                    Phổ biến
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.filterButton, artistSortBy === 'recent' && styles.activeFilter]}
+                  onPress={() => setArtistSortBy('recent')}
+                >
+                  <Text style={[styles.filterText, artistSortBy === 'recent' && styles.activeFilterText]}>
+                    Mới nhất
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          }
+          ListFooterComponent={
+            artistCurrentPage * ITEMS_PER_PAGE < filteredArtists.length ? (
+              <View style={styles.loadingMore}>
+                <ActivityIndicator size="small" color={COLORS.primary} />
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="mic-outline" size={80} color={COLORS.textSecondary} />
+              <Text style={styles.emptyText}>
+                {searchQuery ? 'Không tìm thấy nghệ sĩ' : 'Chưa có nghệ sĩ nào'}
+              </Text>
+            </View>
+          }
+        />
+      )}
+
+      {/* Albums Tab Content */}
+      {activeTab === 'albums' && (
+        <FlatList
+          data={getPaginatedAlbums()}
+          renderItem={renderAlbumItem}
+          keyExtractor={item => item.album_id.toString()}
+          contentContainerStyle={styles.artistsList} // Reuse
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[COLORS.primary]}
+              tintColor={COLORS.primary}
+            />
+          }
+          onEndReached={loadMoreAlbums}
+          onEndReachedThreshold={0.5}
+          removeClippedSubviews={false}
+          ListHeaderComponentStyle={{ zIndex: 1000 }}
+          ListHeaderComponent={
+            <View style={{ zIndex: 1000 }}>
+              {renderDropdown()}
+              {/* Album Premium Filter */}
+              <View style={styles.filterContainer}>
+                <TouchableOpacity
+                  style={[styles.filterButton, albumPremiumFilter === 'all' && styles.activeFilter]}
+                  onPress={() => setAlbumPremiumFilter('all')}
+                >
+                  <Text style={[styles.filterText, albumPremiumFilter === 'all' && styles.activeFilterText]}>
+                    Tất cả
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.filterButton, albumPremiumFilter === 'premium' && styles.activeFilter]}
+                  onPress={() => setAlbumPremiumFilter('premium')}
+                >
+                  <Text style={[styles.filterText, albumPremiumFilter === 'premium' && styles.activeFilterText]}>
+                    Premium
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.filterButton, albumPremiumFilter === 'free' && styles.activeFilter]}
+                  onPress={() => setAlbumPremiumFilter('free')}
+                >
+                  <Text style={[styles.filterText, albumPremiumFilter === 'free' && styles.activeFilterText]}>
+                    Miễn phí
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          }
+          ListFooterComponent={
+            albumCurrentPage * ITEMS_PER_PAGE < filteredAlbums.length ? (
+              <View style={styles.loadingMore}>
+                <ActivityIndicator size="small" color={COLORS.primary} />
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="disc-outline" size={80} color={COLORS.textSecondary} />
+              <Text style={styles.emptyText}>
+                {searchQuery ? 'Không tìm thấy album' : 'Chưa có album nào'}
+              </Text>
+            </View>
+          }
+        />
+      )}
+
+      {/* Genres Tab Content */}
+      {activeTab === 'genres' && (
+        <>
+          {(() => {
+            let filteredGenres = genres;
+            if (searchQuery.trim()) {
+              const query = searchQuery.toLowerCase();
+              filteredGenres = genres.filter(
+                genre => genre.name?.toLowerCase().includes(query) ||
+                         genre.description?.toLowerCase().includes(query)
+              );
+            }
+            return (
+              <FlatList
+                data={filteredGenres}
+                renderItem={renderGenreItem}
+                keyExtractor={item => item.genre_id.toString()}
+                contentContainerStyle={styles.genresList}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
+                    colors={[COLORS.primary]}
+                    tintColor={COLORS.primary}
+                  />
+                }
+                removeClippedSubviews={false}
+                ListHeaderComponentStyle={{ zIndex: 1000 }}
+                ListHeaderComponent={renderDropdown()}
+                ListEmptyComponent={
+                  <View style={styles.emptyContainer}>
+                    <Ionicons name="albums-outline" size={80} color={COLORS.textSecondary} />
+                    <Text style={styles.emptyText}>
+                      {searchQuery ? 'Không tìm thấy thể loại' : 'Chưa có thể loại nào'}
                     </Text>
-                  </TouchableOpacity>
-                  
-                  {/* Page Indicators */}
-                  <View style={styles.pageIndicators}>
-                    {[...Array(totalPages)].map((_, i) => (
-                      <TouchableOpacity
-                        key={i}
-                        style={[
-                          styles.pageIndicator,
-                          currentPage === i + 1 && styles.pageIndicatorActive
-                        ]}
-                        onPress={() => setCurrentPage(i + 1)}
-                      >
-                        <Text style={[
-                          styles.pageIndicatorText,
-                          currentPage === i + 1 && styles.pageIndicatorTextActive
-                        ]}>
-                          {i + 1}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
                   </View>
-                  
-                  <TouchableOpacity
-                    style={[styles.pageButton, currentPage === totalPages && styles.pageButtonDisabled]}
-                    onPress={() => currentPage < totalPages && setCurrentPage(currentPage + 1)}
-                    disabled={currentPage === totalPages}
-                  >
-                    <Text style={[styles.pageButtonText, currentPage === totalPages && styles.pageButtonTextDisabled]}>
-                      Sau
-                    </Text>
-                    <Ionicons
-                      name="chevron-forward"
-                      size={20}
-                      color={currentPage === totalPages ? COLORS.textMuted : COLORS.primary}
-                    />
-                  </TouchableOpacity>
-                </View>
-              )}
-              
-              {/* Swipe Hint */}
-              {totalPages > 1 && (
-                <Text style={styles.swipeHint}>
-                  💡 Vuốt sang trái/phải để chuyển trang
-                </Text>
-              )}
-            </View>
-          ) : (
-            <View style={styles.emptySection}>
-              <Ionicons name="musical-notes-outline" size={48} color={COLORS.textMuted} />
-              <Text style={styles.emptyText}>Không tìm thấy bài hát nào</Text>
-            </View>
-          )}
-        </View>
-      </ScrollView>
+                }
+              />
+            );
+          })()}
+        </>
+      )}
+
+      <MiniPlayer bottomOffset={0} />
+      <PremiumAccessModal
+        visible={showPremiumModal}
+        song={selectedSong}
+        songList={selectedSongList}
+        playSong={playSong}
+        onClose={() => setShowPremiumModal(false)}
+        onPurchaseSong={async () => {
+          // Handle song purchase
+          if (selectedSong) {
+            try {
+              await premiumService.purchaseSong(selectedSong.song_id);
+              setShowPremiumModal(false);
+              // Reload purchased songs
+              const res = await premiumService.getPurchasedSongs();
+              if (res.success && res.data) {
+                setPurchasedSongIds(new Set(res.data.map(s => s.song_id)));
+              }
+            } catch (error) {
+              console.error('Error purchasing song:', error);
+            }
+          }
+        }}
+        onSubscribePremium={() => {
+          setShowPremiumModal(false);
+          navigation.navigate('Premium');
+        }}
+      />
     </View>
   );
 };
@@ -358,173 +1046,322 @@ const styles = StyleSheet.create({
     margin: SIZES.padding,
     paddingHorizontal: SIZES.padding,
     borderRadius: SIZES.borderRadius,
-    gap: 8,
+    height: 48,
+  },
+  searchIcon: {
+    marginRight: 8,
   },
   searchInput: {
     flex: 1,
-    paddingVertical: 12,
+    color: COLORS.text,
     fontSize: SIZES.md,
-    color: COLORS.text,
   },
-  carouselSection: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: SIZES.lg,
-    fontWeight: '700',
-    color: COLORS.text,
-    marginHorizontal: SIZES.padding,
+  dropdownContainer: {
+    paddingHorizontal: SIZES.padding,
     marginBottom: 12,
+    zIndex: 100,
+    position: 'relative',
   },
-  albumCarouselItem: {
-    width: 112, // 150 * 0.75 = 112.5 (nhỏ hơn 25%)
-    marginLeft: SIZES.padding,
-  },
-  albumCarouselImage: {
-    width: 112,
-    height: 112,
-    borderRadius: SIZES.borderRadius,
-    marginBottom: 8,
-  },
-  albumCarouselTitle: {
-    color: COLORS.text,
-    fontSize: SIZES.sm,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  albumCarouselArtist: {
-    color: COLORS.textSecondary,
-    fontSize: SIZES.xs,
-  },
-  songsSection: {
-    marginBottom: 20,
-  },
-  sectionHeader: {
+  dropdownButton: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginHorizontal: SIZES.padding,
-    marginBottom: 12,
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: SIZES.borderRadius,
+    backgroundColor: COLORS.surface,
+    gap: 8,
   },
-  pageInfo: {
+  dropdownButtonText: {
+    flex: 1,
+    color: COLORS.text,
+    fontSize: SIZES.md,
+    fontWeight: '600',
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    top: '100%',
+    left: SIZES.padding,
+    right: SIZES.padding,
+    marginTop: 4,
+    borderRadius: SIZES.borderRadius,
+    backgroundColor: COLORS.surface,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 100,
+    zIndex: 1000,
+    overflow: 'hidden',
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  dropdownItemActive: {
+    backgroundColor: COLORS.primary + '20',
+  },
+  dropdownItemText: {
+    flex: 1,
+    color: COLORS.textSecondary,
+    fontSize: SIZES.md,
+    fontWeight: '600',
+  },
+  dropdownItemTextActive: {
+    color: COLORS.primary,
+  },
+  filterContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: SIZES.padding,
+    marginBottom: 12,
+    gap: 8,
+  },
+  filterButton: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: SIZES.borderRadius,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+  },
+  activeFilter: {
+    backgroundColor: COLORS.primary,
+  },
+  filterText: {
     color: COLORS.textSecondary,
     fontSize: SIZES.sm,
     fontWeight: '600',
+  },
+  activeFilterText: {
+    color: COLORS.text,
+  },
+  songsList: {
+    paddingBottom: 100,
   },
   songItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: SIZES.padding,
-    paddingVertical: 8,
-    marginHorizontal: SIZES.padding,
+    padding: SIZES.padding,
     backgroundColor: COLORS.surface,
-    borderRadius: SIZES.borderRadius,
+    marginHorizontal: SIZES.padding,
     marginBottom: 8,
+    borderRadius: SIZES.borderRadius,
   },
-  songImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 8,
+  songItemActive: {
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  songLeft: {
+    position: 'relative',
+  },
+  songCover: {
+    width: 60,
+    height: 60,
+    borderRadius: SIZES.borderRadius,
+    marginRight: 12,
+  },
+  playingIndicator: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: SIZES.borderRadius,
     marginRight: 12,
   },
   songInfo: {
     flex: 1,
   },
+  songTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
   songTitle: {
     color: COLORS.text,
     fontSize: SIZES.md,
     fontWeight: '600',
+    flex: 1,
+  },
+  songMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 4,
+    gap: 4,
   },
   songArtist: {
     color: COLORS.textSecondary,
     fontSize: SIZES.sm,
   },
-  songRating: {
+  metaDot: {
+    color: COLORS.textMuted,
+    fontSize: SIZES.sm,
+  },
+  songAlbum: {
+    color: COLORS.textMuted,
+    fontSize: SIZES.sm,
+    flex: 1,
+  },
+  songStats: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
     gap: 4,
   },
-  songRatingText: {
-    color: COLORS.text,
+  listenCount: {
+    color: COLORS.textMuted,
+    fontSize: SIZES.xs,
+  },
+  priceText: {
+    color: COLORS.warning,
     fontSize: SIZES.xs,
     fontWeight: '600',
   },
-  paginationContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginHorizontal: SIZES.padding,
-    marginTop: 16,
-    marginBottom: 8,
-    paddingVertical: 12,
+  ratingText: {
+    color: COLORS.warning,
+    fontSize: SIZES.xs,
+    fontWeight: '600',
   },
-  pageButton: {
+  purchasedBadge: {
+    marginLeft: 4,
+  },
+  playButton: {
+    padding: 8,
+  },
+  artistsList: {
+    paddingBottom: 100,
+  },
+  artistItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    padding: SIZES.padding,
     backgroundColor: COLORS.surface,
+    marginHorizontal: SIZES.padding,
+    marginBottom: 8,
     borderRadius: SIZES.borderRadius,
   },
-  pageButtonDisabled: {
-    opacity: 0.5,
+  artistImage: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    marginRight: 12,
   },
-  pageButtonText: {
-    color: COLORS.primary,
-    fontSize: SIZES.sm,
+  artistInfo: {
+    flex: 1,
+  },
+  artistName: {
+    color: COLORS.text,
+    fontSize: SIZES.md,
     fontWeight: '600',
+    marginBottom: 4,
   },
-  pageButtonTextDisabled: {
-    color: COLORS.textMuted,
-  },
-  pageIndicators: {
+  artistCountryRow: {
     flexDirection: 'row',
-    gap: 8,
     alignItems: 'center',
+    gap: 4,
+    marginBottom: 4,
   },
-  pageIndicator: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: COLORS.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border || 'rgba(255,255,255,0.1)',
-  },
-  pageIndicatorActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  pageIndicatorText: {
+  artistCountry: {
     color: COLORS.textSecondary,
     fontSize: SIZES.sm,
-    fontWeight: '600',
   },
-  pageIndicatorTextActive: {
-    color: COLORS.white,
+  artistStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
-  swipeHint: {
-    textAlign: 'center',
+  artistStatText: {
     color: COLORS.textMuted,
     fontSize: SIZES.xs,
-    marginTop: 8,
-    marginBottom: 16,
-    fontStyle: 'italic',
   },
-  emptySection: {
-    paddingVertical: 40,
+  followButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
     alignItems: 'center',
+  },
+  followingButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 100,
   },
   emptyText: {
     color: COLORS.textSecondary,
+    fontSize: SIZES.lg,
+    marginTop: 16,
+  },
+  loadingMore: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  genresList: {
+    paddingBottom: 100,
+  },
+  genreItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: SIZES.padding,
+    backgroundColor: COLORS.surface,
+    marginHorizontal: SIZES.padding,
+    marginBottom: 8,
+    borderRadius: SIZES.borderRadius,
+  },
+  genreIconContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: COLORS.primary + '20',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  genreAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginRight: 12,
+  },
+  genreInfo: {
+    flex: 1,
+  },
+  genreName: {
+    color: COLORS.text,
     fontSize: SIZES.md,
-    marginTop: 12,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  genreDescription: {
+    color: COLORS.textSecondary,
+    fontSize: SIZES.sm,
+  },
+  genreCountContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingLeft: 12,
+  },
+  genreCount: {
+    color: COLORS.primary,
+    fontSize: SIZES.lg,
+    fontWeight: '700',
+  },
+  genreCountLabel: {
+    color: COLORS.textMuted,
+    fontSize: SIZES.xs,
   },
 });
 
 export default SearchScreen;
-

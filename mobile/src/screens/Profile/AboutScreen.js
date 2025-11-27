@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../../config/theme';
+import MiniPlayer from '../../components/Player/MiniPlayer';
 
 const AboutScreen = ({ navigation }) => {
   const handleOpenLink = (url) => {
@@ -57,7 +58,11 @@ const AboutScreen = ({ navigation }) => {
   );
 
   return (
-    <ScrollView style={styles.container}>
+    <View style={styles.container}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+      >
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
@@ -150,7 +155,7 @@ const AboutScreen = ({ navigation }) => {
         />
 
         <InfoItem
-          icon="copyright-outline"
+          icon="information-circle-outline"
           title="Bản quyền"
           subtitle="© 2024 Music App"
           onPress={() => Alert.alert('Bản quyền', 'Tất cả quyền được bảo lưu')}
@@ -166,7 +171,9 @@ const AboutScreen = ({ navigation }) => {
           © 2024 Music App. Tất cả quyền được bảo lưu.
         </Text>
       </View>
-    </ScrollView>
+      </ScrollView>
+      <MiniPlayer bottomOffset={0} />
+    </View>
   );
 };
 
@@ -174,6 +181,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 100, // Space for MiniPlayer
   },
   header: {
     flexDirection: 'row',

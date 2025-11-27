@@ -43,9 +43,16 @@ export const songService = {
     return response.data;
   },
 
-  // Play song (update listen count)
-  playSong: async (songId) => {
-    const response = await api.post(`/songs/${songId}/play`);
+  // Play song (update listen count and record duration/completion)
+  playSong: async (songId, durationListened = null, isCompleted = null) => {
+    const body = {};
+    if (durationListened !== null) {
+      body.duration_listened = durationListened;
+    }
+    if (isCompleted !== null) {
+      body.is_completed = isCompleted;
+    }
+    const response = await api.post(`/songs/${songId}/play`, body);
     return response.data;
   },
 

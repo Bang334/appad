@@ -10,14 +10,23 @@ const {
 const uploadSong = multer({
   storage: songStorage,
   limits: {
-    fileSize: 20 * 1024 * 1024, // 20MB for audio
+    fileSize: 30 * 1024 * 1024, // 30MB for audio
   },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/m4a'];
+    const allowedTypes = [
+      'audio/mpeg', 
+      'audio/mp3', 
+      'audio/wav', 
+      'audio/ogg', 
+      'audio/m4a',
+      'audio/x-m4a',
+      'audio/mp4',
+      'video/mp4'
+    ];
     if (allowedTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid audio file type'), false);
+      cb(new Error('Invalid audio file type: ' + file.mimetype), false);
     }
   }
 });

@@ -12,7 +12,7 @@ import { useNavigation } from '@react-navigation/native';
 import { usePlayer } from '../../context/PlayerContext';
 import { COLORS, SIZES } from '../../config/theme';
 
-const MiniPlayer = () => {
+const MiniPlayer = ({ bottomOffset = 60 }) => {
   const navigation = useNavigation();
   const { currentSong, isPlaying, togglePlayPause, playNext, playPrevious, stopPlayer } = usePlayer();
 
@@ -31,7 +31,7 @@ const MiniPlayer = () => {
       colors={[COLORS.surface, COLORS.surfaceLight]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
-      style={styles.container}
+      style={[styles.container, { bottom: bottomOffset }]}
     >
       {/* Close Button */}
       <TouchableOpacity 
@@ -39,7 +39,7 @@ const MiniPlayer = () => {
         style={styles.closeButton}
         activeOpacity={0.7}
       >
-        <Ionicons name="close" size={20} color={COLORS.textSecondary} />
+        <Ionicons name="close" size={20} color={COLORS.textSecondary} style={styles.closeButton} />
       </TouchableOpacity>
 
       <TouchableOpacity 
@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
   closeButton: {
     position: 'absolute',
     top: 2,
-    right: 2,
+    right: 6,
     zIndex: 10,
     padding: 4,
     borderRadius: 10,

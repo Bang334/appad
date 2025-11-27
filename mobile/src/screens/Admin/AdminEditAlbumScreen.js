@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../../config/theme';
 import { adminService } from '../../services/adminService';
 import { artistService } from '../../services/artistService';
+import MiniPlayer from '../../components/Player/MiniPlayer';
 
 const AdminEditAlbumScreen = ({ route, navigation }) => {
   const { album } = route.params;
@@ -24,6 +25,8 @@ const AdminEditAlbumScreen = ({ route, navigation }) => {
     artist_id: album?.artist_id || '',
     release_date: album?.release_date ? new Date(album.release_date).toISOString().split('T')[0] : '',
     cover_url: album?.cover_url || '',
+    is_premium: album?.is_premium === 1,
+    price: album?.price ? album.price.toString() : '0',
   });
 
   useEffect(() => {
@@ -118,7 +121,11 @@ const AdminEditAlbumScreen = ({ route, navigation }) => {
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <View style={styles.container}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+      >
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
@@ -200,6 +207,39 @@ const AdminEditAlbumScreen = ({ route, navigation }) => {
           </ScrollView>
         </View>
 
+
+
+        {/* Premium Status */}
+        <View style={styles.inputSection}>
+          <View style={styles.switchContainer}>
+            <Text style={styles.sectionTitle}>Album Premium</Text>
+            <TouchableOpacity
+              style={[styles.switch, formData.is_premium && styles.switchActive]}
+              onPress={() => handleInputChange('is_premium', !formData.is_premium)}
+            >
+              <View style={[styles.switchThumb, formData.is_premium && styles.switchThumbActive]} />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.helperText}>
+            Album premium chỉ dành cho người dùng trả phí hoặc mua lẻ.
+          </Text>
+        </View>
+
+        {/* Price */}
+        {formData.is_premium && (
+          <View style={styles.inputSection}>
+            <Text style={styles.sectionTitle}>Giá bán (VNĐ)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="0"
+              value={formData.price}
+              onChangeText={(value) => handleInputChange('price', value)}
+              keyboardType="numeric"
+              placeholderTextColor={COLORS.textSecondary}
+            />
+          </View>
+        )}
+
         {/* Release Date */}
         <View style={styles.inputSection}>
           <Text style={styles.sectionTitle}>Ngày phát hành *</Text>
@@ -241,7 +281,9 @@ const AdminEditAlbumScreen = ({ route, navigation }) => {
           )}
         </View>
       </View>
-    </ScrollView>
+      </ScrollView>
+      <MiniPlayer bottomOffset={0} />
+    </View>
   );
 };
 
@@ -249,6 +291,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 100, // Space for MiniPlayer
   },
   header: {
     flexDirection: 'row',
@@ -388,6 +436,36 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: SIZES.md,
     fontWeight: '600',
+  },
+  switchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  switch: {
+    width: 50,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: COLORS.border,
+    padding: 2,
+  },
+  switchActive: {
+    backgroundColor: COLORS.primary,
+  },
+  switchThumb: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: COLORS.white,
+  },
+  switchThumbActive: {
+    transform: [{ translateX: 20 }],
+  },
+  helperText: {
+    color: COLORS.textSecondary,
+    fontSize: SIZES.sm,
+    marginTop: 4,
   },
 });
 

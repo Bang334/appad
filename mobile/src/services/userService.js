@@ -42,6 +42,14 @@ export const userService = {
     return response.data;
   },
 
+  // Update background video URL
+  updateBackgroundVideo: async (videoUrl) => {
+    const response = await api.put('/users/background-video', {
+      background_video_url: videoUrl
+    });
+    return response.data;
+  },
+
   // Get user statistics
   getUserStats: async () => {
     const response = await api.get('/users/stats');
@@ -63,6 +71,12 @@ export const userService = {
   // Get user listening history
   getUserHistory: async (limit = 20, offset = 0) => {
     const response = await api.get(`/users/history?limit=${limit}&offset=${offset}`);
+    return response.data;
+  },
+
+  // Register as artist
+  registerArtist: async (data) => {
+    const response = await api.post('/users/register-artist', data);
     return response.data;
   },
 };

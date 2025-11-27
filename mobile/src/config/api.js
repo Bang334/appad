@@ -1,30 +1,37 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import config from './environment';
 
-// API Base URL - Thay đổi theo môi trường của bạn
-// Android Emulator: http://10.0.2.2:5000/api
-// iOS Simulator: http://localhost:5000/api
-// Thiết bị thật (Expo Go): http://YOUR_IP:5000/api
+// API Base URL - Được quản lý tập trung trong environment.js
+// Để thay đổi môi trường, chỉnh sửa file src/config/environment.js
+export const API_BASE_URL = config.API_BASE_URL;
 
-// ⬇️ CHỌN 1 TRONG CÁC URL SAU (bỏ comment dòng cần dùng):
-
-// Cho EXPO GO (điện thoại thật):
-export const API_BASE_URL = 'http://192.168.31.105:5000/api'; 
-
-// Cho ANDROID EMULATOR:
-// export const API_BASE_URL = 'http://10.0.2.2:5000/api';
-
-// Cho iOS SIMULATOR:
-// export const API_BASE_URL = 'http://localhost:5000/api';
 
 // Create axios instance
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 60000, // Tăng timeout lên 60s
   headers: {
     'Content-Type': 'application/json',
   },
+  // Quan trọng: transformRequest để ngăn axios serialize FormData
+  transformRequest: [
+    (data, headers) => {
+      if (data instanceof FormData) {
+        // Nếu là FormData, để React Native tự xử lý Content-Type (kèm boundary)
+        // Chúng ta xóa header Content-Type nếu nó đã được set là application/json
+        if (headers['Content-Type'] === 'application/json') {
+          delete headers['Content-Type'];
+        }
+        return data;
+      }
+      return JSON.stringify(data);
+    },
+  ],
 });
+
+// Log API config for debugging
+console.log('API Base URL:', API_BASE_URL);
 
 // Request interceptor to add token
 api.interceptors.request.use(

@@ -11,7 +11,9 @@ const registerValidation = [
   body('username').trim().isLength({ min: 3, max: 50 }).withMessage('Username must be 3-50 characters'),
   body('email').isEmail().withMessage('Invalid email address'),
   body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-  body('full_name').optional().trim()
+  body('full_name').optional().trim(),
+  // artist_register là boolean optional; nếu true sẽ đăng ký tài khoản nghệ sĩ (chờ duyệt)
+  body('artist_register').optional().isBoolean().withMessage('artist_register must be boolean'),
 ];
 
 const loginValidation = [

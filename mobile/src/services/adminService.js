@@ -13,6 +13,11 @@ export const adminService = {
     return response.data;
   },
 
+  searchUsers: async (query) => {
+    const response = await api.get(`/admin/users/search?q=${query}`);
+    return response.data;
+  },
+
   getUserById: async (userId) => {
     const response = await api.get(`/admin/users/${userId}`);
     return response.data;
@@ -200,5 +205,109 @@ export const adminService = {
       console.error('Upload cover error:', error.message);
       throw error;
     }
+  },
+
+  // Artist Withdrawal Management
+  getAllWithdrawals: async (params = {}) => {
+    const { status, limit = 50, offset = 0 } = params;
+    const queryParams = new URLSearchParams({
+      limit,
+      offset,
+      ...(status && { status }),
+    }).toString();
+    const response = await api.get(`/admin/withdrawals?${queryParams}`);
+    return response.data;
+  },
+
+  getPendingWithdrawalsCount: async () => {
+    const response = await api.get('/admin/withdrawals/pending-count');
+    return response.data;
+  },
+
+  approveWithdrawal: async (withdrawalId, adminNote = '') => {
+    const response = await api.post(`/admin/withdrawals/${withdrawalId}/approve`, {
+      admin_note: adminNote,
+    });
+    return response.data;
+  },
+
+  rejectWithdrawal: async (withdrawalId, adminNote) => {
+    const response = await api.post(`/admin/withdrawals/${withdrawalId}/reject`, {
+      admin_note: adminNote,
+    });
+    return response.data;
+  },
+
+  // Transaction Management (Deposit approvals)
+  getAllTransactions: async (params = {}) => {
+    const { type, status, user_id, limit = 50, offset = 0 } = params;
+    const queryParams = new URLSearchParams({
+      limit,
+      offset,
+      ...(type && { type }),
+      ...(status && { status }),
+      ...(user_id && { user_id }),
+    }).toString();
+    const response = await api.get(`/admin/transactions?${queryParams}`);
+    return response.data;
+  },
+
+  getPendingDeposits: async (params = {}) => {
+    const { limit = 50, offset = 0 } = params;
+    const queryParams = new URLSearchParams({
+      limit,
+      offset,
+    }).toString();
+    const response = await api.get(`/admin/transactions/pending-deposits?${queryParams}`);
+    return response.data;
+  },
+
+  getPendingDepositsCount: async () => {
+    const response = await api.get('/admin/transactions/pending-deposits/count');
+    return response.data;
+  },
+
+  approveDeposit: async (transactionId, adminNote = '') => {
+    const response = await api.post(`/admin/transactions/${transactionId}/approve`, {
+      admin_note: adminNote,
+    });
+    return response.data;
+  },
+
+  rejectDeposit: async (transactionId, adminNote) => {
+    const response = await api.post(`/admin/transactions/${transactionId}/reject`, {
+      admin_note: adminNote,
+    });
+    return response.data;
+  },
+
+  // System Notifications
+  createSystemNotification: async (title, message, user_ids = null, data = null) => {
+    const response = await api.post('/admin/notifications/system', {
+      title,
+      message,
+      user_ids,
+      data
+    });
+    return response.data;
+  },
+
+  // Artist Membership Management
+  getAllMemberships: async (params = {}) => {
+    const { limit = 50, offset = 0, artist_id, status, search } = params;
+    const queryParams = new URLSearchParams({
+      limit,
+      offset,
+      ...(artist_id && { artist_id }),
+      ...(status && { status }),
+      ...(search && { search }),
+    }).toString();
+    const response = await api.get(`/admin/memberships?${queryParams}`);
+    return response.data;
+  },
+
+  getMembershipStats: async () => {
+    const response = await api.get('/admin/memberships/stats');
+    return response.data;
   },
 };
