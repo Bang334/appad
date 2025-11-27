@@ -18,6 +18,14 @@ import { usePlayer } from '../../context/PlayerContext';
 import { COLORS, SIZES } from '../../config/theme';
 import MiniPlayer from '../../components/Player/MiniPlayer';
 
+const formatDuration = (seconds) => {
+  if (seconds == null) return '0:00';
+  const totalSeconds = Math.floor(seconds);
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
 const PlaylistDetailScreen = ({ navigation, route }) => {
   const { playlistId, playlistName } = route.params;
   const [playlist, setPlaylist] = useState(null);
@@ -43,17 +51,23 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
     }
   };
 
-  const handlePlaySong = async (song, index) => {
-    // If clicking on currently playing song, toggle play/pause
+  const handlePlaySong = async (song, index, options = {}) => {
+    const { navigateToFullPlayer = true } = options;
+
     if (currentSong?.song_id === song.song_id) {
-      togglePlayPause();
-      // Don't navigate, just toggle
-    } else {
-      // Play new song and navigate to FullPlayer
-      playSong(song, songs, index, playlist);
-      // Save flag to localStorage that we're playing from playlist
-      await AsyncStorage.setItem('isPlayingPlaylist', '1');
-      await AsyncStorage.setItem('currentPlaylistId', playlistId.toString());
+      if (navigateToFullPlayer) {
+        navigation.navigate('FullPlayer');
+      } else {
+        togglePlayPause();
+      }
+      return;
+    }
+
+    playSong(song, songs, index, playlist);
+    await AsyncStorage.setItem('isPlayingPlaylist', '1');
+    await AsyncStorage.setItem('currentPlaylistId', playlistId.toString());
+
+    if (navigateToFullPlayer) {
       navigation.navigate('FullPlayer');
     }
   };
@@ -155,10 +169,13 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
 
   const renderSongItem = ({ item, index, drag, isActive }) => {
     const isCurrentSong = currentSong?.song_id === item.song_id;
+    const gradientColors = isCurrentSong
+      ? ['#2B124C', '#08040F']
+      : ['#161616', '#050505'];
     
     return (
       <ScaleDecorator>
-        <View style={[styles.songItem, isActive && styles.songItemActive]}>
+        <View style={styles.songItem}>
           <TouchableOpacity
             style={styles.dragHandle}
             onLongPress={drag}
@@ -171,30 +188,59 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
             />
           </TouchableOpacity>
           
-          <TouchableOpacity
-            style={styles.songContent}
-            onPress={() => handlePlaySong(item, index)}
-            activeOpacity={0.7}
-            disabled={isActive}
-          >
-            <Image
-              source={{ uri: item.cover_url || 'https://via.placeholder.com/60' }}
-              style={styles.songImage}
-            />
-            <View style={styles.songInfo}>
-              <Text style={styles.songTitle} numberOfLines={1}>
-                {item.title}
-              </Text>
-              <Text style={styles.songArtist} numberOfLines={1}>
-                {item.artist_name || 'Unknown Artist'}
-              </Text>
-            </View>
-            {isCurrentSong && isPlaying && (
-              <Ionicons name="volume-high" size={20} color={COLORS.primary} />
-            )}
-            {!isCurrentSong && (
-              <Ionicons name="play-circle" size={32} color={COLORS.primary} />
-            )}
+        <TouchableOpacity
+          style={styles.songContent}
+          onPress={() => handlePlaySong(item, index, { navigateToFullPlayer: true })}
+          activeOpacity={0.8}
+          disabled={isActive}
+        >
+            <LinearGradient
+              colors={gradientColors}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.songCard, (isCurrentSong || isActive) && styles.songCardActive]}
+            >
+              <Image
+                source={{ uri: item.cover_url || 'https://via.placeholder.com/60' }}
+                style={styles.songImage}
+              />
+              <View style={styles.songInfo}>
+                <Text style={styles.songTitle} numberOfLines={1}>
+                  {item.title}
+                </Text>
+                <Text style={styles.songArtist} numberOfLines={1}>
+                  {item.artist_name || 'Unknown Artist'}
+                  {item.album_title ? ` • ${item.album_title}` : ''}
+                </Text>
+                <View style={styles.songMeta}>
+                  <Ionicons name="time-outline" size={12} color="#94A3B8" />
+                  <Text style={styles.songMetaText}>{formatDuration(item.duration)}</Text>
+                  <Text style={styles.metaSeparator}>•</Text>
+                  <Ionicons name="headset" size={12} color="#94A3B8" />
+                  <Text style={styles.songMetaText}>{item.listen_count?.toLocaleString() || '0'}</Text>
+                  {item.average_rating != null && (
+                    <>
+                      <Text style={styles.metaSeparator}>•</Text>
+                      <Ionicons name="star" size={12} color={COLORS.warning} />
+                      <Text style={styles.songMetaText}>{Number(item.average_rating).toFixed(1)}</Text>
+                    </>
+                  )}
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.quickPlayButton}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  handlePlaySong(item, index, { navigateToFullPlayer: false });
+                }}
+              >
+                <Ionicons
+                  name={isCurrentSong && isPlaying ? 'pause-circle' : 'play-circle'}
+                  size={30}
+                  color={COLORS.primary}
+                />
+              </TouchableOpacity>
+            </LinearGradient>
           </TouchableOpacity>
           
           <TouchableOpacity
@@ -202,7 +248,7 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
             style={styles.removeButton}
             disabled={isActive}
           >
-            <Ionicons name="close-circle" size={24} color={COLORS.error} />
+            <Ionicons name="close-circle" size={22} color={COLORS.error} />
           </TouchableOpacity>
         </View>
       </ScaleDecorator>
@@ -231,7 +277,6 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
         </TouchableOpacity>
         
         <View style={styles.headerContent}>
-          <Ionicons name="musical-notes" size={64} color={COLORS.white} />
           <Text style={styles.playlistName}>{playlist?.name || playlistName}</Text>
           <Text style={styles.playlistInfo}>
             {songs.length} bài hát
@@ -303,18 +348,20 @@ const styles = StyleSheet.create({
     fontSize: SIZES.md,
   },
   header: {
-    paddingTop: 50,
+    paddingTop: 24,
     paddingBottom: 24,
     paddingHorizontal: SIZES.padding,
   },
   backButton: {
+    position: 'relative',
+    top:25,
     width: 40,
     height: 40,
     justifyContent: 'center',
   },
   headerContent: {
     alignItems: 'center',
-    marginTop: 16,
+    marginTop: 0,
   },
   playlistName: {
     color: COLORS.white,
@@ -386,14 +433,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginHorizontal: SIZES.padding,
-    marginVertical: 4,
-    backgroundColor: COLORS.surface,
-    borderRadius: SIZES.borderRadius,
+    marginVertical: 6,
     paddingRight: 8,
   },
-  songItemActive: {
-    backgroundColor: COLORS.card,
-    opacity: 0.8,
+  songCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: SIZES.borderRadius,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+  },
+  songCardActive: {
+    borderColor: COLORS.primary,
   },
   dragHandle: {
     padding: 8,
@@ -403,26 +461,44 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 8,
   },
   songImage: {
-    width: 60,
-    height: 60,
+    width: 56,
+    height: 56,
     borderRadius: 8,
     marginRight: 12,
   },
   songInfo: {
     flex: 1,
+    marginRight: 8,
   },
   songTitle: {
-    color: COLORS.text,
+    color: '#F8FAFC',
     fontSize: SIZES.md,
     fontWeight: '700',
     marginBottom: 4,
   },
   songArtist: {
-    color: COLORS.textSecondary,
+    color: '#E2E8F0',
     fontSize: SIZES.sm,
+    flexWrap: 'wrap',
+  },
+  songMeta: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+  },
+  songMetaText: {
+    color: '#CBD5F5',
+    fontSize: SIZES.xs,
+    fontWeight: '600',
+  },
+  metaSeparator: {
+    color: '#94A3B8',
+  },
+  quickPlayButton: {
+    paddingLeft: 8,
   },
   removeButton: {
     padding: 8,

@@ -133,15 +133,16 @@ const AlbumDetailScreen = ({ route, navigation }) => {
       }
     }
 
+    // Always open FullPlayer first for faster UX
+    navigation.navigate('FullPlayer');
+
     // Play song if different from current
     if (currentSong?.song_id !== song.song_id) {
-      playSong(song, songs, index);
+      await playSong(song, songs, index);
       // Save flag to localStorage that we're playing from album
       await AsyncStorage.setItem('isPlayingAlbum', '1');
       await AsyncStorage.setItem('currentAlbumId', albumId.toString());
     }
-    // Always open FullPlayer
-    navigation.navigate('FullPlayer');
   };
 
   const handlePlayAll = async () => {
@@ -163,11 +164,11 @@ const AlbumDetailScreen = ({ route, navigation }) => {
         }
       }
 
-      playSong(songs[0], songs, 0);
+      navigation.navigate('FullPlayer');
+      await playSong(songs[0], songs, 0);
       // Save flag to localStorage that we're playing from album
       await AsyncStorage.setItem('isPlayingAlbum', '1');
       await AsyncStorage.setItem('currentAlbumId', albumId.toString());
-      navigation.navigate('FullPlayer');
     }
   };
 

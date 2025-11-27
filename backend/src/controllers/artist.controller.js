@@ -507,7 +507,7 @@ class ArtistController {
           duration = Math.round(file.format.duration);
         } else {
           // If not in response, fetch the file and extract duration
-          duration = await this.extractDurationFromUrl(fileUrl);
+          duration = await ArtistController.extractDurationFromUrl(fileUrl);
         }
       } catch (durationError) {
         console.error('Error extracting duration:', durationError);
@@ -628,7 +628,7 @@ class ArtistController {
       // Auto-extract duration if file_url is provided but duration is missing
       if (songData.file_url && !songData.duration && (songData.file_url.startsWith('http://') || songData.file_url.startsWith('https://'))) {
         try {
-          const extractedDuration = await this.extractDurationFromUrl(songData.file_url);
+          const extractedDuration = await ArtistController.extractDurationFromUrl(songData.file_url);
           if (extractedDuration && extractedDuration > 0) {
             songData.duration = extractedDuration;
             console.log(`✅ Auto-extracted duration: ${extractedDuration} seconds for song: ${songData.title}`);
@@ -721,7 +721,7 @@ class ArtistController {
       // Auto-extract duration if file_url is provided/updated but duration is missing
       if (songData.file_url && !songData.duration && (songData.file_url.startsWith('http://') || songData.file_url.startsWith('https://'))) {
         try {
-          const extractedDuration = await this.extractDurationFromUrl(songData.file_url);
+          const extractedDuration = await ArtistController.extractDurationFromUrl(songData.file_url);
           if (extractedDuration && extractedDuration > 0) {
             songData.duration = extractedDuration;
             console.log(`✅ Auto-extracted duration: ${extractedDuration} seconds for song update: ${song_id}`);

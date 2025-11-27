@@ -136,8 +136,9 @@ const TabNavigator = () => {
           tabBarActiveTintColor: COLORS.primary,
           tabBarInactiveTintColor: COLORS.textSecondary,
           tabBarStyle: {
-            backgroundColor: COLORS.surface,
-            borderTopColor: COLORS.card,
+            backgroundColor: '#050505',
+            borderTopColor: 'rgba(255,255,255,0.08)',
+            borderTopWidth: 1,
             height: 60,
             paddingBottom: 8,
           },

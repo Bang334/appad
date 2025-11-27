@@ -151,15 +151,15 @@ const ArtistDetailScreen = ({ route, navigation }) => {
       }
     }
 
-    // Play song and navigate to FullPlayer
-    playSong(song, songs, index);
+    // Navigate first for faster UX, then start playback
     navigation.navigate('FullPlayer');
+    await playSong(song, songs, index);
   };
 
-  const handlePlayAllSongs = () => {
+  const handlePlayAllSongs = async () => {
     if (songs.length > 0) {
-      playSong(songs[0], songs, 0);
       navigation.navigate('FullPlayer');
+      await playSong(songs[0], songs, 0);
     }
   };
 

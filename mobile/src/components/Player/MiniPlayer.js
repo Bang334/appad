@@ -11,10 +11,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { usePlayer } from '../../context/PlayerContext';
 import { COLORS, SIZES } from '../../config/theme';
+import Slider from '@react-native-community/slider';
 
 const MiniPlayer = ({ bottomOffset = 60 }) => {
   const navigation = useNavigation();
-  const { currentSong, isPlaying, togglePlayPause, playNext, playPrevious, stopPlayer } = usePlayer();
+  const { currentSong, isPlaying, duration, position, togglePlayPause, playNext, playPrevious, stopPlayer, seekTo } = usePlayer();
 
   if (!currentSong) return null;
 
@@ -26,92 +27,125 @@ const MiniPlayer = ({ bottomOffset = 60 }) => {
     stopPlayer();
   };
 
+  const formatTime = (ms) => {
+    const totalSeconds = Math.floor((ms || 0) / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const progress = duration > 0 ? Math.min(position / duration, 1) : 0;
+
   return (
-    <LinearGradient
-      colors={[COLORS.surface, COLORS.surfaceLight]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
+    <View
       style={[styles.container, { bottom: bottomOffset }]}
     >
-      {/* Close Button */}
-      <TouchableOpacity 
-        onPress={handleClose} 
-        style={styles.closeButton}
-        activeOpacity={0.7}
-      >
-        <Ionicons name="close" size={20} color={COLORS.textSecondary} style={styles.closeButton} />
-      </TouchableOpacity>
+      <View style={styles.contentRow}>
+        {/* Close Button */}
+        <TouchableOpacity 
+          onPress={handleClose} 
+          style={styles.closeButton}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="close" size={20} color={COLORS.textSecondary} style={styles.closeButton} />
+        </TouchableOpacity>
 
-      <TouchableOpacity 
-        onPress={openFullPlayer} 
-        style={styles.songInfo}
-        activeOpacity={0.8}
-      >
-        <Image
-          source={{ uri: currentSong.cover_url || 'https://via.placeholder.com/50' }}
-          style={styles.cover}
-        />
-        
-        <View style={styles.info}>
-          <Text style={styles.title} numberOfLines={1}>
-            {currentSong.title}
-          </Text>
-          <Text style={styles.artist} numberOfLines={1}>
-            {currentSong.artist_name || 'Unknown Artist'}
-          </Text>
+        <TouchableOpacity 
+          onPress={openFullPlayer} 
+          style={styles.songInfo}
+          activeOpacity={0.8}
+        >
+          <Image
+            source={{ uri: currentSong.cover_url || 'https://via.placeholder.com/50' }}
+            style={styles.cover}
+          />
+          
+          <View style={styles.info}>
+            <Text style={styles.title} numberOfLines={1}>
+              {currentSong.title}
+            </Text>
+            <Text style={styles.artist} numberOfLines={1}>
+              {currentSong.artist_name || 'Unknown Artist'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        <View style={styles.controls}>
+          <TouchableOpacity onPress={playPrevious} style={styles.controlButton}>
+            <Ionicons name="play-skip-back" size={24} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={togglePlayPause} style={styles.playButton}>
+            <LinearGradient
+              colors={COLORS.gradient.primary}
+              style={styles.playButtonGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <Ionicons
+                name={isPlaying ? 'pause' : 'play'}
+                size={20}
+                color={COLORS.white}
+              />
+            </LinearGradient>
+          </TouchableOpacity>
+          
+          <TouchableOpacity onPress={playNext} style={styles.controlButton}>
+            <Ionicons name="play-skip-forward" size={24} color={COLORS.textSecondary} />
+          </TouchableOpacity>
         </View>
-      </TouchableOpacity>
-
-      <View style={styles.controls}>
-        <TouchableOpacity onPress={playPrevious} style={styles.controlButton}>
-          <Ionicons name="play-skip-back" size={24} color={COLORS.textSecondary} />
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={togglePlayPause} style={styles.playButton}>
-          <LinearGradient
-            colors={COLORS.gradient.primary}
-            style={styles.playButtonGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <Ionicons
-              name={isPlaying ? 'pause' : 'play'}
-              size={20}
-              color={COLORS.white}
-            />
-          </LinearGradient>
-        </TouchableOpacity>
-        
-        <TouchableOpacity onPress={playNext} style={styles.controlButton}>
-          <Ionicons name="play-skip-forward" size={24} color={COLORS.textSecondary} />
-        </TouchableOpacity>
       </View>
-    </LinearGradient>
+
+      <View style={styles.progressWrapper}>
+        <Slider
+          style={styles.slider}
+          minimumValue={0}
+          maximumValue={duration || 1}
+          value={position}
+          minimumTrackTintColor={COLORS.primary}
+          maximumTrackTintColor={COLORS.border}
+          thumbTintColor={COLORS.primary}
+          onSlidingComplete={seekTo}
+        />
+        <View style={styles.progressTimes}>
+          <Text style={styles.progressTime}>{formatTime(position)}</Text>
+          <Text style={styles.progressTime}>{formatTime(duration)}</Text>
+        </View>
+      </View>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
+    maxHeight: 100,  
     position: 'absolute',
     bottom: 60,
     left: 0,
     right: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
+    paddingVertical: 10,
     paddingHorizontal: SIZES.padding,
-    paddingVertical: 12,
+    backgroundColor: '#050505',
     borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+    borderTopColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 10,
+    gap: 8,
+  },
+  contentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   closeButton: {
     position: 'absolute',
-    top: 2,
-    right: 6,
+    top: -3,
+    right: -3,
     zIndex: 10,
     padding: 4,
     borderRadius: 10,
@@ -148,11 +182,31 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: SIZES.sm,
   },
+  progressWrapper: {
+    width: '100%',
+    marginTop: 0,
+    position: 'relative',
+    top: -10,
+  },
+  slider: {
+    width: '100%',
+    height: 20,
+  },
+  progressTimes: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    position: 'relative',
+    top: -5,
+  },
+  progressTime: {
+    fontSize: SIZES.xs,
+    color: COLORS.textMuted,
+  },
   controls: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    marginRight: 20,
+    marginRight: 40,
   },
   controlButton: {
     padding: 6,

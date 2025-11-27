@@ -43,6 +43,7 @@ const FullPlayerScreen = ({ navigation, route }) => {
   const [successMessage, setSuccessMessage] = useState('');
   const [isPlayingAlbum, setIsPlayingAlbum] = useState(false);
   const [isPlayingPlaylist, setIsPlayingPlaylist] = useState(false);
+  const nextSongsRequestIdRef = React.useRef(0);
 
   const coverScale = new Animated.Value(1);
 
@@ -65,15 +66,20 @@ const FullPlayerScreen = ({ navigation, route }) => {
   }, []);
 
   useEffect(() => {
+    if (!currentSong) return;
     loadNextSongs();
-  }, [currentSong, currentPlaylist, playlist, currentIndex]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSong?.song_id, currentPlaylist?.playlist_id, playlist?.length, currentIndex]);
 
   useEffect(() => {
     checkFavoriteStatus();
   }, [currentSong]);
 
   const loadNextSongs = async () => {
+    const requestId = Date.now();
+    nextSongsRequestIdRef.current = requestId;
     setLoadingNextSongs(true);
+    setNextSongs([]); // ensure stale list cleared immediately
     try {
       // Check if playing from playlist
       const isPlayingPlaylistFlag = await AsyncStorage.getItem('isPlayingPlaylist');
@@ -84,7 +90,9 @@ const FullPlayerScreen = ({ navigation, route }) => {
         setIsPlayingAlbum(false);
         // Load next songs from current playlist
         const nextSongsFromPlaylist = playlist.slice(currentIndex + 1, currentIndex + 6);
-        setNextSongs(nextSongsFromPlaylist);
+        if (nextSongsRequestIdRef.current === requestId) {
+          setNextSongs(nextSongsFromPlaylist);
+        }
       } else {
         setIsPlayingPlaylist(false);
         // Check if playing from album
@@ -105,36 +113,48 @@ const FullPlayerScreen = ({ navigation, route }) => {
             const nextSongsFromAlbum = albumSongs
               .slice(currentSongIndex + 1, currentSongIndex + 6)
               .filter(song => song.song_id !== currentSong?.song_id);
-            setNextSongs(nextSongsFromAlbum);
+            if (nextSongsRequestIdRef.current === requestId) {
+              setNextSongs(nextSongsFromAlbum);
+            }
           } else {
             setIsPlayingAlbum(false);
             // Fallback to trending if current song not found in album
             const response = await songService.getTrendingSongs(6);
             const filteredSongs = response.data?.filter(song => song.song_id !== currentSong?.song_id) || [];
-            setNextSongs(filteredSongs.slice(0, 5));
+            if (nextSongsRequestIdRef.current === requestId) {
+              setNextSongs(filteredSongs.slice(0, 5));
+            }
           }
         } else {
           setIsPlayingAlbum(false);
           if (currentPlaylist && playlist.length > 0) {
             // Load next songs from current playlist
             const nextSongsFromPlaylist = playlist.slice(currentIndex + 1, currentIndex + 4);
-            setNextSongs(nextSongsFromPlaylist);
+            if (nextSongsRequestIdRef.current === requestId) {
+              setNextSongs(nextSongsFromPlaylist);
+            }
           } else {
             // Load trending songs as "You might also like"
             const response = await songService.getTrendingSongs(6);
             // Filter out current song
             const filteredSongs = response.data?.filter(song => song.song_id !== currentSong?.song_id) || [];
-            setNextSongs(filteredSongs.slice(0, 5));
+            if (nextSongsRequestIdRef.current === requestId) {
+              setNextSongs(filteredSongs.slice(0, 5));
+            }
           }
         }
       }
     } catch (error) {
       console.error('Error loading next songs:', error);
-      setNextSongs([]);
+      if (nextSongsRequestIdRef.current === requestId) {
+        setNextSongs([]);
+      }
       setIsPlayingAlbum(false);
       setIsPlayingPlaylist(false);
     } finally {
-      setLoadingNextSongs(false);
+      if (nextSongsRequestIdRef.current === requestId) {
+        setLoadingNextSongs(false);
+      }
     }
   };
 
@@ -243,9 +263,27 @@ WHERE song_id = ${currentSong.song_id};`;
                 }
               }}
             >
-              <Text style={styles.artistName}>
-                {currentSong.artist_name || 'Unknown Artist'}
-              </Text>
+          <View style={styles.artistRow}>
+            <Text style={styles.artistName}>
+              {currentSong.artist_name || 'Unknown Artist'}
+            </Text>
+            {currentSong.genre_name && (
+              <TouchableOpacity
+                style={styles.genreTag}
+                onPress={() => {
+                  if (currentSong.genre_id) {
+                    navigation.navigate('GenreDetail', { genreId: currentSong.genre_id });
+                  }
+                }}
+                activeOpacity={currentSong.genre_id ? 0.7 : 1}
+              >
+                <Ionicons name="pricetag" size={14} color={COLORS.primary} />
+                <Text style={styles.genreText}>
+                  {currentSong.genre_name}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
             </TouchableOpacity>
             <View style={styles.songMeta}>
               <TouchableOpacity
@@ -445,46 +483,75 @@ WHERE song_id = ${currentSong.song_id};`;
                 <Text style={styles.loadingText}>Đang tải...</Text>
               </View>
             ) : nextSongs.length > 0 ? (
-              nextSongs.map((song, index) => (
-                <TouchableOpacity 
-                  key={song.song_id} 
-                  style={styles.nextSongItem}
-                  onPress={() => {
-                    // Play the selected song
-                    if (currentPlaylist && playlist.length > 0) {
-                      // Play from playlist
-                      const newIndex = playlist.findIndex(s => s.song_id === song.song_id);
-                      if (newIndex !== -1) {
-                        playSong(song, playlist, newIndex, currentPlaylist);
-                      }
-                    } else {
-                      // Play random song
-                      playSong(song);
+              nextSongs.map((song) => {
+                const isFromRecommendations = !currentPlaylist && !isPlayingAlbum && !isPlayingPlaylist;
+                const isAlbumSuggestion = !!song.album_id;
+                const gradientColors = isAlbumSuggestion
+                  ? ['#2B124C', '#06030E']
+                  : ['#141414', '#050505'];
+
+                const handlePress = () => {
+                  if (currentPlaylist && playlist.length > 0) {
+                    const newIndex = playlist.findIndex(s => s.song_id === song.song_id);
+                    if (newIndex !== -1) {
+                      playSong(song, playlist, newIndex, currentPlaylist);
+                      return;
                     }
-                  }}
-                >
-                  <Image
-                    source={{ uri: song.cover_url || 'https://via.placeholder.com/40' }}
-                    style={styles.nextSongImage}
-                  />
-                  <View style={styles.nextSongInfo}>
-                    <Text style={styles.nextSongTitle} numberOfLines={1}>
-                      {song.title}
-                    </Text>
-                    <Text style={styles.nextSongArtist} numberOfLines={1}>
-                      {song.artist_name}
-                      {song.album_title ? ` • ${song.album_title}` : ''}
-                    </Text>
-                    <View style={styles.nextSongMetaRow}>
-                      <Ionicons name="time-outline" size={12} color={COLORS.textMuted} style={{ marginRight: 4 }} />
-                      <Text style={styles.nextSongDuration}>
-                        {formatTime(song.duration > 10000 ? song.duration : song.duration * 1000)}
-                      </Text>
-                    </View>
-                  </View>
-                  <Ionicons name="play-circle-outline" size={28} color={COLORS.primary} />
-                </TouchableOpacity>
-              ))
+                  }
+                  playSong(song);
+                };
+
+                return (
+                  <TouchableOpacity
+                    key={song.song_id}
+                    style={styles.nextSongWrapper}
+                    activeOpacity={0.85}
+                    onPress={handlePress}
+                  >
+                    <LinearGradient
+                      colors={gradientColors}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={[
+                        styles.nextSongItem,
+                        isFromRecommendations && styles.recommendationCard,
+                        isAlbumSuggestion && styles.albumSuggestionCard,
+                      ]}
+                    >
+                      <Image
+                        source={{ uri: song.cover_url || 'https://via.placeholder.com/40' }}
+                        style={styles.nextSongImage}
+                      />
+                      <View style={styles.nextSongInfo}>
+                        <Text style={styles.nextSongTitle} numberOfLines={1}>
+                          {song.title}
+                        </Text>
+                        <Text style={styles.nextSongArtist} numberOfLines={2}>
+                          <Text style={styles.nextSongArtistName}>{song.artist_name}</Text>
+                          {song.album_title ? (
+                            <>
+                              <Text style={styles.metaSeparator}> • </Text>
+                              <Text style={[
+                                styles.nextSongAlbum,
+                                isAlbumSuggestion && styles.nextSongAlbumHighlight
+                              ]}>
+                                {song.album_title}
+                              </Text>
+                            </>
+                          ) : null}
+                        </Text>
+                        <View style={styles.nextSongMetaRow}>
+                          <Ionicons name="time-outline" size={12} color="#BCC4E2" style={{ marginRight: 4 }} />
+                          <Text style={styles.nextSongDuration}>
+                            {formatTime(song.duration > 10000 ? song.duration : song.duration * 1000)}
+                          </Text>
+                        </View>
+                      </View>
+                      <Ionicons name="play-circle-outline" size={28} color={COLORS.primary} />
+                    </LinearGradient>
+                  </TouchableOpacity>
+                );
+              })
             ) : (
               <View style={styles.emptyNextContainer}>
                 <Text style={styles.emptyNextText}>Không có bài hát nào</Text>
@@ -615,6 +682,27 @@ const styles = StyleSheet.create({
     fontSize: SIZES.lg,
     textAlign: 'center',
     fontWeight: '500',
+  },
+  artistRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    marginBottom: 8,
+  },
+  genreTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: COLORS.primary + '20',
+    gap: 4,
+  },
+  genreText: {
+    color: COLORS.primary,
+    fontSize: SIZES.sm,
+    fontWeight: '600',
   },
   ratingContainer: {
     flexDirection: 'row',
@@ -761,20 +849,28 @@ const styles = StyleSheet.create({
     fontSize: SIZES.md,
     marginTop: 12,
   },
+  nextSongWrapper: {
+    marginBottom: 12,
+  },
   nextSongItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
+    padding: 14,
     borderRadius: SIZES.borderRadius,
-    marginBottom: 12,
-    backgroundColor: COLORS.surfaceLight,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    gap: 14,
+  },
+  recommendationCard: {
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  albumSuggestionCard: {
+    borderColor: 'rgba(192,132,252,0.65)',
   },
   nextSongImage: {
     width: 48,
@@ -786,23 +882,39 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
   },
-  nextSongTitle: {
-    color: COLORS.text,
-    fontSize: SIZES.md,
+  nextSongArtistName: {
+    color: '#F1F5F9',
     fontWeight: '600',
+  },
+  metaSeparator: {
+    color: '#94A3B8',
+  },
+  nextSongAlbum: {
+    color: '#CBD5F5',
+    fontStyle: 'italic',
+  },
+  nextSongAlbumHighlight: {
+    color: '#C084FC',
+    fontWeight: '700',
+  },
+  nextSongTitle: {
+    color: '#F8FAFC',
+    fontSize: SIZES.md,
+    fontWeight: '700',
     marginBottom: 4,
   },
   nextSongArtist: {
-    color: COLORS.textSecondary,
+    color: '#E2E8F0',
     fontSize: SIZES.sm,
     marginBottom: 4,
+    flexWrap: 'wrap',
   },
   nextSongMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   nextSongDuration: {
-    color: COLORS.textMuted,
+    color: '#CBD5F5',
     fontSize: SIZES.xs,
   },
   emptyNextContainer: {

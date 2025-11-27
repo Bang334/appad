@@ -19,7 +19,7 @@ import PremiumBadge from '../../components/Common/PremiumBadge';
 import PremiumAccessModal from '../../components/Common/PremiumAccessModal';
 import AccessBadge from '../../components/Common/AccessBadge';
 import { premiumService } from '../../services/premiumService';
-
+import { LinearGradient } from 'expo-linear-gradient';
 const HomeScreen = ({ navigation }) => {
   const [trendingSongs, setTrendingSongs] = useState([]);
   const [recentSongs, setRecentSongs] = useState([]);
@@ -186,8 +186,9 @@ const HomeScreen = ({ navigation }) => {
       }
     }
 
-    // Play song and navigate to FullPlayer
-    playSong(song, list, index);
+    // Navigate first for faster UX, then start playback
+    navigation.navigate('FullPlayer');
+    await playSong(song, list, index);
     
     // Update access type if we just checked it
     try {
@@ -202,19 +203,27 @@ const HomeScreen = ({ navigation }) => {
       // Silent fail
     }
     
-    navigation.navigate('FullPlayer');
   };
 
   const renderSongItem = (song, index, list) => {
     const isCurrentSong = currentSong?.song_id === song.song_id;
 
+    const gradientColors = isCurrentSong
+      ? ['#2B124C', '#08040F']
+      : ['#161616', '#050505'];
+
     return (
       <View key={song.song_id} style={styles.songItemWrapper}>
-        <View style={[styles.songItem, isCurrentSong && styles.songItemActive]}>
+        <LinearGradient
+          colors={gradientColors}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.songItem, isCurrentSong && styles.songItemActive]}
+        >
           <TouchableOpacity
             style={styles.songContent}
             onPress={() => handleSongPress(song, index, list)}
-            activeOpacity={0.7}
+            activeOpacity={0.8}
           >
             <View style={styles.coverContainer}>
               <Image
@@ -228,62 +237,55 @@ const HomeScreen = ({ navigation }) => {
               )}
             </View>
             <View style={styles.songInfo}>
-          <View style={styles.titleRow}>
-            <Text style={styles.songTitle} numberOfLines={1}>
-              {song.title}
-            </Text>
-            {song.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
-            {song.is_premium === 1 && songAccessTypes[song.song_id] && (
-              <AccessBadge accessType={songAccessTypes[song.song_id]} size={16} />
-            )}
-          </View>
-          <Text style={styles.songArtist} numberOfLines={1}>
-            {song.artist_name || 'Unknown Artist'}
-          </Text>
-          <View style={styles.songMeta}>
-            <Ionicons name="headset" size={12} color={COLORS.textMuted} />
-            <Text style={styles.listenCount}>
-              {formatListenCount(song.listen_count)}
-            </Text>
-            {song.average_rating != null && (
-              <>
-                <Text style={styles.metaSeparator}>•</Text>
-                <Ionicons name="star" size={12} color="#FFD700" />
-                <Text style={styles.ratingText}>
-                  {Number(song.average_rating).toFixed(1)}
+              <View style={styles.titleRow}>
+                <Text style={styles.songTitle} numberOfLines={1}>
+                  {song.title}
                 </Text>
-              </>
-            )}
-            {song.is_premium === 1 && song.price > 0 && (
-              <>
-                <Text style={styles.metaSeparator}>•</Text>
-                <Ionicons name="cash" size={12} color={COLORS.primary} />
-                <Text style={styles.priceText}>
-                  {parseFloat(song.price).toLocaleString('vi-VN')}đ
+                {song.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
+                {song.is_premium === 1 && songAccessTypes[song.song_id] && (
+                  <AccessBadge accessType={songAccessTypes[song.song_id]} size={16} />
+                )}
+              </View>
+              <Text style={styles.songArtist} numberOfLines={1}>
+                {song.artist_name || 'Unknown Artist'}
+              </Text>
+              <View style={styles.songMeta}>
+                <Ionicons name="headset" size={12} color="#94A3B8" />
+                <Text style={styles.metaText}>
+                  {formatListenCount(song.listen_count)}
                 </Text>
-              </>
-            )}
+                {song.average_rating != null && (
+                  <>
+                    <Text style={styles.metaSeparator}>•</Text>
+                    <Ionicons name="star" size={12} color={COLORS.warning} />
+                    <Text style={styles.metaText}>
+                      {Number(song.average_rating).toFixed(1)}
+                    </Text>
+                  </>
+                )}
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          <View style={styles.cardActions}>
+            <TouchableOpacity
+              style={styles.playButton}
+              onPress={() => handlePlaySong(song, index, list)}
+            >
+              <Ionicons 
+                name={isCurrentSong && isPlaying ? "pause-circle" : "play-circle"} 
+                size={36} 
+                color={COLORS.primary} 
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => handleAddToPlaylist(song)}
+            >
+              <Ionicons name="add-circle-outline" size={24} color="#E2E8F0" />
+            </TouchableOpacity>
           </View>
-        </View>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.playButton}
-            onPress={() => handlePlaySong(song, index, list)}
-          >
-            <Ionicons 
-              name={isCurrentSong && isPlaying ? "pause-circle" : "play-circle"} 
-              size={40} 
-              color={COLORS.primary} 
-            />
-          </TouchableOpacity>
-        </View>
-      
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => handleAddToPlaylist(song)}
-        >
-          <Ionicons name="add-circle-outline" size={24} color={COLORS.textSecondary} />
-        </TouchableOpacity>
+        </LinearGradient>
       </View>
     );
   };
@@ -534,14 +536,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SIZES.padding,
     paddingVertical: 12,
-    backgroundColor: COLORS.surface,
-    marginHorizontal: SIZES.padding,
-    marginVertical: 4,
     borderRadius: SIZES.borderRadius,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    marginVertical: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 6,
+    gap: 12,
   },
   songItemActive: {
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
     borderColor: COLORS.primary,
   },
   songContent: {
@@ -578,10 +584,11 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   songTitle: {
-    color: COLORS.text,
+    color: '#F8FAFC',
     fontSize: SIZES.md,
     fontWeight: '700',
     flex: 1,
+    minWidth: 150,
   },
   premiumBadge: {
     marginLeft: 6,
@@ -602,26 +609,33 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   songArtist: {
-    color: COLORS.textSecondary,
+    color: '#E2E8F0',
     fontSize: SIZES.sm,
     marginBottom: 4,
   },
   songMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-  },
-  listenCount: {
-    color: COLORS.textMuted,
-    fontSize: SIZES.xs,
+    gap: 6,
+    flexWrap: 'wrap',
   },
   metaSeparator: {
-    color: COLORS.textMuted,
+    color: '#94A3B8',
     fontSize: SIZES.xs,
     marginHorizontal: 4,
   },
+  metaText: {
+    color: '#CBD5F5',
+    fontSize: SIZES.xs,
+    fontWeight: '600',
+  },
+  metaText: {
+    color: '#CBD5F5',
+    fontSize: SIZES.xs,
+    fontWeight: '600',
+  },
   ratingText: {
-    color: COLORS.text,
+    color: COLORS.warning,
     fontSize: SIZES.xs,
     fontWeight: '600',
   },
@@ -633,10 +647,18 @@ const styles = StyleSheet.create({
   playButton: {
     padding: 4,
   },
+  cardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingTop: 6,
+  },
   songItemWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
+    maxWidth: 380,
     marginBottom: 4,
+    marginLeft: 3,
   },
   addButton: {
     padding: 8,

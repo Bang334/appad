@@ -94,25 +94,25 @@ const GenreDetailScreen = ({ route, navigation }) => {
     }
   };
 
-  const handleSongPress = (song, index) => {
+  const handleSongPress = async (song, index) => {
     const isPremiumSong = song.is_premium === 1;
     const hasPurchased = purchasedSongIds.has(song.song_id);
     const hasAccess = !isPremiumSong || hasPurchased || userIsPremium;
 
-    if (currentSong?.song_id !== song.song_id) {
-      playSong(song, filteredSongs, index);
-    }
-
     if (hasAccess) {
       navigation.navigate('FullPlayer');
+    }
+
+    if (currentSong?.song_id !== song.song_id) {
+      await playSong(song, filteredSongs, index);
     }
   };
 
   const handlePlayAll = async () => {
     if (filteredSongs.length > 0) {
+      navigation.navigate('FullPlayer');
       // Đảm bảo playlist được set đúng để tự động chuyển bài
       await playSong(filteredSongs[0], filteredSongs, 0);
-      navigation.navigate('FullPlayer');
     }
   };
 

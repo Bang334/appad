@@ -124,6 +124,8 @@ const ProfileScreen = ({ navigation }) => {
         </View>
 
         <View style={styles.menu}>
+          <View style={[styles.sectionCard, styles.sectionCardPrimary]}>
+            <Text style={styles.sectionTitle}>Tài khoản</Text>
           <MenuItem
             icon="person-outline"
             title="Chỉnh sửa hồ sơ"
@@ -144,6 +146,10 @@ const ProfileScreen = ({ navigation }) => {
             title="Giới thiệu"
             onPress={() => navigation.navigate('About')}
           />
+          </View>
+          
+          <View style={[styles.sectionCard, styles.sectionCardSuccess]}>
+            <Text style={styles.sectionTitle}>Tài chính & Premium</Text>
           <MenuItem
             icon="wallet"
             title="Ví của tôi"
@@ -154,40 +160,53 @@ const ProfileScreen = ({ navigation }) => {
             title="Premium"
             onPress={() => navigation.navigate('Premium')}
           />
+          </View>
 
           {/* Register as Artist - Only show for regular users who are not pending */}
           {user?.role === 'user' && !user?.is_pending_artist && (
+            <View style={[styles.sectionCard, styles.sectionCardArtist]}>
+              <Text style={styles.sectionTitle}>Nghệ sĩ</Text>
             <MenuItem
               icon="musical-notes-outline"
               title="Đăng ký làm Artist"
               onPress={() => navigation.navigate('RegisterArtist')}
             />
+            </View>
           )}
           
           {/* Artist Dashboard - Only show for artist users */}
           {user?.role === 'artist' && (
+            <View style={[styles.sectionCard, styles.sectionCardArtist]}>
+              <Text style={styles.sectionTitle}>Nghệ sĩ</Text>
             <MenuItem
               icon="bar-chart-outline"
               title="Artist Dashboard"
               onPress={() => navigation.navigate('ArtistDashboard', { artistId: user.artist_id })}
             />
+            </View>
           )}
           
           {/* Admin Dashboard - Only show for admin users */}
           {user?.role === 'admin' && (
+            <View style={[styles.sectionCard, styles.sectionCardDanger]}>
+              <Text style={styles.sectionTitle}>Quản trị</Text>
             <MenuItem
               icon="shield-outline"
               title="Quản trị viên"
               onPress={() => navigation.navigate('AdminDashboard')}
             />
+            </View>
           )}
           
+          <View style={[styles.sectionCard, styles.sectionCardNeutral]}>
+            <Text style={styles.sectionTitle}>Hành động</Text>
           <MenuItem
             icon="log-out-outline"
             title="Đăng xuất"
             onPress={handleLogout}
             danger
           />
+          </View>
         </View>
 
         <View style={styles.footer}>
@@ -250,10 +269,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 100, // Padding để không bị đè bởi tab bar
+    paddingBottom: 25, // Padding để không bị đè bởi tab bar
   },
   menu: {
     marginTop: 24,
+    gap: 16,
   },
   menuItem: {
     flexDirection: 'row',
@@ -277,9 +297,49 @@ const styles = StyleSheet.create({
   dangerText: {
     color: COLORS.error,
   },
+  sectionCard: {
+    backgroundColor: COLORS.surface,
+    marginHorizontal: SIZES.padding,
+    borderRadius: SIZES.borderRadius * 1.5,
+    paddingVertical: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  sectionCardPrimary: {
+    backgroundColor: COLORS.primary + '12',
+    borderColor: COLORS.primary + '33',
+  },
+  sectionCardSuccess: {
+    backgroundColor: COLORS.success + '12',
+    borderColor: COLORS.success + '33',
+  },
+  sectionCardArtist: {
+    backgroundColor: '#7C4DFF20',
+    borderColor: '#7C4DFF40',
+  },
+  sectionCardDanger: {
+    backgroundColor: COLORS.error + '10',
+    borderColor: COLORS.error + '33',
+  },
+  sectionCardNeutral: {
+    backgroundColor: COLORS.surfaceLight || COLORS.surface,
+  },
+  sectionTitle: {
+    color: COLORS.textSecondary,
+    fontSize: SIZES.sm,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 6,
+    marginLeft: SIZES.padding,
+  },
   footer: {
     alignItems: 'center',
-    paddingVertical: 24,
     marginTop: 16,
   },
   footerText: {

@@ -21,6 +21,8 @@ const uploadSong = multer({
       'audio/m4a',
       'audio/x-m4a',
       'audio/mp4',
+      'audio/aac',
+      'audio/x-aac',
       'video/mp4'
     ];
     if (allowedTypes.includes(file.mimetype)) {

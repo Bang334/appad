@@ -65,13 +65,14 @@ const PurchaseHistoryScreen = ({ navigation }) => {
     }
   };
 
-  const handleSongPress = (song, index) => {
+  const handleSongPress = async (song, index) => {
+    // Always open FullPlayer first for faster UX
+    navigation.navigate('FullPlayer');
+
     // Play song if different from current
     if (currentSong?.song_id !== song.song_id) {
-      playSong(song, history, index);
+      await playSong(song, history, index);
     }
-    // Always open FullPlayer
-    navigation.navigate('FullPlayer');
   };
 
   const renderHistoryItem = ({ item, index }) => {

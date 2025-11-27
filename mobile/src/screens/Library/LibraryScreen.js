@@ -180,9 +180,9 @@ const LibraryScreen = ({ navigation }) => {
       }
     }
 
-    // Play song and navigate to FullPlayer
-    playSong(song, list, index);
+    // Navigate first for faster UX, then start playback
     navigation.navigate('FullPlayer');
+    await playSong(song, list, index);
   };
 
   const handlePlayButtonPress = async (song, index, list) => {
@@ -221,8 +221,8 @@ const LibraryScreen = ({ navigation }) => {
 
   const handlePlayAll = (list) => {
     if (list.length > 0) {
-      playSong(list[0], list, 0);
       navigation.navigate('FullPlayer');
+      playSong(list[0], list, 0);
     }
   };
 

@@ -56,13 +56,14 @@ const PurchasedSongsScreen = ({ navigation }) => {
     }
   };
 
-  const handleSongPress = (song, index) => {
+  const handleSongPress = async (song, index) => {
+    // Always open FullPlayer first for faster UX
+    navigation.navigate('FullPlayer');
+
     // Play song if different from current
     if (currentSong?.song_id !== song.song_id) {
-      playSong(song, songs, index);
+      await playSong(song, songs, index);
     }
-    // Always open FullPlayer
-    navigation.navigate('FullPlayer');
   };
 
   const renderSongItem = ({ item, index }) => {
