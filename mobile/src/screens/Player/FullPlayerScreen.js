@@ -67,7 +67,13 @@ const FullPlayerScreen = ({ navigation, route }) => {
 
   useEffect(() => {
     if (!currentSong) return;
-    loadNextSongs();
+    
+    // Debounce to prevent double loading when song and playlist update sequentially
+    const timer = setTimeout(() => {
+      loadNextSongs();
+    }, 100);
+
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSong?.song_id, currentPlaylist?.playlist_id, playlist?.length, currentIndex]);
 
@@ -491,6 +497,11 @@ WHERE song_id = ${currentSong.song_id};`;
                   : ['#141414', '#050505'];
 
                 const handlePress = () => {
+                  // Prevent reloading if clicking on current song
+                  if (currentSong?.song_id === song.song_id) {
+                    return;
+                  }
+
                   if (currentPlaylist && playlist.length > 0) {
                     const newIndex = playlist.findIndex(s => s.song_id === song.song_id);
                     if (newIndex !== -1) {

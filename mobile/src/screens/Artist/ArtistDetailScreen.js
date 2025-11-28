@@ -23,6 +23,7 @@ import { premiumService } from '../../services/premiumService';
 import PremiumBadge from '../../components/Common/PremiumBadge';
 import AccessBadge from '../../components/Common/AccessBadge';
 import PremiumAccessModal from '../../components/Common/PremiumAccessModal';
+import AddToPlaylistModal from '../../components/Playlist/AddToPlaylistModal';
 
 const ArtistDetailScreen = ({ route, navigation }) => {
   const { artistId } = route.params;
@@ -42,6 +43,8 @@ const ArtistDetailScreen = ({ route, navigation }) => {
   const [selectedSong, setSelectedSong] = useState(null);
   const [selectedSongList, setSelectedSongList] = useState([]);
   const [songAccessTypes, setSongAccessTypes] = useState({});
+  const [showPlaylistModal, setShowPlaylistModal] = useState(false);
+  const [playlistSong, setPlaylistSong] = useState(null);
 
   useEffect(() => {
     loadArtistData();
@@ -154,6 +157,11 @@ const ArtistDetailScreen = ({ route, navigation }) => {
     // Navigate first for faster UX, then start playback
     navigation.navigate('FullPlayer');
     await playSong(song, songs, index);
+  };
+
+  const handleAddToPlaylist = (song) => {
+    setPlaylistSong(song);
+    setShowPlaylistModal(true);
   };
 
   const handlePlayAllSongs = async () => {
@@ -560,71 +568,107 @@ const ArtistDetailScreen = ({ route, navigation }) => {
         {songs.map((song, index) => {
           const isCurrentSong = currentSong?.song_id === song.song_id;
           const isCurrentPlaying = isCurrentSong && isPlaying;
+          const showPrice = song.is_premium === 1 && !songAccessTypes[song.song_id] && Number(song.price) > 0;
+
+          const gradientColors = isCurrentSong
+            ? ['#2B124C', '#08040F']
+            : ['#161616', '#050505'];
 
           return (
-            <TouchableOpacity
-              key={song.song_id}
-              style={[styles.songItem, isCurrentSong && styles.songItemActive]}
-              onPress={() => handleSongPress(song, index)}
-            >
-              <Image
-                source={{ uri: song.cover_url || 'https://via.placeholder.com/50' }}
-                style={styles.songImage}
-              />
-              <View style={styles.songInfo}>
-                <View style={[styles.songTitleRow, { justifyContent: 'space-between' }]}>
-                  <Text style={styles.songTitle} numberOfLines={1}>
-                    {song.title}
-                  </Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    {song.is_premium === 1 && <PremiumBadge small />}
-                    {song.is_premium === 1 && songAccessTypes[song.song_id] && (
-                      <AccessBadge accessType={songAccessTypes[song.song_id]} size={16} />
+            <View key={song.song_id} style={styles.songItemWrapper}>
+              <LinearGradient
+                colors={gradientColors}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={[styles.songItem, isCurrentSong && styles.songItemActive]}
+              >
+                <TouchableOpacity
+                  style={styles.songContent}
+                  onPress={() => handleSongPress(song, index)}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.coverContainer}>
+                    <Image
+                      source={{ uri: song.cover_url || 'https://via.placeholder.com/60' }}
+                      style={styles.songImage}
+                    />
+                    {isCurrentPlaying && (
+                      <View style={styles.playingIndicator}>
+                        <Ionicons name="volume-high" size={20} color="#FFF" />
+                      </View>
                     )}
                   </View>
-                </View>
-                <View style={styles.songMeta}>
-                  {song.album_title && (
-                    <Text style={styles.songAlbum} numberOfLines={1}>
-                      {song.album_title}
-                    </Text>
-                  )}
-                </View>
-                <View style={styles.songMeta}>
-                  <Ionicons name="headset" size={12} color={COLORS.textMuted} />
-                  <Text style={styles.listenCount}>
-                    {formatListenCount(song.listen_count)}
-                  </Text>
-                  {song.average_rating != null && (
-                    <>
-                      <Text style={styles.metaDot}>•</Text>
-                      <Ionicons name="star" size={12} color={COLORS.warning} />
-                      <Text style={styles.duration}>
-                        {Number(song.average_rating).toFixed(1)}
+
+                  <View style={styles.songInfo}>
+                    <View style={[styles.songTitleRow, { justifyContent: 'space-between' }]}>
+                      <Text style={styles.songTitle} numberOfLines={1}>
+                        {song.title}
                       </Text>
-                    </>
-                  )}
-                  <Text style={styles.metaDot}>•</Text>
-                  <Ionicons name="time-outline" size={12} color={COLORS.textMuted} />
-                  <Text style={styles.duration}>
-                    {formatDuration(song.duration)}
-                  </Text>
+                      {song.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
+                      {song.is_premium === 1 && songAccessTypes[song.song_id] && (
+                        <AccessBadge accessType={songAccessTypes[song.song_id]} size={16} />
+                      )}
+                    </View>
+                    <Text style={styles.songArtist} numberOfLines={1}>
+                      {song.artist_name || artist.name}
+                    </Text>
+                    <View style={styles.songMeta}>
+                      <Ionicons name="headset" size={12} color="#94A3B8" />
+                      <Text style={styles.metaText}>
+                        {formatListenCount(song.listen_count)}
+                      </Text>
+                      {song.average_rating != null && (
+                        <>
+                          <Text style={styles.metaSeparator}>•</Text>
+                          <Ionicons name="star" size={12} color={COLORS.warning} />
+                          <Text style={styles.metaText}>
+                            {Number(song.average_rating).toFixed(1)}
+                          </Text>
+                        </>
+                      )}
+                      <Text style={styles.metaSeparator}>•</Text>
+                      <Ionicons name="time-outline" size={12} color="#94A3B8" />
+                      <Text style={styles.metaText}>
+                        {formatDuration(song.duration)}
+                      </Text>
+                    </View>
+                    {showPrice && (
+                      <View style={styles.priceRow}>
+                        <Ionicons name="cash-outline" size={12} color={COLORS.warning} />
+                        <Text style={styles.priceText}>
+                          {Number(song.price).toLocaleString('vi-VN')}đ
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </TouchableOpacity>
+
+                <View style={styles.cardActions}>
+                  <TouchableOpacity
+                    style={styles.playButton}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      handlePlaySong(song, index);
+                    }}
+                  >
+                    <Ionicons
+                      name={isCurrentPlaying ? 'pause-circle' : 'play-circle'}
+                      size={36}
+                      color={COLORS.primary}
+                    />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.addButton}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      handleAddToPlaylist(song);
+                    }}
+                  >
+                    <Ionicons name="add-circle-outline" size={24} color="#E2E8F0" />
+                  </TouchableOpacity>
                 </View>
-              </View>
-              <TouchableOpacity
-                style={styles.playButton}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  handlePlaySong(song, index);
-                }}
-              >
-                <Ionicons
-                  name={isCurrentPlaying ? 'pause' : 'play'}
-                  size={24}
-                  color={COLORS.primary}
-                />
-              </TouchableOpacity>
-            </TouchableOpacity>
+              </LinearGradient>
+            </View>
           );
         })}
 
@@ -657,6 +701,14 @@ const ArtistDetailScreen = ({ route, navigation }) => {
         onSubscribePremium={() => {
           setShowPremiumModal(false);
           navigation.navigate('Premium');
+        }}
+      />
+      <AddToPlaylistModal
+        visible={showPlaylistModal}
+        song={playlistSong}
+        onClose={() => {
+          setShowPlaylistModal(false);
+          setPlaylistSong(null);
         }}
       />
       <MiniPlayer bottomOffset={0} />
@@ -885,25 +937,55 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: SIZES.sm,
   },
+  songItemWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: SIZES.padding,
+    marginBottom: 8,
+  },
   songItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SIZES.padding,
     paddingVertical: 12,
-    backgroundColor: COLORS.surface,
-    marginHorizontal: SIZES.padding,
-    marginBottom: 8,
     borderRadius: SIZES.borderRadius,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 6,
+    gap: 12,
+    flex: 1,
   },
   songItemActive: {
-    borderWidth: 1,
     borderColor: COLORS.primary,
   },
-  songImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 8,
+  songContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  coverContainer: {
+    position: 'relative',
     marginRight: 12,
+  },
+  songImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+  },
+  playingIndicator: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 8,
   },
   songInfo: {
     flex: 1,
@@ -911,37 +993,60 @@ const styles = StyleSheet.create({
   songTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
     marginBottom: 4,
   },
   songTitle: {
-    color: COLORS.text,
+    color: '#F8FAFC',
     fontSize: SIZES.md,
-    fontWeight: '600',
+    fontWeight: '700',
+    minWidth: 150,
+    flex: 1,
+  },
+  premiumBadge: {
+    marginLeft: 6,
+  },
+  songArtist: {
+    color: '#E2E8F0',
+    fontSize: SIZES.sm,
     marginBottom: 4,
   },
   songMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexWrap: 'wrap',
   },
-  songAlbum: {
-    color: COLORS.textSecondary,
-    fontSize: SIZES.sm,
-  },
-  metaDot: {
-    color: COLORS.textMuted,
-    fontSize: SIZES.sm,
-  },
-  listenCount: {
-    color: COLORS.textMuted,
+  metaText: {
+    color: '#CBD5F5',
     fontSize: SIZES.xs,
+    fontWeight: '600',
   },
-  duration: {
-    color: COLORS.textMuted,
+  metaSeparator: {
+    color: '#94A3B8',
     fontSize: SIZES.xs,
+    marginHorizontal: 4,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  priceText: {
+    color: COLORS.warning,
+    fontSize: SIZES.xs,
+    fontWeight: '600',
+  },
+  cardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingTop: 6,
   },
   playButton: {
+    padding: 4,
+  },
+  addButton: {
     padding: 8,
   },
   emptySection: {
