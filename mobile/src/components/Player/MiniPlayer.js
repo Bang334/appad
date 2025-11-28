@@ -38,7 +38,7 @@ const MiniPlayer = ({ bottomOffset = 60 }) => {
 
   return (
     <View
-      style={[styles.container, { bottom: bottomOffset }]}
+      style={[styles.container, { bottom: bottomOffset - 1 }]}
     >
       <View style={styles.contentRow}>
         {/* Close Button */}

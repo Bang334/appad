@@ -249,6 +249,14 @@ const HomeScreen = ({ navigation }) => {
               </View>
               <Text style={styles.songArtist} numberOfLines={1}>
                 {song.artist_name || 'Unknown Artist'}
+                {song.album_title && (
+                  <>
+                    <Text style={{ color: '#94A3B8' }}> • </Text>
+                    <Text style={{ color: '#CBD5F5', fontStyle: 'italic' }}>
+                      {song.album_title}
+                    </Text>
+                  </>
+                )}
               </Text>
               <View style={styles.songMeta}>
                 <Ionicons name="headset" size={12} color="#94A3B8" />

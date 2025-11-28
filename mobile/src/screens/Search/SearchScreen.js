@@ -454,6 +454,14 @@ const SearchScreen = ({ navigation }) => {
               </View>
               <Text style={styles.songArtist} numberOfLines={1}>
                 {item.artist_name || 'Unknown Artist'}
+                {item.album_title && (
+                  <>
+                    <Text style={{ color: '#94A3B8' }}> • </Text>
+                    <Text style={{ color: '#CBD5F5', fontStyle: 'italic' }}>
+                      {item.album_title}
+                    </Text>
+                  </>
+                )}
               </Text>
               <View style={styles.songMeta}>
                 <Ionicons name="headset" size={12} color="#94A3B8" />

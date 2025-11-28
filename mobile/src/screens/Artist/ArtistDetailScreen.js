@@ -491,36 +491,118 @@ const ArtistDetailScreen = ({ route, navigation }) => {
             <View style={styles.premiumContentSection}>
               <Text style={styles.premiumContentTitle}>Bài hát Premium</Text>
               <View style={styles.premiumSongsContainer}>
-                {premiumSongs.slice(0, 5).map((song, index) => (
-                  <TouchableOpacity
-                    key={song.song_id}
-                    style={styles.premiumSongItem}
-                    onPress={() => handleSongPress(song, songs.findIndex(s => s.song_id === song.song_id))}
-                  >
-                    <Image
-                      source={{ uri: song.cover_url || 'https://via.placeholder.com/50' }}
-                      style={styles.premiumSongImage}
-                    />
-                    <View style={styles.premiumSongInfo}>
-                      <View style={styles.premiumSongTitleRow}>
-                        <Text style={styles.premiumSongTitle} numberOfLines={1}>
-                          {song.title}
-                        </Text>
-                        <PremiumBadge small />
-                      </View>
-                      {song.album_title && (
-                        <Text style={styles.premiumSongAlbum} numberOfLines={1}>
-                          {song.album_title}
-                        </Text>
-                      )}
+                {premiumSongs.slice(0, 5).map((song, index) => {
+                  const isCurrentSong = currentSong?.song_id === song.song_id;
+                  const isCurrentPlaying = isCurrentSong && isPlaying;
+                  const showPrice = song.is_premium === 1 && !songAccessTypes[song.song_id] && Number(song.price) > 0;
+                  const mainIndex = songs.findIndex(s => s.song_id === song.song_id);
+
+                  const gradientColors = isCurrentSong
+                    ? ['#2B124C', '#08040F']
+                    : ['#161616', '#050505'];
+
+                  return (
+                    <View key={song.song_id} style={[styles.songItemWrapper, { position: 'relative', left: -20 }]}>
+                      <LinearGradient
+                        colors={gradientColors}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={[styles.songItem, isCurrentSong && styles.songItemActive]}
+                      >
+                        <TouchableOpacity
+                          style={styles.songContent}
+                          onPress={() => handleSongPress(song, mainIndex)}
+                          activeOpacity={0.8}
+                        >
+                          <View style={styles.coverContainer}>
+                            <Image
+                              source={{ uri: song.cover_url || 'https://via.placeholder.com/60' }}
+                              style={styles.songImage}
+                            />
+                            {isCurrentPlaying && (
+                              <View style={styles.playingIndicator}>
+                                <Ionicons name="volume-high" size={20} color="#FFF" />
+                              </View>
+                            )}
+                          </View>
+
+                          <View style={styles.songInfo}>
+                            <View style={[styles.songTitleRow, { justifyContent: 'space-between' }]}>
+                              <Text style={styles.songTitle} numberOfLines={1}>
+                                {song.title}
+                              </Text>
+                              {song.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
+                            </View>
+                            
+                            <View style={styles.songMeta}>
+                              {song.album_title && (
+                                <>
+                                  <Text style={styles.songAlbumText} numberOfLines={1}>
+                                    {song.album_title}
+                                  </Text>
+                                  <Text style={styles.metaSeparator}>•</Text>
+                                </>
+                              )}
+                              <Ionicons name="time-outline" size={12} color="#94A3B8" />
+                              <Text style={styles.metaText}>
+                                {formatDuration(song.duration)}
+                              </Text>
+                            </View>
+
+                            <View style={[styles.songMeta, { paddingTop: 5 }]}>
+                              <Ionicons name="headset" size={12} color="#94A3B8" />
+                              <Text style={styles.metaText}>
+                                {formatListenCount(song.listen_count)}
+                              </Text>
+                              {song.average_rating != null && (
+                                <>
+                                  <Ionicons name="star" size={12} color={COLORS.warning} />
+                                  <Text style={styles.metaText}>
+                                    {Number(song.average_rating).toFixed(1)}
+                                  </Text>
+                                </>
+                              )}
+                            </View>
+
+                            {showPrice && (
+                              <View style={styles.priceRow}>
+                                <Ionicons name="cash-outline" size={12} color={COLORS.warning} />
+                                <Text style={styles.priceText}>
+                                  {Number(song.price).toLocaleString('vi-VN')}đ
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                        </TouchableOpacity>
+
+                        <View style={[styles.cardActions, { paddingTop: 10 }]}>
+                          <TouchableOpacity
+                            style={styles.playButton}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              handlePlaySong(song, mainIndex);
+                            }}
+                          >
+                            <Ionicons
+                              name={isCurrentPlaying ? 'pause-circle' : 'play-circle'}
+                              size={36}
+                              color={COLORS.primary}
+                            />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.addButton}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              handleAddToPlaylist(song);
+                            }}
+                          >
+                            <Ionicons name="add-circle-outline" size={24} color="#E2E8F0" />
+                          </TouchableOpacity>
+                        </View>
+                      </LinearGradient>
                     </View>
-                    {song.price > 0 && (
-                      <Text style={styles.premiumSongPrice}>
-                        {parseFloat(song.price).toLocaleString('vi-VN')}đ
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                ))}
+                  );
+                })}
                 {premiumSongs.length > 5 && (
                   <Text style={styles.morePremiumText}>
                     +{premiumSongs.length - 5} bài hát premium khác
@@ -609,10 +691,21 @@ const ArtistDetailScreen = ({ route, navigation }) => {
                         <AccessBadge accessType={songAccessTypes[song.song_id]} size={16} />
                       )}
                     </View>
-                    <Text style={styles.songArtist} numberOfLines={1}>
-                      {song.artist_name || artist.name}
-                    </Text>
                     <View style={styles.songMeta}>
+                      {song.album_title && (
+                        <>
+                          <Text style={styles.songAlbumText} numberOfLines={1}>
+                            {song.album_title}
+                          </Text>
+                          <Text style={styles.metaSeparator}>•</Text>
+                        </>
+                      )}
+                      <Ionicons name="time-outline" size={12} color="#94A3B8" />
+                      <Text style={styles.metaText}>
+                        {formatDuration(song.duration)}
+                      </Text>
+                    </View>
+                    <View style={[styles.songMeta, { paddingTop: 5}]}>
                       <Ionicons name="headset" size={12} color="#94A3B8" />
                       <Text style={styles.metaText}>
                         {formatListenCount(song.listen_count)}
@@ -626,11 +719,6 @@ const ArtistDetailScreen = ({ route, navigation }) => {
                           </Text>
                         </>
                       )}
-                      <Text style={styles.metaSeparator}>•</Text>
-                      <Ionicons name="time-outline" size={12} color="#94A3B8" />
-                      <Text style={styles.metaText}>
-                        {formatDuration(song.duration)}
-                      </Text>
                     </View>
                     {showPrice && (
                       <View style={styles.priceRow}>
@@ -999,7 +1087,7 @@ const styles = StyleSheet.create({
     color: '#F8FAFC',
     fontSize: SIZES.md,
     fontWeight: '700',
-    minWidth: 150,
+    minWidth: 100,
     flex: 1,
   },
   premiumBadge: {
@@ -1009,6 +1097,10 @@ const styles = StyleSheet.create({
     color: '#E2E8F0',
     fontSize: SIZES.sm,
     marginBottom: 4,
+  },
+  songAlbumText: {
+    color: '#CBD5F5',
+    fontStyle: 'italic',
   },
   songMeta: {
     flexDirection: 'row',
@@ -1121,6 +1213,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   premiumSongsContainer: {
+    minWidth: 360,
     gap: 8,
   },
   premiumSongItem: {

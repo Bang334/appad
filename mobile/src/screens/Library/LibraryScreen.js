@@ -519,6 +519,14 @@ const LibraryScreen = ({ navigation }) => {
               </View>
               <Text style={styles.songArtist} numberOfLines={1}>
                 {song.artist_name || 'Nghệ sĩ không xác định'}
+                {song.album_title && (
+                  <>
+                    <Text style={{ color: '#94A3B8' }}> • </Text>
+                    <Text style={{ color: '#CBD5F5', fontStyle: 'italic' }}>
+                      {song.album_title}
+                    </Text>
+                  </>
+                )}
               </Text>
               <View style={styles.songMeta}>
                 {song.count > 1 && (
@@ -662,6 +670,14 @@ const LibraryScreen = ({ navigation }) => {
               </View>
               <Text style={styles.songArtist} numberOfLines={1}>
                 {item.artist_name}
+                {item.album_title && (
+                  <>
+                    <Text style={{ color: '#94A3B8' }}> • </Text>
+                    <Text style={{ color: '#CBD5F5', fontStyle: 'italic' }}>
+                      {item.album_title}
+                    </Text>
+                  </>
+                )}
               </Text>
               <View style={styles.songMeta}>
                 <Ionicons name="headset" size={12} color="#94A3B8" />
@@ -754,6 +770,14 @@ const LibraryScreen = ({ navigation }) => {
               </View>
               <Text style={styles.songArtist} numberOfLines={1}>
                 {item.artist_name}
+                {item.album_title && (
+                  <>
+                    <Text style={{ color: '#94A3B8' }}> • </Text>
+                    <Text style={{ color: '#CBD5F5', fontStyle: 'italic' }}>
+                      {item.album_title}
+                    </Text>
+                  </>
+                )}
               </Text>
               <View style={styles.songMeta}>
                 <Ionicons name="headset" size={12} color="#94A3B8" />
