@@ -258,37 +258,79 @@ const NotificationsScreen = ({ navigation }) => {
   const renderNotificationItem = (item) => {
     const icon = getNotificationIcon(item.type);
     
+    // Determine card gradient based on read status and type
+    const cardGradient = !item.is_read 
+      ? ['#1E3A5F', '#0F172A']  // Unread: Deep blue to dark
+      : ['#1F2937', '#111827'];  // Read: Dark gray tones
+    
     return (
       <TouchableOpacity
         key={item.notification_id}
-        style={[
-          styles.notificationItem,
-          !item.is_read && styles.unreadNotification
-        ]}
+        style={styles.notificationItemWrapper}
         onPress={() => handleNotificationPress(item)}
         onLongPress={() => handleDeleteNotification(item.notification_id)}
-        activeOpacity={0.7}
+        activeOpacity={0.85}
       >
         <LinearGradient
-          colors={!item.is_read ? [icon.color + '30', icon.color + '15'] : [icon.color + '20', icon.color + '10']}
-          style={styles.iconContainer}
+          colors={cardGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[
+            styles.notificationItem,
+            !item.is_read && styles.unreadNotification
+          ]}
         >
-          <Ionicons name={icon.name} size={26} color={icon.color} />
-        </LinearGradient>
-        
-        <View style={styles.notificationContent}>
-          <Text style={styles.notificationTitle} numberOfLines={1}>{item.title}</Text>
-          <Text style={styles.notificationMessage} numberOfLines={2}>
-            {item.message}
-          </Text>
-          <Text style={styles.notificationTime}>{formatTime(item.created_at)}</Text>
-        </View>
-
-        {!item.is_read && (
-          <View style={styles.unreadBadge}>
-            <View style={styles.unreadDot} />
+          {/* Icon with gradient background */}
+          <LinearGradient
+            colors={
+              !item.is_read 
+                ? [icon.color + 'AA', icon.color + '66']
+                : [icon.color + '55', icon.color + '33']
+            }
+            style={styles.iconContainer}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <Ionicons name={icon.name} size={28} color={icon.color} />
+          </LinearGradient>
+          
+          {/* Content */}
+          <View style={styles.notificationContent}>
+            <View style={styles.titleRow}>
+              <Text style={styles.notificationTitle} numberOfLines={1}>
+                {item.title}
+              </Text>
+              {!item.is_read && (
+                <View style={styles.newBadge}>
+                  <Text style={styles.newBadgeText}>MỚI</Text>
+                </View>
+              )}
+            </View>
+            
+            <Text style={styles.notificationMessage} numberOfLines={2}>
+              {item.message}
+            </Text>
+            
+            <View style={styles.footer}>
+              <Ionicons name="time-outline" size={14} color="#94A3B8" />
+              <Text style={styles.notificationTime}>
+                {formatTime(item.created_at)}
+              </Text>
+            </View>
           </View>
-        )}
+
+          {/* Unread indicator dot */}
+          {!item.is_read && (
+            <View style={styles.unreadIndicator}>
+              <LinearGradient
+                colors={[COLORS.primary, '#8B5CF6']}
+                style={styles.unreadDot}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              />
+            </View>
+          )}
+        </LinearGradient>
       </TouchableOpacity>
     );
   };
@@ -490,71 +532,108 @@ const styles = StyleSheet.create({
     fontSize: SIZES.lg,
     marginTop: 16,
   },
+  notificationItemWrapper: {
+    marginHorizontal: 12,
+    marginVertical: 6,
+  },
   notificationItem: {
     flexDirection: 'row',
     padding: 16,
-    marginHorizontal: 12,
-    marginVertical: 6,
-    backgroundColor: COLORS.surface,
-    borderRadius: SIZES.borderRadius + 4,
+    borderRadius: SIZES.borderRadius + 6,
     alignItems: 'flex-start',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
   },
   unreadNotification: {
-    backgroundColor: COLORS.surfaceLight,
-    borderLeftWidth: 3,
+    borderLeftWidth: 4,
     borderLeftColor: COLORS.primary,
-    shadowOpacity: 0.25,
-    elevation: 5,
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 8,
+    borderColor: 'rgba(99, 102, 241, 0.2)',
   },
   iconContainer: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 4,
   },
   notificationContent: {
     flex: 1,
     paddingRight: 8,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+    gap: 8,
+  },
   notificationTitle: {
-    color: COLORS.text,
+    color: '#F8FAFC',
     fontSize: SIZES.md + 1,
     fontWeight: '700',
-    marginBottom: 6,
-    letterSpacing: 0.2,
+    flex: 1,
+    letterSpacing: 0.3,
+  },
+  newBadge: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  newBadgeText: {
+    color: COLORS.white,
+    fontSize: SIZES.xs,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   notificationMessage: {
-    color: COLORS.textSecondary,
+    color: '#CBD5E1',
     fontSize: SIZES.sm + 1,
     lineHeight: 22,
-    marginBottom: 6,
+    marginBottom: 8,
+  },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
   notificationTime: {
-    color: COLORS.textMuted,
+    color: '#94A3B8',
     fontSize: SIZES.xs + 1,
     fontWeight: '500',
+    letterSpacing: 0.2,
   },
-  unreadBadge: {
+  unreadIndicator: {
     marginLeft: 8,
     marginTop: 2,
   },
   unreadDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: COLORS.primary,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
     shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOpacity: 0.7,
+    shadowRadius: 6,
+    elevation: 3,
   },
   expandButton: {
     flexDirection: 'row',

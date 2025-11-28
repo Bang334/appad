@@ -207,6 +207,7 @@ const HomeScreen = ({ navigation }) => {
 
   const renderSongItem = (song, index, list) => {
     const isCurrentSong = currentSong?.song_id === song.song_id;
+    const showPrice = song.is_premium === 1 && !userHasAccessToSong(song) && Number(song.price) > 0;
 
     const gradientColors = isCurrentSong
       ? ['#2B124C', '#08040F']
@@ -264,6 +265,14 @@ const HomeScreen = ({ navigation }) => {
                   </>
                 )}
               </View>
+              {showPrice && (
+                <View style={styles.priceRow}>
+                  <Ionicons name="cash-outline" size={12} color={COLORS.warning} />
+                  <Text style={styles.priceText}>
+                    {Number(song.price).toLocaleString('vi-VN')}đ
+                  </Text>
+                </View>
+              )}
             </View>
           </TouchableOpacity>
 
@@ -299,6 +308,13 @@ const HomeScreen = ({ navigation }) => {
   const handleAddToPlaylist = (song) => {
     setSelectedSong(song);
     setShowPlaylistModal(true);
+  };
+
+  const userHasAccessToSong = (song) => {
+    if (purchasedSongIds.has(song.song_id)) return true;
+    if (songAccessTypes[song.song_id]) return true;
+    if (userIsPremium && song.is_premium === 1) return true;
+    return false;
   };
 
   if (loading) {
@@ -644,6 +660,12 @@ const styles = StyleSheet.create({
     fontSize: SIZES.xs,
     fontWeight: '700',
   },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
   playButton: {
     padding: 4,
   },
@@ -683,4 +705,3 @@ const styles = StyleSheet.create({
 });
 
 export default HomeScreen;
-

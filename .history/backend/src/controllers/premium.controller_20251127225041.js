@@ -217,7 +217,7 @@ class PremiumController {
 
         await NotificationModel.create({
           user_id: userId,
-          type: 'system',
+          type: 'refund',
           title: 'Hoàn tiền Premium',
           message: `Bạn đã được hoàn ${refundAmount.toLocaleString('vi-VN')}đ (50% phí Premium) do hủy trong 7 ngày.`,
           data: {

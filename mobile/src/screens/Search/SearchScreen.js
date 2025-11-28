@@ -159,6 +159,13 @@ const SearchScreen = ({ navigation }) => {
     setShowPlaylistModal(true);
   };
 
+  const userHasAccessToSong = (song) => {
+    if (purchasedSongIds.has(song.song_id)) return true;
+    if (songAccessTypes[song.song_id]) return true;
+    if (userIsPremium && song.is_premium === 1) return true;
+    return false;
+  };
+
   const onRefresh = async () => {
     setRefreshing(true);
     await loadInitialData();
@@ -404,6 +411,7 @@ const SearchScreen = ({ navigation }) => {
   const renderSongItem = ({ item, index }) => {
     const isCurrentSong = currentSong?.song_id === item.song_id;
     const isCurrentPlaying = isCurrentSong && isPlaying;
+    const showPrice = item.is_premium === 1 && !userHasAccessToSong(item) && Number(item.price) > 0;
 
     const gradientColors = isCurrentSong
       ? ['#2B124C', '#08040F']
@@ -462,6 +470,14 @@ const SearchScreen = ({ navigation }) => {
                   </>
                 )}
               </View>
+              {showPrice && (
+                <View style={styles.priceRow}>
+                  <Ionicons name="cash-outline" size={12} color={COLORS.warning} />
+                  <Text style={styles.priceText}>
+                    {Number(item.price).toLocaleString('vi-VN')}đ
+                  </Text>
+                </View>
+              )}
             </View>
           </TouchableOpacity>
 
@@ -1254,6 +1270,12 @@ const styles = StyleSheet.create({
     color: COLORS.warning,
     fontSize: SIZES.xs,
     fontWeight: '600',
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
   },
   ratingText: {
     color: COLORS.warning,

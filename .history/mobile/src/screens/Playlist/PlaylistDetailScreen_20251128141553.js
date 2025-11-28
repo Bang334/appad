@@ -14,11 +14,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
 import { playlistService } from '../../services/playlistService';
 import { songService } from '../../services/songService';
-import { premiumService } from '../../services/premiumService';
 import { usePlayer } from '../../context/PlayerContext';
 import { COLORS, SIZES } from '../../config/theme';
 import MiniPlayer from '../../components/Player/MiniPlayer';
-import BottomSheet from '../../components/Common/BottomSheet';
 import PremiumBadge from '../../components/Common/PremiumBadge';
 
 const formatDuration = (seconds) => {
@@ -42,10 +40,6 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
   const [songs, setSongs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [savingOrder, setSavingOrder] = useState(false);
-  const [showBottomSheet, setShowBottomSheet] = useState(false);
-  const [selectedSong, setSelectedSong] = useState(null);
-  const [purchasedSongIds, setPurchasedSongIds] = useState(new Set());
-  const [userIsPremium, setUserIsPremium] = useState(false);
   const { playSong, currentSong, isPlaying, togglePlayPause } = usePlayer();
 
   useEffect(() => {
@@ -54,18 +48,9 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
 
   const loadPlaylist = async () => {
     try {
-      const [playlistResponse, purchased, premiumStatus] = await Promise.all([
-        playlistService.getPlaylistById(playlistId),
-        premiumService.getPurchasedSongs().catch(() => ({ data: [] })),
-        premiumService.checkStatus().catch(() => ({ data: { is_premium: false } })),
-      ]);
-      
-      setPlaylist(playlistResponse.data);
-      setSongs(playlistResponse.data.songs || []);
-      
-      const purchasedIds = new Set((purchased.data || []).map(song => song.song_id));
-      setPurchasedSongIds(purchasedIds);
-      setUserIsPremium(premiumStatus.data?.is_premium || false);
+      const response = await playlistService.getPlaylistById(playlistId);
+      setPlaylist(response.data);
+      setSongs(response.data.songs || []);
     } catch (error) {
       console.error('Error loading playlist:', error);
       Alert.alert('Lỗi', 'Không thể tải playlist');
@@ -190,40 +175,12 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
     }
   };
 
-  const handleSongLongPress = (item) => {
-    setSelectedSong(item);
-    setShowBottomSheet(true);
-  };
-
-  const getBottomSheetOptions = () => {
-    if (!selectedSong) return [];
-    
-    return [
-      {
-        text: 'Xóa khỏi playlist',
-        icon: 'trash-outline',
-        style: 'destructive',
-        onPress: () => handleRemoveSong(selectedSong.song_id),
-      },
-      {
-        text: 'Hủy',
-        icon: 'close-outline',
-        style: 'cancel',
-        onPress: () => {},
-      },
-    ];
-  };
-
   const renderSongItem = ({ item, index, drag, isActive }) => {
     const isCurrentSong = currentSong?.song_id === item.song_id;
     const gradientColors = isCurrentSong
       ? ['#2B124C', '#08040F']
       : ['#161616', '#050505'];
-    
-    // Only show price if user doesn't have access
-    const isPurchased = purchasedSongIds.has(item.song_id);
-    const hasAccess = !item.is_premium || isPurchased || userIsPremium;
-    const showPrice = item.is_premium === 1 && !hasAccess && Number(item.price) > 0;
+    const showPrice = item.is_premium === 1 && Number(item.price) > 0;
     
     return (
       <ScaleDecorator>
@@ -243,10 +200,8 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
           <TouchableOpacity
             style={styles.songContent}
             onPress={() => handlePlaySong(item, index, { navigateToFullPlayer: true })}
-            onLongPress={() => handleSongLongPress(item)}
             activeOpacity={0.85}
             disabled={isActive}
-            delayLongPress={500}
           >
             <LinearGradient
               colors={gradientColors}
@@ -308,10 +263,31 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
                   size={30}
                   color={COLORS.primary}
                 />
-              </TouchableOpacity>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
+                <TouchableOpacity
+                  style={styles.quickPlayButton}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    handlePlaySong(item, index, { navigateToFullPlayer: false });
+                  }}
+                >
+                  <Ionicons
+                    name={isCurrentSong && isPlaying ? 'pause-circle' : 'play-circle'}
+                    size={30}
+                    color={COLORS.primary}
+                  />
+                </TouchableOpacity>
+              </LinearGradient>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.removeButton}
+              onPress={() => handleRemoveSong(item.song_id)}
+              onLongPress={() => handleRemoveSong(item.song_id)}
+              disabled={isActive}
+            >
+              <Ionicons name="close-circle" size={22} color={COLORS.error} />
+            </TouchableOpacity>
+          </View>
       </ScaleDecorator>
     );
   };
@@ -388,15 +364,6 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
           <Text style={styles.emptySubtext}>Thêm bài hát vào playlist này</Text>
         </View>
       )}
-      
-      <BottomSheet
-        visible={showBottomSheet}
-        onClose={() => setShowBottomSheet(false)}
-        title={selectedSong?.title}
-        message="Chọn hành động"
-        options={getBottomSheetOptions()}
-      />
-      
       <MiniPlayer bottomOffset={0} />
     </View>
   );
@@ -554,7 +521,6 @@ const styles = StyleSheet.create({
     fontSize: SIZES.md,
     fontWeight: '700',
     flex: 1,
-    minWidth: 100,
   },
   songArtist: {
     color: '#E2E8F0',
@@ -566,7 +532,6 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: 6,
-    marginTop: 4,
   },
   songMetaText: {
     color: '#CBD5F5',
@@ -590,6 +555,9 @@ const styles = StyleSheet.create({
   },
   quickPlayButton: {
     paddingLeft: 8,
+  },
+  removeButton: {
+    padding: 8,
   },
   emptyContainer: {
     flex: 1,

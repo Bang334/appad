@@ -20,6 +20,17 @@ class TransactionModel {
     return rows[0];
   }
 
+  static async findLatestSubscription(userId) {
+    const [rows] = await db.execute(
+      `SELECT * FROM transactions
+       WHERE user_id = ? AND type = 'subscription' AND status = 'completed'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [userId]
+    );
+    return rows[0];
+  }
+
   // Get transactions by user
   static async findByUser(userId, limit = 50, offset = 0) {
     // Ensure limit and offset are valid positive integers
