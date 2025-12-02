@@ -191,43 +191,34 @@ export const artistService = {
   },
 
   updateSong: async (artistId, songId, songData, files = null) => {
-    const formData = new FormData();
-    
-    // Add text fields
-    Object.keys(songData).forEach(key => {
-      if (songData[key] !== null && songData[key] !== undefined) {
-        formData.append(key, songData[key].toString());
-      }
-    });
+    // Giữ logic giống createSong: upload file riêng, sau đó chỉ gửi JSON
+    let finalSongData = { ...songData };
 
-    // Add files
     if (files) {
-      if (files.audio) {
-        formData.append('audio', {
-          uri: files.audio.uri,
-          type: files.audio.type || 'audio/mpeg',
-          name: files.audio.name || 'audio.mp3',
-        });
-      }
-      if (files.cover) {
-        formData.append('cover', {
-          uri: files.cover.uri,
-          type: files.cover.type || 'image/jpeg',
-          name: files.cover.name || 'cover.jpg',
-        });
+      try {
+        if (files.audio) {
+          console.log('📤 [updateSong] Uploading new audio file...');
+          const audioRes = await artistService.uploadSongFile(artistId, files.audio.uri);
+          finalSongData.file_url = audioRes.data.url;
+          if (audioRes.data.duration) {
+            finalSongData.duration = Math.round(audioRes.data.duration);
+          }
+        }
+
+        if (files.cover) {
+          console.log('📤 [updateSong] Uploading new cover file...');
+          const coverRes = await artistService.uploadCoverFile(artistId, files.cover.uri);
+          finalSongData.cover_url = coverRes.data.url;
+        }
+      } catch (error) {
+        console.error('[updateSong] Upload file error:', error);
+        throw error;
       }
     }
 
-    const response = await api.put(`/artists/${artistId}/songs/${songId}`, formData, {
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'multipart/form-data',
-      },
-      transformRequest: (data, headers) => {
-        return data;
-      },
-    });
-    return response.data;
+    console.log('📤 [updateSong] Updating song with data:', finalSongData);
+
+    const response = await api.put(`/artists/${artistId}/songs/${songId}`, finalSongData);
     return response.data;
   },
 
