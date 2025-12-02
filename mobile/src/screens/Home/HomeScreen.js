@@ -14,6 +14,7 @@ import { albumService } from '../../services/albumService';
 import { usePlayer } from '../../context/PlayerContext';
 import { COLORS, SIZES } from '../../config/theme';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import AddToPlaylistModal from '../../components/Playlist/AddToPlaylistModal';
 import PremiumBadge from '../../components/Common/PremiumBadge';
 import PremiumAccessModal from '../../components/Common/PremiumAccessModal';
@@ -242,10 +243,12 @@ const HomeScreen = ({ navigation }) => {
                 <Text style={styles.songTitle} numberOfLines={1}>
                   {song.title}
                 </Text>
-                {song.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
-                {song.is_premium === 1 && songAccessTypes[song.song_id] && (
-                  <AccessBadge accessType={songAccessTypes[song.song_id]} size={16} />
-                )}
+                <View style={{display: 'flex', flexDirection: 'row', position: 'relative', top: -10, right:-30}}>
+                  {song.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
+                  {song.is_premium === 1 && songAccessTypes[song.song_id] && (
+                    <AccessBadge accessType={songAccessTypes[song.song_id]} size={16} />
+                  )}
+                </View>
               </View>
               <Text style={styles.songArtist} numberOfLines={1}>
                 {song.artist_name || 'Unknown Artist'}
@@ -265,10 +268,17 @@ const HomeScreen = ({ navigation }) => {
                 </Text>
                 {song.average_rating != null && (
                   <>
-                    <Text style={styles.metaSeparator}>•</Text>
                     <Ionicons name="star" size={12} color={COLORS.warning} />
                     <Text style={styles.metaText}>
                       {Number(song.average_rating).toFixed(1)}
+                    </Text>
+                  </>
+                )}
+                {song.duration > 0 && (
+                  <>
+                    <Ionicons name="time-outline" size={12} color="#94A3B8" />
+                    <Text style={styles.metaText}>
+                      {formatDuration(song.duration)}
                     </Text>
                   </>
                 )}
@@ -311,6 +321,21 @@ const HomeScreen = ({ navigation }) => {
     if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
     if (count >= 1000) return `${(count / 1000).toFixed(1)}K`;
     return count?.toString() || '0';
+  };
+
+  const formatDuration = (duration) => {
+    if (!duration) return '0:00';
+    
+    // Handle both seconds and milliseconds
+    let totalSeconds = duration;
+    if (duration > 10000) {
+      // Likely in milliseconds, convert to seconds
+      totalSeconds = Math.round(duration / 1000);
+    }
+    
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
   const handleAddToPlaylist = (song) => {

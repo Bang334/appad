@@ -93,5 +93,5 @@ const styles = StyleSheet.create({
   },
 });
 
-export default YouTubeBackground;
+export default React.memo(YouTubeBackground);
 

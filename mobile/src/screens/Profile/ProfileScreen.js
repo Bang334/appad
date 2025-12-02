@@ -27,9 +27,55 @@ const HeaderBackground = () => {
   );
 };
 
-const ProfileScreen = ({ navigation }) => {
-  const { user, logout } = useAuth();
-  const { stopPlayer, isPlaying } = usePlayer();
+// MenuItem Component (Isolated)
+const MenuItem = ({ icon, title, onPress, danger, gradientColors }) => {
+  // Default gradient colors for different menu items
+  const getGradientColors = () => {
+    if (gradientColors) return gradientColors;
+    if (danger) return ['#EF5350', '#E57373'];
+    
+    // Different colors for different menu items
+    const colorMap = {
+      'person-outline': ['#2196F3', '#21CBF3'],
+      'settings-outline': ['#9C27B0', '#BA68C8'],
+      'help-circle-outline': ['#FF9800', '#FFB74D'],
+      'information-circle-outline': ['#00BCD4', '#4DD0E1'],
+      'wallet': ['#4CAF50', '#66BB6A'],
+      'star': ['#FFD700', '#FFE082'],
+      'musical-notes-outline': ['#E91E63', '#F06292'],
+      'bar-chart-outline': ['#9C27B0', '#E91E63'],
+      'shield-outline': ['#F44336', '#EF5350'],
+    };
+    
+    return colorMap[icon] || [COLORS.primary, COLORS.accent];
+  };
+  
+  const colors = getGradientColors();
+  
+  return (
+    <TouchableOpacity style={styles.menuItem} onPress={onPress}>
+      <LinearGradient
+        colors={colors}
+        style={styles.menuIconContainer}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <Ionicons
+          name={icon}
+          size={24}
+          color="#FFF"
+        />
+      </LinearGradient>
+      <Text style={[styles.menuText, danger && styles.dangerText]}>{title}</Text>
+      <Ionicons name="chevron-forward" size={24} color={COLORS.textSecondary} />
+    </TouchableOpacity>
+  );
+};
+
+// LogoutAction Component (Uses usePlayer, isolated re-renders)
+const LogoutAction = React.memo(() => {
+  const { stopPlayer } = usePlayer();
+  const { logout } = useAuth();
 
   const handleLogout = () => {
     Alert.alert(
@@ -51,49 +97,22 @@ const ProfileScreen = ({ navigation }) => {
     );
   };
 
-  const MenuItem = ({ icon, title, onPress, danger, gradientColors }) => {
-    // Default gradient colors for different menu items
-    const getGradientColors = () => {
-      if (gradientColors) return gradientColors;
-      if (danger) return ['#EF5350', '#E57373'];
-      
-      // Different colors for different menu items
-      const colorMap = {
-        'person-outline': ['#2196F3', '#21CBF3'],
-        'settings-outline': ['#9C27B0', '#BA68C8'],
-        'help-circle-outline': ['#FF9800', '#FFB74D'],
-        'information-circle-outline': ['#00BCD4', '#4DD0E1'],
-        'wallet': ['#4CAF50', '#66BB6A'],
-        'star': ['#FFD700', '#FFE082'],
-        'musical-notes-outline': ['#E91E63', '#F06292'],
-        'bar-chart-outline': ['#9C27B0', '#E91E63'],
-        'shield-outline': ['#F44336', '#EF5350'],
-      };
-      
-      return colorMap[icon] || [COLORS.primary, COLORS.accent];
-    };
-    
-    const colors = getGradientColors();
-    
-    return (
-      <TouchableOpacity style={styles.menuItem} onPress={onPress}>
-        <LinearGradient
-          colors={colors}
-          style={styles.menuIconContainer}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <Ionicons
-            name={icon}
-            size={24}
-            color="#FFF"
-          />
-        </LinearGradient>
-        <Text style={[styles.menuText, danger && styles.dangerText]}>{title}</Text>
-        <Ionicons name="chevron-forward" size={24} color={COLORS.textSecondary} />
-      </TouchableOpacity>
-    );
-  };
+  return (
+    <View style={[styles.sectionCard, styles.sectionCardNeutral]}>
+      <Text style={styles.sectionTitle}>Hành động</Text>
+      <MenuItem
+        icon="log-out-outline"
+        title="Đăng xuất"
+        onPress={handleLogout}
+        danger
+      />
+    </View>
+  );
+});
+
+const ProfileScreen = ({ navigation }) => {
+  const { user } = useAuth();
+  // NO usePlayer() here! This prevents re-renders every second.
 
   return (
     <View style={styles.container}>
@@ -104,14 +123,15 @@ const ProfileScreen = ({ navigation }) => {
       >
         <View style={styles.header}>
           {/* YouTube Background or Gradient */}
-          {user?.background_video_url ? (
+          {/* {user?.background_video_url ? (
             <YouTubeBackground 
               videoUrl={user.background_video_url} 
-              isMuted={isPlaying}
+              isMuted={true} // Always muted if not controlled by player
             />
           ) : (
             <HeaderBackground />
-          )}
+          )} */}
+          <HeaderBackground />
 
           <Image
             source={{
@@ -198,15 +218,8 @@ const ProfileScreen = ({ navigation }) => {
             </View>
           )}
           
-          <View style={[styles.sectionCard, styles.sectionCardNeutral]}>
-            <Text style={styles.sectionTitle}>Hành động</Text>
-          <MenuItem
-            icon="log-out-outline"
-            title="Đăng xuất"
-            onPress={handleLogout}
-            danger
-          />
-          </View>
+          {/* Logout Action Isolated */}
+          <LogoutAction />
         </View>
 
         <View style={styles.footer}>
@@ -269,7 +282,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 25, // Padding để không bị đè bởi tab bar
+    paddingBottom: 120, // Increased padding to avoid MiniPlayer overlap
   },
   menu: {
     marginTop: 24,
@@ -348,4 +361,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default ProfileScreen;
+export default React.memo(ProfileScreen);

@@ -21,7 +21,7 @@ const HistoryScreen = ({ navigation }) => {
   const [historyByDay, setHistoryByDay] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const { playSong, currentSong, isPlaying, togglePlayPause } = usePlayer();
+  // REMOVED usePlayer from here - will use in child component only
 
   // Add header with back button
   React.useLayoutEffect(() => {
@@ -45,8 +45,11 @@ const HistoryScreen = ({ navigation }) => {
 
   useFocusEffect(
     useCallback(() => {
-      loadHistory();
-    }, [])
+      // Only load if we don't have data yet
+      if (historyByDay.length === 0 && !loading) {
+        loadHistory();
+      }
+    }, []) // Empty deps - only check on first focus
   );
 
   const loadHistory = async () => {
@@ -73,29 +76,24 @@ const HistoryScreen = ({ navigation }) => {
     if (!dateString) return '';
     try {
       // Normalize dateString to YYYY-MM-DD format
-      // Handle both string and Date object
       let normalizedDate = '';
       if (typeof dateString === 'string') {
-        // Remove time part if exists (T or space)
         normalizedDate = dateString.split('T')[0].split(' ')[0];
       } else if (dateString instanceof Date) {
-        // If it's a Date object, convert to YYYY-MM-DD
         const year = dateString.getFullYear();
         const month = String(dateString.getMonth() + 1).padStart(2, '0');
         const day = String(dateString.getDate()).padStart(2, '0');
         normalizedDate = `${year}-${month}-${day}`;
       } else {
-        // Try to convert to string first
         normalizedDate = String(dateString).split('T')[0].split(' ')[0];
       }
       
       // Validate format (should be YYYY-MM-DD)
       if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedDate)) {
-        console.warn('Invalid date format:', dateString, '->', normalizedDate);
         return String(dateString);
       }
       
-      // Get today and yesterday as YYYY-MM-DD strings (in LOCAL timezone, not UTC)
+      // Get today and yesterday as YYYY-MM-DD strings
       const now = new Date();
       const year = now.getFullYear();
       const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -108,16 +106,6 @@ const HistoryScreen = ({ navigation }) => {
       const yesterdayMonth = String(yesterday.getMonth() + 1).padStart(2, '0');
       const yesterdayDay = String(yesterday.getDate()).padStart(2, '0');
       const yesterdayStr = `${yesterdayYear}-${yesterdayMonth}-${yesterdayDay}`;
-      
-      // Debug log - uncomment to debug date comparison issues
-      console.log('Date comparison:', { 
-        original: dateString, 
-        normalized: normalizedDate, 
-        today: todayStr, 
-        yesterday: yesterdayStr,
-        isToday: normalizedDate === todayStr,
-        isYesterday: normalizedDate === yesterdayStr
-      });
       
       // Compare date strings directly
       if (normalizedDate === todayStr) {
@@ -142,70 +130,68 @@ const HistoryScreen = ({ navigation }) => {
     }
   };
 
-
-  const handlePlaySong = (song, songs, index) => {
-    // If clicking on the currently playing song, toggle play/pause
-    if (currentSong?.song_id === song.song_id) {
-      togglePlayPause();
-    } else {
-      // Otherwise, play the new song (don't navigate to FullPlayer)
-      playSong(song, songs, index);
-    }
-  };
-
-  const renderSongItem = ({ item, index, songs }) => {
-    const isCurrentSong = currentSong?.song_id === item.song_id;
+  // Song Item Component - Isolated with usePlayer to prevent parent re-renders
+  const SongItemWithPlayer = React.memo(({ song, songs, index, navigation }) => {
+    const { playSong, currentSong, isPlaying, togglePlayPause } = usePlayer();
+    const isCurrentSong = currentSong?.song_id === song.song_id;
     const isCurrentPlaying = isCurrentSong && isPlaying;
+
+    const handlePlaySong = () => {
+      if (currentSong?.song_id === song.song_id) {
+        togglePlayPause();
+      } else {
+        playSong(song, songs, index);
+      }
+    };
 
     return (
       <TouchableOpacity
         style={styles.songItem}
         onPress={() => {
-          // Navigate to FullPlayer when clicking on song item
-          if (currentSong?.song_id !== item.song_id) {
-            playSong(item, songs, index);
+          if (currentSong?.song_id !== song.song_id) {
+            playSong(song, songs, index);
           }
           navigation.navigate('FullPlayer');
         }}
         activeOpacity={0.7}
       >
         <Image
-          source={{ uri: item.cover_url || 'https://via.placeholder.com/60' }}
+          source={{ uri: song.cover_url || 'https://via.placeholder.com/60' }}
           style={styles.songImage}
         />
         <View style={styles.songInfo}>
           <View style={styles.titleRow}>
             <Text style={styles.songTitle} numberOfLines={1}>
-              {item.title}
+              {song.title}
             </Text>
-            {item.is_premium === 1 && (
+            {song.is_premium === 1 && (
               <PremiumBadge size="small" style={styles.premiumBadge} />
             )}
           </View>
           <Text style={styles.songArtist} numberOfLines={1}>
-            {item.artist_name || 'Nghệ sĩ không xác định'}
+            {song.artist_name || 'Nghệ sĩ không xác định'}
           </Text>
           <View style={styles.songMeta}>
-            {item.count > 0 && (
+            {song.count > 0 && (
               <>
                 <Ionicons name="repeat" size={12} color={COLORS.textMuted} />
                 <Text style={styles.songCount}>
-                  {item.count} lần
+                  {song.count} lần
                 </Text>
               </>
             )}
-            {item.total_duration > 0 && (
+            {song.total_duration > 0 && (
               <>
-                {item.count > 0 && <Text style={styles.metaDot}>•</Text>}
+                {song.count > 0 && <Text style={styles.metaDot}>•</Text>}
                 <Ionicons 
-                  name={item.completed_count === item.count ? "checkmark-circle" : "play-circle"} 
+                  name={song.completed_count === song.count ? "checkmark-circle" : "play-circle"} 
                   size={12} 
-                  color={item.completed_count === item.count ? COLORS.success : COLORS.textMuted} 
+                  color={song.completed_count === song.count ? COLORS.success : COLORS.textMuted} 
                 />
                 <Text style={styles.songTime}>
-                  {item.completed_count === item.count 
-                    ? `Hoàn thành • ${Math.floor(item.total_duration / 60)} phút`
-                    : `${Math.floor((item.completed_count / item.count) * 100)}% • ${Math.floor(item.total_duration / 60)} phút`
+                  {song.completed_count === song.count 
+                    ? `Hoàn thành • ${Math.floor(song.total_duration / 60)} phút`
+                    : `${Math.floor((song.completed_count / song.count) * 100)}% • ${Math.floor(song.total_duration / 60)} phút`
                   }
                 </Text>
               </>
@@ -214,8 +200,8 @@ const HistoryScreen = ({ navigation }) => {
         </View>
         <TouchableOpacity
           onPress={(e) => {
-            e.stopPropagation(); // Prevent triggering parent onPress
-            handlePlaySong(item, songs, index);
+            e.stopPropagation();
+            handlePlaySong();
           }}
           activeOpacity={0.7}
         >
@@ -226,6 +212,17 @@ const HistoryScreen = ({ navigation }) => {
           />
         </TouchableOpacity>
       </TouchableOpacity>
+    );
+  });
+
+  const renderSongItem = ({ item, index, songs }) => {
+    return (
+      <SongItemWithPlayer 
+        song={item} 
+        songs={songs} 
+        index={index} 
+        navigation={navigation}
+      />
     );
   };
 
@@ -410,5 +407,5 @@ const styles = StyleSheet.create({
   },
 });
 
-export default HistoryScreen;
+export default React.memo(HistoryScreen);
 

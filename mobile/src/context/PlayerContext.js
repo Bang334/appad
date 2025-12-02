@@ -8,11 +8,20 @@ import PremiumAccessModal from '../components/Common/PremiumAccessModal';
 import SongPurchaseModal from '../components/Common/SongPurchaseModal';
 
 const PlayerContext = createContext();
+const PlayerProgressContext = createContext();
 
 export const usePlayer = () => {
   const context = useContext(PlayerContext);
   if (!context) {
     throw new Error('usePlayer must be used within a PlayerProvider');
+  }
+  return context;
+};
+
+export const usePlayerProgress = () => {
+  const context = useContext(PlayerProgressContext);
+  if (!context) {
+    throw new Error('usePlayerProgress must be used within a PlayerProvider');
   }
   return context;
 };
@@ -33,7 +42,7 @@ export const PlayerProvider = ({ children }) => {
   const [purchaseSong, setPurchaseSong] = useState(null);
   
   const soundRef = useRef(null);
-  const positionInterval = useRef(null);
+  // positionInterval removed
   const isRepeatRef = useRef(false);
   const isShuffleRef = useRef(false);
   const originalPlaylistRef = useRef([]);
@@ -80,9 +89,6 @@ export const PlayerProvider = ({ children }) => {
     return () => {
       if (soundRef.current) {
         soundRef.current.unloadAsync();
-      }
-      if (positionInterval.current) {
-        clearInterval(positionInterval.current);
       }
     };
   }, []);
@@ -185,14 +191,12 @@ export const PlayerProvider = ({ children }) => {
         }
         await soundRef.current.pauseAsync();
         setIsPlaying(false);
-        stopPositionTracking();
       } else {
         // Resuming - start new play session
         playStartTimeRef.current = Date.now();
 
         await soundRef.current.playAsync();
         setIsPlaying(true);
-        startPositionTracking();
       }
     } catch (error) {
       console.error('Error toggling play/pause:', error);
@@ -202,7 +206,6 @@ export const PlayerProvider = ({ children }) => {
   // Helper function to stop current song immediately
   const stopCurrentSong = async () => {
     try {
-      stopPositionTracking();
       setPosition(0);
       setIsPlaying(false);
       
@@ -286,7 +289,6 @@ export const PlayerProvider = ({ children }) => {
       const oldSound = soundRef.current;
       
       // 3. Reset UI and Refs IMMEDIATELY
-      stopPositionTracking();
       setPosition(0);
       setIsPlaying(false);
       
@@ -449,10 +451,17 @@ export const PlayerProvider = ({ children }) => {
       setDuration(status.durationMillis || 0);
 
       // Update position
-      startPositionTracking();
+      // startPositionTracking(); // Removed in favor of setOnPlaybackStatusUpdate
+
+      // Set progress update interval to 1 second
+      await sound.setProgressUpdateIntervalAsync(1000);
 
       // Handle playback status
       sound.setOnPlaybackStatusUpdate(async (status) => {
+        if (status.isLoaded) {
+          setPosition(status.positionMillis);
+        }
+
         if (status.didJustFinish) {
           // CRITICAL: Use currentSongRef instead of currentSong state
           // because state might have been reset by playSongInternal before this callback runs
@@ -696,24 +705,7 @@ export const PlayerProvider = ({ children }) => {
     }
   };
 
-  const startPositionTracking = () => {
-    stopPositionTracking();
-    positionInterval.current = setInterval(async () => {
-      if (soundRef.current) {
-        const status = await soundRef.current.getStatusAsync();
-        if (status.isLoaded) {
-          setPosition(status.positionMillis || 0);
-        }
-      }
-    }, 1000);
-  };
-
-  const stopPositionTracking = () => {
-    if (positionInterval.current) {
-      clearInterval(positionInterval.current);
-      positionInterval.current = null;
-    }
-  };
+  // startPositionTracking and stopPositionTracking removed
 
   const stopPlayer = async () => {
     try {
@@ -727,7 +719,6 @@ export const PlayerProvider = ({ children }) => {
       const oldSound = soundRef.current;
       
       // 2. Reset UI IMMEDIATELY (no await)
-      stopPositionTracking();
       setCurrentSong(null);
       setIsPlaying(false);
       setPosition(0);
@@ -845,51 +836,85 @@ export const PlayerProvider = ({ children }) => {
     }
   };
 
-  const value = {
+  // Optimize Context Values
+  // Main player state (excluding fast-changing progress)
+  const playerState = React.useMemo(() => ({
     currentSong,
     isPlaying,
-    duration,
-    position,
     playlist,
-    currentPlaylist,
     currentIndex,
+    currentPlaylist,
     isRepeat,
     isShuffle,
+    showPremiumModal,
+    premiumSong,
+    showPurchaseModal,
+    purchaseSong,
+  }), [
+    currentSong,
+    isPlaying,
+    playlist,
+    currentIndex,
+    currentPlaylist,
+    isRepeat,
+    isShuffle,
+    showPremiumModal,
+    premiumSong,
+    showPurchaseModal,
+    purchaseSong,
+  ]);
+
+  // Progress state (updates every second)
+  const playerProgress = React.useMemo(() => ({
+    position,
+    duration,
+  }), [position, duration]);
+
+  const playerActions = React.useMemo(() => ({
     playSong,
     togglePlayPause,
     playNext,
     playPrevious,
     seekTo,
-    stopPlayer,
-    refreshCurrentSong,
     toggleRepeat,
     toggleShuffle,
+    stopPlayer,
+    refreshCurrentSong,
     moveSongInPlaylist,
-  };
+    setShowPremiumModal,
+    setShowPurchaseModal,
+  }), []); // Actions should be stable
+
+  const contextValue = React.useMemo(() => ({
+    ...playerState,
+    ...playerActions,
+  }), [playerState, playerActions]);
 
   return (
-    <PlayerContext.Provider value={value}>
-      {children}
-      <PremiumAccessModal
-        visible={showPremiumModal}
-        song={premiumSong}
-        onClose={() => {
-          setShowPremiumModal(false);
-          setPremiumSong(null);
-        }}
-        onPurchaseSong={handlePurchaseSong}
-        onSubscribePremium={handleSubscribePremium}
-        playSong={playSong}
-      />
-      <SongPurchaseModal
-        visible={showPurchaseModal}
-        song={purchaseSong}
-        onClose={() => {
-          setShowPurchaseModal(false);
-          setPurchaseSong(null);
-        }}
-        onPurchaseSuccess={handlePurchaseSuccess}
-      />
+    <PlayerContext.Provider value={contextValue}>
+      <PlayerProgressContext.Provider value={playerProgress}>
+        {children}
+        <PremiumAccessModal
+          visible={showPremiumModal}
+          song={premiumSong}
+          onClose={() => {
+            setShowPremiumModal(false);
+            setPremiumSong(null);
+          }}
+          onPurchaseSong={handlePurchaseSong}
+          onSubscribePremium={handleSubscribePremium}
+          playSong={playSong}
+        />
+        <SongPurchaseModal
+          visible={showPurchaseModal}
+          song={purchaseSong}
+          onClose={() => {
+            setShowPurchaseModal(false);
+            setPurchaseSong(null);
+          }}
+          onPurchaseSuccess={handlePurchaseSuccess}
+        />
+      </PlayerProgressContext.Provider>
     </PlayerContext.Provider>
   );
 };

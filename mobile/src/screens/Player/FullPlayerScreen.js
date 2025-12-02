@@ -16,7 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { usePlayer } from '../../context/PlayerContext';
+import { usePlayer, usePlayerProgress } from '../../context/PlayerContext';
 import { COLORS, SIZES } from '../../config/theme';
 import { formatTime } from '../../utils/formatTime';
 import AddToPlaylistModal from '../../components/Playlist/AddToPlaylistModal';
@@ -29,7 +29,8 @@ import { favoriteService } from '../../services/favoriteService';
 const { width, height } = Dimensions.get('window');
 
 const FullPlayerScreen = ({ navigation, route }) => {
-  const { currentSong, isPlaying, togglePlayPause, playNext, playPrevious, seekTo, position, duration, currentPlaylist, playlist, currentIndex, playSong, refreshCurrentSong, isRepeat, toggleRepeat, isShuffle, toggleShuffle } = usePlayer();
+  const { currentSong, isPlaying, togglePlayPause, playNext, playPrevious, seekTo, currentPlaylist, playlist, currentIndex, playSong, refreshCurrentSong, isRepeat, toggleRepeat, isShuffle, toggleShuffle } = usePlayer();
+  const { position, duration } = usePlayerProgress();
   const [showLyrics, setShowLyrics] = useState(false);
   const [isLyricsExpanded, setIsLyricsExpanded] = useState(false);
   const [showComments, setShowComments] = useState(false);

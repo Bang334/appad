@@ -8,8 +8,8 @@ export const historyService = {
   },
 
   // Get user listening history grouped by day
-  getUserHistoryByDay: async (limit = 100) => {
-    const response = await api.get(`/history/by-day?limit=${limit}`);
+  getUserHistoryByDay: async (limit = 100, offset = 0) => {
+    const response = await api.get(`/history/by-day?limit=${limit}&offset=${offset}`);
     return response.data;
   },
 

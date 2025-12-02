@@ -13,6 +13,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../context/AuthContext';
 import { COLORS, SIZES } from '../../config/theme';
+import SuccessModal from '../../components/Common/SuccessModal';
 
 const RegisterScreen = ({ navigation }) => {
   const [username, setUsername] = useState('');
@@ -26,32 +27,58 @@ const RegisterScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
   const { register } = useAuth();
 
+  // Custom Alert State
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({
+    title: '',
+    message: '',
+    icon: 'checkmark-circle',
+    onClose: null
+  });
+
+  const showAlert = (title, message, icon = 'checkmark-circle', callback = null) => {
+    setAlertConfig({
+      title,
+      message,
+      icon,
+      onClose: callback
+    });
+    setAlertVisible(true);
+  };
+
+  const handleAlertClose = () => {
+    setAlertVisible(false);
+    if (alertConfig.onClose) {
+      alertConfig.onClose();
+    }
+  };
+
   const handleRegister = async () => {
     // Validation
     if (!username || !username.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập tên đăng nhập');
+      showAlert('Lỗi', 'Vui lòng nhập tên đăng nhập', 'alert-circle');
       return;
     }
 
     if (username.length < 3 || username.length > 50) {
-      Alert.alert('Lỗi', 'Tên đăng nhập phải từ 3-50 ký tự');
+      showAlert('Lỗi', 'Tên đăng nhập phải từ 3-50 ký tự', 'alert-circle');
       return;
     }
 
     if (!email || !email.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập email');
+      showAlert('Lỗi', 'Vui lòng nhập email', 'alert-circle');
       return;
     }
 
     // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      Alert.alert('Lỗi', 'Email không hợp lệ');
+      showAlert('Lỗi', 'Email không hợp lệ', 'alert-circle');
       return;
     }
 
     if (!password || password.length < 6) {
-      Alert.alert('Lỗi', 'Mật khẩu phải có ít nhất 6 ký tự');
+      showAlert('Lỗi', 'Mật khẩu phải có ít nhất 6 ký tự', 'alert-circle');
       return;
     }
 
@@ -70,14 +97,14 @@ const RegisterScreen = ({ navigation }) => {
       setLoading(false);
 
       if (result.success) {
-        Alert.alert('Thành công', 'Đăng ký tài khoản thành công!');
+        showAlert('Thành công', 'Đăng ký tài khoản thành công!', 'checkmark-circle', () => navigation.navigate('Login'));
       } else {
-        Alert.alert('Đăng ký thất bại', result.message || 'Có lỗi xảy ra. Vui lòng thử lại.');
+        showAlert('Đăng ký thất bại', result.message || 'Có lỗi xảy ra. Vui lòng thử lại.', 'alert-circle');
       }
     } catch (error) {
       setLoading(false);
       console.error('Register error:', error);
-      Alert.alert('Lỗi', 'Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng.');
+      showAlert('Lỗi', 'Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng.', 'alert-circle');
     }
   };
 
@@ -202,6 +229,14 @@ const RegisterScreen = ({ navigation }) => {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <SuccessModal
+        visible={alertVisible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        icon={alertConfig.icon}
+        onClose={handleAlertClose}
+      />
     </LinearGradient>
   );
 };

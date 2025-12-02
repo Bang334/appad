@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../../config/theme';
 import { userService } from '../../services/userService';
 import MiniPlayer from '../../components/Player/MiniPlayer';
+import SuccessModal from '../../components/Common/SuccessModal';
 
 const ChangePasswordScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
@@ -27,24 +28,50 @@ const ChangePasswordScreen = ({ navigation }) => {
     confirm: false,
   });
 
+  // Custom Alert State
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({
+    title: '',
+    message: '',
+    icon: 'checkmark-circle',
+    onClose: null
+  });
+
+  const showAlert = (title, message, icon = 'checkmark-circle', callback = null) => {
+    setAlertConfig({
+      title,
+      message,
+      icon,
+      onClose: callback
+    });
+    setAlertVisible(true);
+  };
+
+  const handleAlertClose = () => {
+    setAlertVisible(false);
+    if (alertConfig.onClose) {
+      alertConfig.onClose();
+    }
+  };
+
   const handleSave = async () => {
     if (!formData.currentPassword.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập mật khẩu hiện tại');
+      showAlert('Lỗi', 'Vui lòng nhập mật khẩu hiện tại', 'alert-circle');
       return;
     }
 
     if (!formData.newPassword.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập mật khẩu mới');
+      showAlert('Lỗi', 'Vui lòng nhập mật khẩu mới', 'alert-circle');
       return;
     }
 
     if (formData.newPassword.length < 6) {
-      Alert.alert('Lỗi', 'Mật khẩu mới phải có ít nhất 6 ký tự');
+      showAlert('Lỗi', 'Mật khẩu mới phải có ít nhất 6 ký tự', 'alert-circle');
       return;
     }
 
     if (formData.newPassword !== formData.confirmPassword) {
-      Alert.alert('Lỗi', 'Mật khẩu xác nhận không khớp');
+      showAlert('Lỗi', 'Mật khẩu xác nhận không khớp', 'alert-circle');
       return;
     }
 
@@ -54,11 +81,9 @@ const ChangePasswordScreen = ({ navigation }) => {
         current_password: formData.currentPassword,
         new_password: formData.newPassword,
       });
-      Alert.alert('Thành công', 'Đổi mật khẩu thành công', [
-        { text: 'OK', onPress: () => navigation.goBack() }
-      ]);
+      showAlert('Thành công', 'Đổi mật khẩu thành công', 'checkmark-circle', () => navigation.goBack());
     } catch (error) {
-      Alert.alert('Lỗi', error.response?.data?.message || 'Không thể đổi mật khẩu');
+      showAlert('Lỗi', error.response?.data?.message || 'Không thể đổi mật khẩu', 'alert-circle');
     } finally {
       setLoading(false);
     }
@@ -181,6 +206,15 @@ const ChangePasswordScreen = ({ navigation }) => {
         </TouchableOpacity>
       </View>
       </ScrollView>
+      
+      <SuccessModal
+        visible={alertVisible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        icon={alertConfig.icon}
+        onClose={handleAlertClose}
+      />
+      
       <MiniPlayer bottomOffset={0} />
     </View>
   );

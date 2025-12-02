@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../../config/theme';
 import MiniPlayer from '../../components/Player/MiniPlayer';
+import SuccessModal from '../../components/Common/SuccessModal';
 
 const SettingsScreen = ({ navigation }) => {
   const [settings, setSettings] = useState({
@@ -20,6 +21,32 @@ const SettingsScreen = ({ navigation }) => {
     downloadOnWifi: true,
     darkMode: true,
   });
+
+  // Custom Alert State
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({
+    title: '',
+    message: '',
+    icon: 'checkmark-circle',
+    onClose: null
+  });
+
+  const showAlert = (title, message, icon = 'checkmark-circle', callback = null) => {
+    setAlertConfig({
+      title,
+      message,
+      icon,
+      onClose: callback
+    });
+    setAlertVisible(true);
+  };
+
+  const handleAlertClose = () => {
+    setAlertVisible(false);
+    if (alertConfig.onClose) {
+      alertConfig.onClose();
+    }
+  };
 
   const handleSettingChange = (key, value) => {
     setSettings({ ...settings, [key]: value });
@@ -49,7 +76,7 @@ const SettingsScreen = ({ navigation }) => {
           style: 'destructive',
           onPress: () => {
             // Implement cache clearing logic
-            Alert.alert('Thành công', 'Đã xóa bộ nhớ đệm');
+            showAlert('Thành công', 'Đã xóa bộ nhớ đệm', 'checkmark-circle');
           },
         },
       ]
@@ -67,7 +94,7 @@ const SettingsScreen = ({ navigation }) => {
           style: 'destructive',
           onPress: () => {
             // Implement history clearing logic
-            Alert.alert('Thành công', 'Đã xóa lịch sử nghe nhạc');
+            showAlert('Thành công', 'Đã xóa lịch sử nghe nhạc', 'checkmark-circle');
           },
         },
       ]
@@ -213,6 +240,15 @@ const SettingsScreen = ({ navigation }) => {
         />
       </View>
       </ScrollView>
+      
+      <SuccessModal
+        visible={alertVisible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        icon={alertConfig.icon}
+        onClose={handleAlertClose}
+      />
+      
       <MiniPlayer bottomOffset={0} />
     </View>
   );

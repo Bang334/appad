@@ -12,6 +12,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../context/AuthContext';
 import { COLORS, SIZES } from '../../config/theme';
+import SuccessModal from '../../components/Common/SuccessModal';
 
 const LoginScreen = ({ navigation }) => {
   // Default values for testing
@@ -20,9 +21,35 @@ const LoginScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
 
+  // Custom Alert State
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({
+    title: '',
+    message: '',
+    icon: 'checkmark-circle',
+    onClose: null
+  });
+
+  const showAlert = (title, message, icon = 'checkmark-circle', callback = null) => {
+    setAlertConfig({
+      title,
+      message,
+      icon,
+      onClose: callback
+    });
+    setAlertVisible(true);
+  };
+
+  const handleAlertClose = () => {
+    setAlertVisible(false);
+    if (alertConfig.onClose) {
+      alertConfig.onClose();
+    }
+  };
+
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Lỗi', 'Vui lòng nhập đầy đủ thông tin');
+      showAlert('Lỗi', 'Vui lòng nhập đầy đủ thông tin', 'alert-circle');
       return;
     }
 
@@ -31,7 +58,7 @@ const LoginScreen = ({ navigation }) => {
     setLoading(false);
 
     if (!result.success) {
-      Alert.alert('Đăng nhập thất bại', result.message);
+      showAlert('Đăng nhập thất bại', result.message, 'alert-circle');
     }
   };
 
@@ -102,6 +129,14 @@ const LoginScreen = ({ navigation }) => {
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      <SuccessModal
+        visible={alertVisible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        icon={alertConfig.icon}
+        onClose={handleAlertClose}
+      />
     </LinearGradient>
   );
 };

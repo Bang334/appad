@@ -26,9 +26,9 @@ class HistoryController {
   static async getUserHistoryByDay(req, res) {
     try {
       const userId = req.user.user_id;
-      const { limit = 100 } = req.query;
+      const { limit = 100, offset = 0 } = req.query;
       
-      const history = await HistoryModel.getUserHistoryByDay(userId, parseInt(limit));
+      const history = await HistoryModel.getUserHistoryByDay(userId, parseInt(limit), parseInt(offset));
       
       res.json({
         success: true,

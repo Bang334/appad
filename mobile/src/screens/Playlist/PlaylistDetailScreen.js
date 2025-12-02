@@ -20,6 +20,8 @@ import { COLORS, SIZES } from '../../config/theme';
 import MiniPlayer from '../../components/Player/MiniPlayer';
 import BottomSheet from '../../components/Common/BottomSheet';
 import PremiumBadge from '../../components/Common/PremiumBadge';
+import PremiumAccessModal from '../../components/Common/PremiumAccessModal';
+import SuccessModal from '../../components/Common/SuccessModal';
 
 const formatDuration = (seconds) => {
   if (seconds == null) return '0:00';
@@ -46,7 +48,35 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
   const [selectedSong, setSelectedSong] = useState(null);
   const [purchasedSongIds, setPurchasedSongIds] = useState(new Set());
   const [userIsPremium, setUserIsPremium] = useState(false);
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [songToPurchase, setSongToPurchase] = useState(null);
   const { playSong, currentSong, isPlaying, togglePlayPause } = usePlayer();
+
+  // Custom Alert State
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({
+    title: '',
+    message: '',
+    icon: 'checkmark-circle',
+    onClose: null
+  });
+
+  const showAlert = (title, message, icon = 'checkmark-circle', callback = null) => {
+    setAlertConfig({
+      title,
+      message,
+      icon,
+      onClose: callback
+    });
+    setAlertVisible(true);
+  };
+
+  const handleAlertClose = () => {
+    setAlertVisible(false);
+    if (alertConfig.onClose) {
+      alertConfig.onClose();
+    }
+  };
 
   useEffect(() => {
     loadPlaylist();
@@ -68,7 +98,7 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
       setUserIsPremium(premiumStatus.data?.is_premium || false);
     } catch (error) {
       console.error('Error loading playlist:', error);
-      Alert.alert('Lỗi', 'Không thể tải playlist');
+      showAlert('Lỗi', 'Không thể tải playlist', 'alert-circle');
     } finally {
       setLoading(false);
     }
@@ -76,6 +106,16 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
 
   const handlePlaySong = async (song, index, options = {}) => {
     const { navigateToFullPlayer = true } = options;
+
+    // Check access
+    const isPurchased = purchasedSongIds.has(song.song_id);
+    const hasAccess = !song.is_premium || isPurchased || userIsPremium;
+
+    if (!hasAccess) {
+      setSongToPurchase(song);
+      setShowPremiumModal(true);
+      return;
+    }
 
     if (currentSong?.song_id === song.song_id) {
       if (navigateToFullPlayer) {
@@ -108,9 +148,9 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
             try {
               await playlistService.removeSongFromPlaylist(playlistId, songId);
               setSongs(songs.filter(s => s.song_id !== songId));
-              Alert.alert('Thành công', 'Đã xóa bài khỏi playlist');
+              showAlert('Thành công', 'Đã xóa bài khỏi playlist', 'checkmark-circle');
             } catch (error) {
-              Alert.alert('Lỗi', 'Không thể xóa bài hát');
+              showAlert('Lỗi', 'Không thể xóa bài hát', 'alert-circle');
             }
           },
         },
@@ -119,12 +159,27 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
   };
 
   const handlePlayAll = async () => {
-    if (songs.length > 0) {
-      playSong(songs[0], songs, 0, playlist);
-      // Save flag to localStorage that we're playing from playlist
-      await AsyncStorage.setItem('isPlayingPlaylist', '1');
-      await AsyncStorage.setItem('currentPlaylistId', playlistId.toString());
-      navigation.navigate('FullPlayer');
+    if (songs.length === 0) return;
+
+    // Find the first song the user has access to
+    let firstAccessibleIndex = -1;
+    
+    for (let i = 0; i < songs.length; i++) {
+      const song = songs[i];
+      const isPurchased = purchasedSongIds.has(song.song_id);
+      const hasAccess = !song.is_premium || isPurchased || userIsPremium;
+      
+      if (hasAccess) {
+        firstAccessibleIndex = i;
+        break;
+      }
+    }
+
+    if (firstAccessibleIndex !== -1) {
+      handlePlaySong(songs[firstAccessibleIndex], firstAccessibleIndex);
+    } else {
+      // If no songs are accessible, play the first one to trigger the purchase modal
+      handlePlaySong(songs[0], 0);
     }
   };
 
@@ -140,11 +195,10 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
           onPress: async () => {
             try {
               await playlistService.deletePlaylist(playlistId);
-              Alert.alert('Thành công', 'Đã xóa playlist');
-              navigation.goBack();
+              showAlert('Thành công', 'Đã xóa playlist', 'checkmark-circle', () => navigation.goBack());
             } catch (error) {
               console.error('Error deleting playlist:', error);
-              Alert.alert('Lỗi', 'Không thể xóa playlist');
+              showAlert('Lỗi', 'Không thể xóa playlist', 'alert-circle');
             }
           },
         },
@@ -182,7 +236,7 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
       await playlistService.updateSongOrder(playlistId, songOrders);
     } catch (error) {
       console.error('Error updating song order:', error);
-      Alert.alert('Lỗi', 'Không thể lưu thứ tự bài hát');
+      showAlert('Lỗi', 'Không thể lưu thứ tự bài hát', 'alert-circle');
       // Reload to get correct order
       loadPlaylist();
     } finally {
@@ -396,7 +450,41 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
         message="Chọn hành động"
         options={getBottomSheetOptions()}
       />
+
+      <PremiumAccessModal
+        visible={showPremiumModal}
+        song={songToPurchase}
+        onClose={() => setShowPremiumModal(false)}
+        onPurchaseSong={async () => {
+          if (songToPurchase) {
+            try {
+              await premiumService.purchaseSong(songToPurchase.song_id);
+              setShowPremiumModal(false);
+              showAlert('Thành công', 'Đã mua bài hát', 'checkmark-circle');
+              // Refresh purchased list
+              const purchased = await premiumService.getPurchasedSongs();
+              const purchasedIds = new Set((purchased.data || []).map(s => s.song_id));
+              setPurchasedSongIds(purchasedIds);
+            } catch (error) {
+              console.error('Error purchasing song:', error);
+              showAlert('Lỗi', 'Không thể mua bài hát', 'alert-circle');
+            }
+          }
+        }}
+        onSubscribePremium={() => {
+          setShowPremiumModal(false);
+          navigation.navigate('Premium');
+        }}
+      />
       
+      <SuccessModal
+        visible={alertVisible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        icon={alertConfig.icon}
+        onClose={handleAlertClose}
+      />
+
       <MiniPlayer bottomOffset={0} />
     </View>
   );

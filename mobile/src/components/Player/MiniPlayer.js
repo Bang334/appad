@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,15 +9,19 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { usePlayer } from '../../context/PlayerContext';
+import { usePlayer, usePlayerProgress } from '../../context/PlayerContext';
 import { COLORS, SIZES } from '../../config/theme';
 import Slider from '@react-native-community/slider';
 
 const MiniPlayer = ({ bottomOffset = 60 }) => {
   const navigation = useNavigation();
-  const { currentSong, isPlaying, duration, position, togglePlayPause, playNext, playPrevious, stopPlayer, seekTo } = usePlayer();
+  const { currentSong, isPlaying, togglePlayPause, playNext, playPrevious, stopPlayer, seekTo } = usePlayer();
+  const { position, duration } = usePlayerProgress();
 
-  if (!currentSong) return null;
+  // Optimize progress calculation
+  const progress = useMemo(() => {
+    return duration > 0 ? Math.min(position / duration, 1) : 0;
+  }, [position, duration]);
 
   const openFullPlayer = () => {
     navigation.navigate('FullPlayer');
@@ -28,13 +32,13 @@ const MiniPlayer = ({ bottomOffset = 60 }) => {
   };
 
   const formatTime = (ms) => {
-    const totalSeconds = Math.floor((ms || 0) / 1000);
+    const totalSeconds = Math.round((ms || 0) / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  const progress = duration > 0 ? Math.min(position / duration, 1) : 0;
+  if (!currentSong) return null;
 
   return (
     <View
@@ -46,8 +50,9 @@ const MiniPlayer = ({ bottomOffset = 60 }) => {
           onPress={handleClose} 
           style={styles.closeButton}
           activeOpacity={0.7}
+          hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
         >
-          <Ionicons name="close" size={20} color={COLORS.textSecondary} style={styles.closeButton} />
+          <Ionicons name="close" size={20} color={COLORS.textSecondary} />
         </TouchableOpacity>
 
         <TouchableOpacity 
@@ -71,11 +76,11 @@ const MiniPlayer = ({ bottomOffset = 60 }) => {
         </TouchableOpacity>
 
         <View style={styles.controls}>
-          <TouchableOpacity onPress={playPrevious} style={styles.controlButton}>
+          <TouchableOpacity onPress={playPrevious} style={styles.controlButton} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
             <Ionicons name="play-skip-back" size={24} color={COLORS.textSecondary} />
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={togglePlayPause} style={styles.playButton}>
+          <TouchableOpacity onPress={togglePlayPause} style={styles.playButton} hitSlop={{top: 5, bottom: 5, left: 5, right: 5}}>
             <LinearGradient
               colors={COLORS.gradient.primary}
               style={styles.playButtonGradient}
@@ -90,7 +95,7 @@ const MiniPlayer = ({ bottomOffset = 60 }) => {
             </LinearGradient>
           </TouchableOpacity>
           
-          <TouchableOpacity onPress={playNext} style={styles.controlButton}>
+          <TouchableOpacity onPress={playNext} style={styles.controlButton} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
             <Ionicons name="play-skip-forward" size={24} color={COLORS.textSecondary} />
           </TouchableOpacity>
         </View>
@@ -224,5 +229,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default MiniPlayer;
-
+export default React.memo(MiniPlayer);

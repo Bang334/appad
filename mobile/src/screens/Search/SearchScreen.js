@@ -12,6 +12,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { songService } from '../../services/songService';
 import { artistService } from '../../services/artistService';
 import { albumService } from '../../services/albumService';
@@ -336,6 +337,21 @@ const SearchScreen = ({ navigation }) => {
     return count?.toString() || '0';
   };
 
+  const formatDuration = (duration) => {
+    if (!duration) return '0:00';
+    
+    // Handle both seconds and milliseconds
+    let totalSeconds = duration;
+    if (duration > 10000) {
+      // Likely in milliseconds, convert to seconds
+      totalSeconds = Math.floor(duration / 1000);
+    }
+    
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
   const getPaginatedSongs = () => {
     return filteredSongs.slice(0, currentPage * ITEMS_PER_PAGE);
   };
@@ -368,43 +384,66 @@ const SearchScreen = ({ navigation }) => {
 
   const renderAlbumItem = ({ item }) => {
     return (
-      <TouchableOpacity
-        style={styles.artistItem} // Reuse artist item style for consistency
-        onPress={() => navigation.navigate('AlbumDetail', { albumId: item.album_id })}
-      >
-        <Image
-          source={{ uri: item.cover_url || 'https://via.placeholder.com/150' }}
-          style={styles.artistImage}
-        />
-        
-        <View style={styles.artistInfo}>
-          <View style={styles.songTitleRow}>
-            <Text style={styles.artistName} numberOfLines={1}>
-              {item.title}
-            </Text>
-            {item.is_premium === 1 && <PremiumBadge small />}
-          </View>
-          
-          <Text style={styles.artistStatText} numberOfLines={1}>
-            {item.artist_name}
-          </Text>
-          
-          <View style={styles.artistStats}>
-            <Text style={styles.artistStatText}>
-              {item.release_date ? new Date(item.release_date).getFullYear() : ''}
-            </Text>
-            {item.is_premium === 1 && item.price > 0 && (
-              <>
-                <Text style={styles.metaDot}>•</Text>
-                <Ionicons name="cash-outline" size={12} color={COLORS.textMuted} />
-                <Text style={styles.priceText}>
-                  {parseFloat(item.price).toLocaleString('vi-VN')}đ
+      <View style={styles.songItemWrapper}>
+        <LinearGradient
+          colors={['#161616', '#050505']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.songItem}
+        >
+          <TouchableOpacity
+            style={styles.songContent}
+            onPress={() => navigation.navigate('AlbumDetail', { albumId: item.album_id })}
+            activeOpacity={0.8}
+          >
+            <View style={styles.coverContainer}>
+              <Image
+                source={{ uri: item.cover_url || 'https://via.placeholder.com/150' }}
+                style={styles.songImage}
+              />
+            </View>
+            
+            <View style={styles.songInfo}>
+              <View style={[styles.songTitleRow, { justifyContent: 'space-between' }]}>
+                <Text style={styles.songTitle} numberOfLines={1}>
+                  {item.title}
                 </Text>
-              </>
-            )}
+                <View style={{display: 'flex', flexDirection: 'row', position: 'relative', top: -10, right:-15}}>
+                  {item.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
+                </View>
+              </View>
+              
+              <Text style={styles.songArtist} numberOfLines={1}>
+                {item.artist_name}
+              </Text>
+              
+              <View style={styles.songMeta}>
+                <Ionicons name="calendar-outline" size={12} color="#94A3B8" />
+                <Text style={styles.metaText}>
+                  {item.release_date ? new Date(item.release_date).getFullYear() : 'N/A'}
+                </Text>
+                {item.is_premium === 1 && item.price > 0 && (
+                  <>
+                    <Ionicons name="cash-outline" size={12} color={COLORS.warning} />
+                    <Text style={styles.priceText}>
+                      {parseFloat(item.price).toLocaleString('vi-VN')}đ
+                    </Text>
+                  </>
+                )}
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          <View style={styles.cardActions}>
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => navigation.navigate('AlbumDetail', { albumId: item.album_id })}
+            >
+              <Ionicons name="chevron-forward-circle-outline" size={28} color="#E2E8F0" />
+            </TouchableOpacity>
           </View>
-        </View>
-      </TouchableOpacity>
+        </LinearGradient>
+      </View>
     );
   };
 
@@ -447,10 +486,12 @@ const SearchScreen = ({ navigation }) => {
                 <Text style={styles.songTitle} numberOfLines={1}>
                   {item.title}
                 </Text>
-                {item.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
-                {item.is_premium === 1 && songAccessTypes[item.song_id] && (
-                  <AccessBadge accessType={songAccessTypes[item.song_id]} size={16} />
-                )}
+                <View style={{display: 'flex', flexDirection: 'row', position: 'relative', top: -10, right:-15}}>
+                  {item.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
+                  {item.is_premium === 1 && songAccessTypes[item.song_id] && (
+                    <AccessBadge accessType={songAccessTypes[item.song_id]} size={16} />
+                  )}
+                </View>
               </View>
               <Text style={styles.songArtist} numberOfLines={1}>
                 {item.artist_name || 'Unknown Artist'}
@@ -470,10 +511,17 @@ const SearchScreen = ({ navigation }) => {
                 </Text>
                 {item.average_rating != null && (
                   <>
-                    <Text style={styles.metaSeparator}>•</Text>
                     <Ionicons name="star" size={12} color={COLORS.warning} />
                     <Text style={styles.metaText}>
                       {Number(item.average_rating).toFixed(1)}
+                    </Text>
+                  </>
+                )}
+                {item.duration > 0 && (
+                  <>
+                    <Ionicons name="time-outline" size={12} color="#94A3B8" />
+                    <Text style={styles.metaText}>
+                      {formatDuration(item.duration)}
                     </Text>
                   </>
                 )}
@@ -646,6 +694,15 @@ const SearchScreen = ({ navigation }) => {
     }
   };
 
+  const handleTabChange = (tab) => {
+    setShowDropdown(false);
+    setLoadingInitial(true);
+    setTimeout(() => {
+      setActiveTab(tab);
+      setLoadingInitial(false);
+    }, 500);
+  };
+
   const renderDropdown = () => (
     <View style={styles.dropdownContainer}>
       <TouchableOpacity
@@ -670,8 +727,7 @@ const SearchScreen = ({ navigation }) => {
           <TouchableOpacity
             style={[styles.dropdownItem, activeTab === 'songs' && styles.dropdownItemActive]}
             onPress={() => {
-              setActiveTab('songs');
-              setShowDropdown(false);
+              handleTabChange('songs');
             }}
           >
             <Ionicons
@@ -687,8 +743,7 @@ const SearchScreen = ({ navigation }) => {
           <TouchableOpacity
             style={[styles.dropdownItem, activeTab === 'artists' && styles.dropdownItemActive]}
             onPress={() => {
-              setActiveTab('artists');
-              setShowDropdown(false);
+              handleTabChange('artists');
             }}
           >
             <Ionicons
@@ -704,8 +759,7 @@ const SearchScreen = ({ navigation }) => {
           <TouchableOpacity
             style={[styles.dropdownItem, activeTab === 'genres' && styles.dropdownItemActive]}
             onPress={() => {
-              setActiveTab('genres');
-              setShowDropdown(false);
+              handleTabChange('genres');
             }}
           >
             <Ionicons
@@ -721,8 +775,7 @@ const SearchScreen = ({ navigation }) => {
           <TouchableOpacity
             style={[styles.dropdownItem, activeTab === 'albums' && styles.dropdownItemActive]}
             onPress={() => {
-              setActiveTab('albums');
-              setShowDropdown(false);
+              handleTabChange('albums');
             }}
           >
             <Ionicons

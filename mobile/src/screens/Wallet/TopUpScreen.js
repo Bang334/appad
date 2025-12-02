@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../config/theme';
 import { walletService } from '../../services/walletService';
 import MiniPlayer from '../../components/Player/MiniPlayer';
+import SuccessModal from '../../components/Common/SuccessModal';
 
 const TopUpScreen = ({ navigation }) => {
   const [amount, setAmount] = useState('');
@@ -23,18 +24,44 @@ const TopUpScreen = ({ navigation }) => {
 
   const quickAmounts = [10000, 20000, 50000, 100000, 200000, 500000];
 
+  // Custom Alert State
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({
+    title: '',
+    message: '',
+    icon: 'checkmark-circle',
+    onClose: null
+  });
+
+  const showAlert = (title, message, icon = 'checkmark-circle', callback = null) => {
+    setAlertConfig({
+      title,
+      message,
+      icon,
+      onClose: callback
+    });
+    setAlertVisible(true);
+  };
+
+  const handleAlertClose = () => {
+    setAlertVisible(false);
+    if (alertConfig.onClose) {
+      alertConfig.onClose();
+    }
+  };
+
   const handleQuickAmount = (value) => {
     setAmount(value.toString());
   };
 
   const handleCreateTopUp = async () => {
     if (!amount || parseFloat(amount) <= 0) {
-      Alert.alert('Lỗi', 'Vui lòng nhập số tiền hợp lệ');
+      showAlert('Lỗi', 'Vui lòng nhập số tiền hợp lệ', 'alert-circle');
       return;
     }
 
     if (parseFloat(amount) < 10000) {
-      Alert.alert('Lỗi', 'Số tiền tối thiểu là 10,000đ');
+      showAlert('Lỗi', 'Số tiền tối thiểu là 10,000đ', 'alert-circle');
       return;
     }
 
@@ -46,7 +73,7 @@ const TopUpScreen = ({ navigation }) => {
       }
     } catch (error) {
       const message = error.response?.data?.message || 'Có lỗi xảy ra';
-      Alert.alert('Lỗi', message);
+      showAlert('Lỗi', message, 'alert-circle');
     } finally {
       setLoading(false);
     }
@@ -54,7 +81,7 @@ const TopUpScreen = ({ navigation }) => {
 
   const copyToClipboard = (text, label) => {
     Clipboard.setString(text);
-    Alert.alert('Thành công', `Đã sao chép ${label}`);
+    showAlert('Thành công', `Đã sao chép ${label}`, 'checkmark-circle');
   };
 
   const handleComplete = () => {
@@ -68,10 +95,10 @@ const TopUpScreen = ({ navigation }) => {
           onPress: () => {
             navigation.goBack();
             setTimeout(() => {
-              Alert.alert(
+              showAlert(
                 'Thông báo',
                 'Giao dịch của bạn đang được xử lý. Số dư sẽ được cập nhật sau khi kiểm tra.',
-                [{ text: 'OK' }]
+                'checkmark-circle'
               );
             }, 500);
           },
@@ -172,6 +199,14 @@ const TopUpScreen = ({ navigation }) => {
         </View>
         </ScrollView>
         <MiniPlayer bottomOffset={0} />
+        
+        <SuccessModal
+          visible={alertVisible}
+          title={alertConfig.title}
+          message={alertConfig.message}
+          icon={alertConfig.icon}
+          onClose={handleAlertClose}
+        />
       </View>
     );
   }
@@ -253,6 +288,14 @@ const TopUpScreen = ({ navigation }) => {
       </View>
       </ScrollView>
       <MiniPlayer bottomOffset={0} />
+      
+      <SuccessModal
+        visible={alertVisible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        icon={alertConfig.icon}
+        onClose={handleAlertClose}
+      />
     </View>
   );
 };

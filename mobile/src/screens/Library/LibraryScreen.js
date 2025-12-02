@@ -25,6 +25,7 @@ import PremiumBadge from '../../components/Common/PremiumBadge';
 import AccessBadge from '../../components/Common/AccessBadge';
 import PremiumAccessModal from '../../components/Common/PremiumAccessModal';
 import MiniPlayer from '../../components/Player/MiniPlayer';
+import SuccessModal from '../../components/Common/SuccessModal';
 import { API_BASE_URL } from '../../config/api';
 
 const LibraryScreen = ({ navigation }) => {
@@ -50,17 +51,46 @@ const LibraryScreen = ({ navigation }) => {
   const [selectedSong, setSelectedSong] = useState(null);
   const [selectedSongList, setSelectedSongList] = useState([]);
   
+  // History Pagination
+  const [historyOffset, setHistoryOffset] = useState(0);
+  const [historyHasMore, setHistoryHasMore] = useState(true);
+  const [loadingMoreHistory, setLoadingMoreHistory] = useState(false);
+  
   // Search and filter
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('title'); // 'title', 'artist', 'recent'
   
   const { playSong, currentSong, isPlaying, togglePlayPause } = usePlayer();
 
-  useFocusEffect(
-    React.useCallback(() => {
-      loadData();
-    }, [])
-  );
+  // Custom Alert State
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({
+    title: '',
+    message: '',
+    icon: 'checkmark-circle',
+    onClose: null
+  });
+
+  const showAlert = (title, message, icon = 'checkmark-circle', callback = null) => {
+    setAlertConfig({
+      title,
+      message,
+      icon,
+      onClose: callback
+    });
+    setAlertVisible(true);
+  };
+
+  const handleAlertClose = () => {
+    setAlertVisible(false);
+    if (alertConfig.onClose) {
+      alertConfig.onClose();
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   const getImageUrl = (url) => {
     if (!url) return null;
@@ -77,7 +107,7 @@ const LibraryScreen = ({ navigation }) => {
         playlistService.getUserPlaylists(),
         premiumService.getPurchasedSongs().catch(() => ({ data: [] })),
         premiumService.getPurchasedAlbums().catch(() => ({ data: [] })),
-        historyService.getUserHistoryByDay(100).catch(() => ({ success: true, data: [] })),
+        historyService.getUserHistoryByDay(3, 0).catch(() => ({ success: true, data: [] })),
       ]);
       console.log('Favorites data:', favoritesData);
       const favs = favoritesData.data || [];
@@ -96,6 +126,8 @@ const LibraryScreen = ({ navigation }) => {
       setFilteredPurchasedAlbums(purchasedAlbs);
       setHistoryByDay(history);
       setFilteredHistory(history);
+      setHistoryOffset(3);
+      setHistoryHasMore(history.length >= 3);
       
       // Check access types for premium songs in favorites and purchased songs
       const accessTypesMap = {};
@@ -129,21 +161,45 @@ const LibraryScreen = ({ navigation }) => {
     setRefreshing(false);
   };
 
+  const loadMoreHistory = async () => {
+    if (loadingMoreHistory || !historyHasMore || activeTab !== 'history' || searchQuery.trim()) return;
+    
+    setLoadingMoreHistory(true);
+    try {
+      const response = await historyService.getUserHistoryByDay(3, historyOffset);
+      const moreHistory = response.data || [];
+      
+      if (moreHistory && moreHistory.length > 0) {
+        setHistoryByDay(prev => [...prev, ...moreHistory]);
+        setHistoryOffset(prev => prev + 3);
+        if (moreHistory.length < 3) {
+          setHistoryHasMore(false);
+        }
+      } else {
+        setHistoryHasMore(false);
+      }
+    } catch (error) {
+      console.error('Error loading more history:', error);
+    } finally {
+      setLoadingMoreHistory(false);
+    }
+  };
+
   const handleCreatePlaylist = async () => {
     if (!newPlaylistName.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập tên playlist');
+      showAlert('Lỗi', 'Vui lòng nhập tên playlist', 'alert-circle');
       return;
     }
 
     setCreatingPlaylist(true);
     try {
       await playlistService.createPlaylist(newPlaylistName, '');
-      Alert.alert('Thành công', 'Đã tạo playlist mới');
+      showAlert('Thành công', 'Đã tạo playlist mới', 'checkmark-circle');
       setNewPlaylistName('');
       setShowCreatePlaylist(false);
       loadData();
     } catch (error) {
-      Alert.alert('Lỗi', 'Không thể tạo playlist');
+      showAlert('Lỗi', 'Không thể tạo playlist', 'alert-circle');
     } finally {
       setCreatingPlaylist(false);
     }
@@ -238,6 +294,21 @@ const LibraryScreen = ({ navigation }) => {
     if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
     if (count >= 1000) return `${(count / 1000).toFixed(1)}K`;
     return count.toString();
+  };
+
+  const formatDuration = (duration) => {
+    if (!duration) return '0:00';
+    
+    // Handle both seconds and milliseconds
+    let totalSeconds = duration;
+    if (duration > 10000) {
+      // Likely in milliseconds, convert to seconds
+      totalSeconds = Math.floor(duration / 1000);
+    }
+    
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
   // Filter and sort logic for favorites & premium
@@ -515,7 +586,9 @@ const LibraryScreen = ({ navigation }) => {
                 <Text style={styles.songTitle} numberOfLines={1}>
                   {song.title}
                 </Text>
-                {song.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
+                <View style={{display: 'flex', flexDirection: 'row', position: 'relative', top: -10, right:-35}}>
+                  {song.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
+                </View>
               </View>
               <Text style={styles.songArtist} numberOfLines={1}>
                 {song.artist_name || 'Nghệ sĩ không xác định'}
@@ -663,10 +736,12 @@ const LibraryScreen = ({ navigation }) => {
                 <Text style={styles.songTitle} numberOfLines={1}>
                   {item.title}
                 </Text>
-                {item.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
-                {item.is_premium === 1 && songAccessTypes[item.song_id] && (
-                  <AccessBadge accessType={songAccessTypes[item.song_id]} size={16} />
-                )}
+                <View style={{display: 'flex', flexDirection: 'row', position: 'relative', top: -10, right:-35}}>
+                  {item.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
+                  {item.is_premium === 1 && songAccessTypes[item.song_id] && (
+                    <AccessBadge accessType={songAccessTypes[item.song_id]} size={16} />
+                  )}
+                </View>
               </View>
               <Text style={styles.songArtist} numberOfLines={1}>
                 {item.artist_name}
@@ -684,10 +759,17 @@ const LibraryScreen = ({ navigation }) => {
                 <Text style={styles.metaText}>{formatListenCount(item.listen_count)}</Text>
                 {item.average_rating != null && (
                   <>
-                    <Text style={styles.metaSeparator}>•</Text>
                     <Ionicons name="star" size={12} color={COLORS.warning} />
                     <Text style={styles.metaText}>
                       {Number(item.average_rating).toFixed(1)}
+                    </Text>
+                  </>
+                )}
+                {item.duration > 0 && (
+                  <>
+                    <Ionicons name="time-outline" size={12} color="#94A3B8" />
+                    <Text style={styles.metaText}>
+                      {formatDuration(item.duration)}
                     </Text>
                   </>
                 )}
@@ -763,10 +845,12 @@ const LibraryScreen = ({ navigation }) => {
                 <Text style={styles.songTitle} numberOfLines={1}>
                   {item.title}
                 </Text>
-                {item.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
-                {songAccessTypes[item.song_id] && (
-                  <AccessBadge accessType={songAccessTypes[item.song_id]} size={16} />
-                )}
+                <View style={{display: 'flex', flexDirection: 'row', position: 'relative', top: -10, right:-35}}>
+                  {item.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
+                  {songAccessTypes[item.song_id] && (
+                    <AccessBadge accessType={songAccessTypes[item.song_id]} size={16} />
+                  )}
+                </View>
               </View>
               <Text style={styles.songArtist} numberOfLines={1}>
                 {item.artist_name}
@@ -784,10 +868,17 @@ const LibraryScreen = ({ navigation }) => {
                 <Text style={styles.metaText}>{formatListenCount(item.listen_count)}</Text>
                 {item.average_rating != null && (
                   <>
-                    <Text style={styles.metaSeparator}>•</Text>
                     <Ionicons name="star" size={12} color={COLORS.warning} />
                     <Text style={styles.metaText}>
                       {Number(item.average_rating).toFixed(1)}
+                    </Text>
+                  </>
+                )}
+                {item.duration > 0 && (
+                  <>
+                    <Ionicons name="time-outline" size={12} color="#94A3B8" />
+                    <Text style={styles.metaText}>
+                      {formatDuration(item.duration)}
                     </Text>
                   </>
                 )}
@@ -883,6 +974,15 @@ const LibraryScreen = ({ navigation }) => {
     </TouchableOpacity>
   );
 
+  const handleTabChange = (tab) => {
+    setShowDropdown(false);
+    setLoading(true);
+    setTimeout(() => {
+      setActiveTab(tab);
+      setLoading(false);
+    }, 500);
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -917,8 +1017,7 @@ const LibraryScreen = ({ navigation }) => {
             <TouchableOpacity
               style={[styles.dropdownItem, activeTab === 'favorites' && styles.dropdownItemActive]}
               onPress={() => {
-                setActiveTab('favorites');
-                setShowDropdown(false);
+                handleTabChange('favorites');
               }}
             >
               <Ionicons
@@ -934,8 +1033,7 @@ const LibraryScreen = ({ navigation }) => {
             <TouchableOpacity
               style={[styles.dropdownItem, activeTab === 'playlists' && styles.dropdownItemActive]}
               onPress={() => {
-                setActiveTab('playlists');
-                setShowDropdown(false);
+                handleTabChange('playlists');
               }}
             >
               <Ionicons
@@ -951,8 +1049,7 @@ const LibraryScreen = ({ navigation }) => {
             <TouchableOpacity
               style={[styles.dropdownItem, activeTab === 'premium' && styles.dropdownItemActive]}
               onPress={() => {
-                setActiveTab('premium');
-                setShowDropdown(false);
+                handleTabChange('premium');
               }}
             >
               <Ionicons
@@ -968,8 +1065,7 @@ const LibraryScreen = ({ navigation }) => {
             <TouchableOpacity
               style={[styles.dropdownItem, activeTab === 'albums' && styles.dropdownItemActive]}
               onPress={() => {
-                setActiveTab('albums');
-                setShowDropdown(false);
+                handleTabChange('albums');
               }}
             >
               <Ionicons
@@ -985,8 +1081,7 @@ const LibraryScreen = ({ navigation }) => {
             <TouchableOpacity
               style={[styles.dropdownItem, activeTab === 'history' && styles.dropdownItemActive]}
               onPress={() => {
-                setActiveTab('history');
-                setShowDropdown(false);
+                handleTabChange('history');
               }}
             >
               <Ionicons
@@ -1541,6 +1636,15 @@ const LibraryScreen = ({ navigation }) => {
               renderItem={renderHistorySection}
               keyExtractor={(item, index) => item.day || `history-${index}`}
               contentContainerStyle={styles.list}
+              onEndReached={loadMoreHistory}
+              onEndReachedThreshold={0.5}
+              ListFooterComponent={
+                loadingMoreHistory ? (
+                  <View style={{ padding: 20 }}>
+                    <ActivityIndicator size="small" color={COLORS.primary} />
+                  </View>
+                ) : null
+              }
               refreshControl={
                 <RefreshControl
                   refreshing={refreshing}
@@ -1637,6 +1741,14 @@ const LibraryScreen = ({ navigation }) => {
         }}
       />
 
+      <SuccessModal
+        visible={alertVisible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        icon={alertConfig.icon}
+        onClose={handleAlertClose}
+      />
+      
       <MiniPlayer bottomOffset={0} />
     </View>
   );

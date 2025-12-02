@@ -4,6 +4,9 @@ class HistoryModel {
   // Add to listening history (one record per user per song per day)
   // If user listens to same song multiple times in a day, increment count and add duration
   // Optional params: artist_id, duration_listened, is_completed, is_premium_stream
+  // Add to listening history (one record per user per song per day)
+  // If user listens to same song multiple times in a day, increment count and add duration
+  // UPDATED: Now saves full datetime and moves record to top (by deleting old and inserting new)
   static async add(userId, songId, options = {}) {
     const {
       artist_id = null,
@@ -13,39 +16,52 @@ class HistoryModel {
       increment_count = true
     } = options;
     
-    // Get current date in Vietnam timezone (UTC+7)
-    // Use toLocaleString with timezone to get accurate Vietnam date
+    // Get current time in Vietnam timezone (UTC+7)
     const now = new Date();
-    const vietnamDateStr = now.toLocaleString('en-US', { 
-      timeZone: 'Asia/Ho_Chi_Minh',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    });
+    // Format: YYYY-MM-DD HH:mm:ss
+    const vietnamTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
     
-    // Parse the formatted string (format: MM/DD/YYYY)
-    const [month, day, year] = vietnamDateStr.split('/');
-    const todayStr = `${year}-${month}-${day}`;
+    const year = vietnamTime.getFullYear();
+    const month = String(vietnamTime.getMonth() + 1).padStart(2, '0');
+    const day = String(vietnamTime.getDate()).padStart(2, '0');
+    const hours = String(vietnamTime.getHours()).padStart(2, '0');
+    const minutes = String(vietnamTime.getMinutes()).padStart(2, '0');
+    const seconds = String(vietnamTime.getSeconds()).padStart(2, '0');
     
-    // Check if record exists for today
+    const todayPrefix = `${year}-${month}-${day}`; // YYYY-MM-DD
+    const fullDateTime = `${todayPrefix} ${hours}:${minutes}:${seconds}`; // YYYY-MM-DD HH:mm:ss
+    
+    // Check if record exists for today (using LIKE to match YYYY-MM-DD%)
     const [existing] = await db.execute(
-      `SELECT history_id FROM listening_history 
-       WHERE user_id = ? AND song_id = ? AND day = ?
+      `SELECT * FROM listening_history 
+       WHERE user_id = ? AND song_id = ? AND day LIKE ?
        LIMIT 1`,
-      [userId, songId, todayStr]
+      [userId, songId, `${todayPrefix}%`]
     );
     
     if (existing.length > 0) {
-      // Update existing record: increment count (if requested), add duration and completed
+      const oldRecord = existing[0];
+      
+      // Calculate new values
+      const newCount = (parseInt(oldRecord.count) || 0) + (increment_count ? 1 : 0);
+      const newDuration = (parseInt(oldRecord.total_duration) || 0) + duration_listened;
+      const newCompleted = (parseInt(oldRecord.completed_count) || 0) + (is_completed ? 1 : 0);
+      const newIsPremium = oldRecord.is_premium_stream || is_premium_stream ? 1 : 0;
+      const newArtistId = artist_id || oldRecord.artist_id;
+
+      // DELETE old record to remove it from old position
       await db.execute(
-        `UPDATE listening_history 
-         SET count = count + ?,
-             total_duration = total_duration + ?,
-             completed_count = completed_count + ?,
-             is_premium_stream = GREATEST(is_premium_stream, ?),
-             artist_id = COALESCE(?, artist_id)
-         WHERE history_id = ?`,
-        [increment_count ? 1 : 0, duration_listened, is_completed ? 1 : 0, is_premium_stream ? 1 : 0, artist_id, existing[0].history_id]
+        'DELETE FROM listening_history WHERE history_id = ?',
+        [oldRecord.history_id]
+      );
+
+      // INSERT new record with updated time (fullDateTime) and accumulated values
+      // This ensures it gets a new history_id (highest) and appears at the top
+      await db.execute(
+        `INSERT INTO listening_history 
+         (user_id, song_id, artist_id, day, count, total_duration, completed_count, is_premium_stream) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [userId, songId, newArtistId, fullDateTime, newCount, newDuration, newCompleted, newIsPremium]
       );
     } else {
       // Insert new record
@@ -53,7 +69,7 @@ class HistoryModel {
         `INSERT INTO listening_history 
          (user_id, song_id, artist_id, day, count, total_duration, completed_count, is_premium_stream) 
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [userId, songId, artist_id, todayStr, increment_count ? 1 : 0, duration_listened, is_completed ? 1 : 0, is_premium_stream ? 1 : 0]
+        [userId, songId, artist_id, fullDateTime, increment_count ? 1 : 0, duration_listened, is_completed ? 1 : 0, is_premium_stream ? 1 : 0]
       );
     }
     return true;
@@ -73,7 +89,7 @@ class HistoryModel {
        LEFT JOIN artists a ON s.artist_id = a.artist_id
        LEFT JOIN albums al ON s.album_id = al.album_id
        WHERE lh.user_id = ? AND lh.day IS NOT NULL
-       ORDER BY lh.day DESC, lh.history_id DESC
+       ORDER BY lh.history_id DESC
        LIMIT ${limitNum}`,
       [userId]
     );
@@ -81,21 +97,43 @@ class HistoryModel {
   }
 
   // Get user listening history grouped by day
-  static async getUserHistoryByDay(userId, limit = 100) {
+  // OPTIMIZED: Separate queries to avoid loading duplicate song data
+  static async getUserHistoryByDay(userId, limit = 100, offset = 0) {
     const limitNum = parseInt(limit) || 100;
+    const offsetNum = parseInt(offset) || 0;
     if (limitNum < 1 || limitNum > 1000) {
       throw new Error('Invalid limit value');
     }
     
-    // Get all history records first
-    const [allRows] = await db.execute(
+    // Step 1: Get history records (WITHOUT JOIN - lightweight)
+    const [historyRows] = await db.execute(
       `SELECT 
-         lh.history_id,
-         lh.day,
-         lh.song_id,
-         lh.count,
-         lh.total_duration,
-         lh.completed_count,
+         history_id,
+         day,
+         song_id,
+         artist_id,
+         count,
+         total_duration,
+         completed_count
+       FROM listening_history
+       WHERE user_id = ? AND day IS NOT NULL
+       ORDER BY history_id DESC
+       LIMIT 2000`,
+      [userId]
+    );
+
+    if (historyRows.length === 0) {
+      return [];
+    }
+
+    // Step 2: Extract unique song IDs
+    const uniqueSongIds = [...new Set(historyRows.map(row => row.song_id))];
+    
+    // Step 3: Get song details for unique IDs only (single query)
+    const placeholders = uniqueSongIds.map(() => '?').join(',');
+    const [songRows] = await db.execute(
+      `SELECT 
+         s.song_id,
          s.title,
          s.file_url,
          s.cover_url,
@@ -104,24 +142,29 @@ class HistoryModel {
          s.price,
          a.name as artist_name,
          al.title as album_title
-       FROM listening_history lh
-       JOIN songs s ON lh.song_id = s.song_id
+       FROM songs s
        LEFT JOIN artists a ON s.artist_id = a.artist_id
        LEFT JOIN albums al ON s.album_id = al.album_id
-       WHERE lh.user_id = ? AND lh.day IS NOT NULL
-       ORDER BY lh.day DESC, lh.history_id DESC`,
-      [userId]
+       WHERE s.song_id IN (${placeholders})`,
+      uniqueSongIds
     );
 
-    // Group by day in application level
+    // Step 4: Create song lookup map for O(1) access
+    const songMap = new Map();
+    songRows.forEach(song => {
+      songMap.set(song.song_id, song);
+    });
+
+    // Step 5: Group by day and merge data
     const dayMap = new Map();
     
-    allRows.forEach(row => {
-      // Convert date to YYYY-MM-DD format in Vietnam timezone (UTC+7)
+    historyRows.forEach(row => {
+      // Extract YYYY-MM-DD from day (which might contain time now)
       let day = null;
       if (row.day) {
         if (typeof row.day === 'string') {
-          day = row.day;
+          // Take first 10 chars (YYYY-MM-DD)
+          day = row.day.substring(0, 10);
         } else {
           // Convert Date object to Vietnam timezone string (YYYY-MM-DD)
           const vietnamDateStr = row.day.toLocaleString('en-US', { 
@@ -149,18 +192,22 @@ class HistoryModel {
       // Only add unique songs per day (keep the latest one with count)
       if (!dayData.songIds.has(row.song_id)) {
         dayData.songIds.add(row.song_id);
+        
+        // Get song details from map
+        const songDetails = songMap.get(row.song_id) || {};
+        
         dayData.songs.push({
           history_id: row.history_id,
           song_id: row.song_id,
-          title: row.title,
-          file_url: row.file_url,
-          cover_url: row.cover_url,
-          duration: row.duration,
-          is_premium: row.is_premium,
-          price: row.price,
-          artist_name: row.artist_name,
-          album_title: row.album_title,
-          day: day,
+          title: songDetails.title || 'Unknown',
+          file_url: songDetails.file_url || '',
+          cover_url: songDetails.cover_url || '',
+          duration: songDetails.duration || 0,
+          is_premium: songDetails.is_premium || 0,
+          price: songDetails.price || 0,
+          artist_name: songDetails.artist_name || 'Unknown',
+          album_title: songDetails.album_title || null,
+          day: row.day, // Keep full datetime for display if needed
           count: parseInt(row.count) || 1,
           total_duration: parseInt(row.total_duration) || 0,
           completed_count: parseInt(row.completed_count) || 0
@@ -168,12 +215,12 @@ class HistoryModel {
       }
     });
 
-    // Convert to array and sort by day descending
+    // Step 6: Convert to array and sort by day descending
     const result = Array.from(dayMap.values())
       .map(dayData => ({
         day: dayData.day,
         song_count: dayData.songs.length,
-        total_listens: dayData.songs.reduce((sum, song) => sum + (song.count || 1), 0), // Sum of all counts
+        total_listens: dayData.songs.reduce((sum, song) => sum + (song.count || 1), 0),
         songs: dayData.songs.sort((a, b) => {
           // Sort songs by history_id descending within each day (most recent first)
           return (b.history_id || 0) - (a.history_id || 0);
@@ -183,7 +230,7 @@ class HistoryModel {
         // Sort days descending
         return new Date(b.day) - new Date(a.day);
       })
-      .slice(0, limitNum);
+      .slice(offsetNum, offsetNum + limitNum);
 
     return result;
   }

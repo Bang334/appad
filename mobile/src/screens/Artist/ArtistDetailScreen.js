@@ -531,25 +531,24 @@ const ArtistDetailScreen = ({ route, navigation }) => {
                               <Text style={styles.songTitle} numberOfLines={1}>
                                 {song.title}
                               </Text>
-                              {song.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
-                            </View>
+                <View style={{display: 'flex', flexDirection: 'row', position: 'relative', top: -10, right:-30}}>
+                  {song.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
+                </View>
+              </View>
                             
-                            <View style={styles.songMeta}>
+                            <Text style={styles.songArtist} numberOfLines={1}>
+                              {song.artist_name || artist.name}
                               {song.album_title && (
                                 <>
-                                  <Text style={styles.songAlbumText} numberOfLines={1}>
+                                  <Text style={{ color: '#94A3B8' }}> • </Text>
+                                  <Text style={{ color: '#CBD5F5', fontStyle: 'italic' }}>
                                     {song.album_title}
                                   </Text>
-                                  <Text style={styles.metaSeparator}>•</Text>
                                 </>
                               )}
-                              <Ionicons name="time-outline" size={12} color="#94A3B8" />
-                              <Text style={styles.metaText}>
-                                {formatDuration(song.duration)}
-                              </Text>
-                            </View>
+                            </Text>
 
-                            <View style={[styles.songMeta, { paddingTop: 5 }]}>
+                            <View style={[styles.songMeta, { paddingTop: 4 }]}>
                               <Ionicons name="headset" size={12} color="#94A3B8" />
                               <Text style={styles.metaText}>
                                 {formatListenCount(song.listen_count)}
@@ -562,6 +561,10 @@ const ArtistDetailScreen = ({ route, navigation }) => {
                                   </Text>
                                 </>
                               )}
+                              <Ionicons name="time-outline" size={12} color="#94A3B8" />
+                              <Text style={styles.metaText}>
+                                {formatDuration(song.duration)}
+                              </Text>
                             </View>
 
                             {showPrice && (
@@ -686,39 +689,42 @@ const ArtistDetailScreen = ({ route, navigation }) => {
                       <Text style={styles.songTitle} numberOfLines={1}>
                         {song.title}
                       </Text>
+                    <View style={{display: 'flex', flexDirection: 'row', position: 'relative', top: -10, right:-30}}>
                       {song.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
                       {song.is_premium === 1 && songAccessTypes[song.song_id] && (
                         <AccessBadge accessType={songAccessTypes[song.song_id]} size={16} />
                       )}
                     </View>
-                    <View style={styles.songMeta}>
+                    </View>
+                    <Text style={styles.songArtist} numberOfLines={1}>
+                      {song.artist_name || artist.name}
                       {song.album_title && (
                         <>
-                          <Text style={styles.songAlbumText} numberOfLines={1}>
+                          <Text style={{ color: '#94A3B8' }}> • </Text>
+                          <Text style={{ color: '#CBD5F5', fontStyle: 'italic' }}>
                             {song.album_title}
                           </Text>
-                          <Text style={styles.metaSeparator}>•</Text>
                         </>
                       )}
-                      <Ionicons name="time-outline" size={12} color="#94A3B8" />
-                      <Text style={styles.metaText}>
-                        {formatDuration(song.duration)}
-                      </Text>
-                    </View>
-                    <View style={[styles.songMeta, { paddingTop: 5}]}>
+                    </Text>
+
+                    <View style={[styles.songMeta, { paddingTop: 4 }]}>
                       <Ionicons name="headset" size={12} color="#94A3B8" />
                       <Text style={styles.metaText}>
                         {formatListenCount(song.listen_count)}
                       </Text>
                       {song.average_rating != null && (
                         <>
-                          <Text style={styles.metaSeparator}>•</Text>
                           <Ionicons name="star" size={12} color={COLORS.warning} />
                           <Text style={styles.metaText}>
                             {Number(song.average_rating).toFixed(1)}
                           </Text>
                         </>
                       )}
+                      <Ionicons name="time-outline" size={12} color="#94A3B8" />
+                      <Text style={styles.metaText}>
+                        {formatDuration(song.duration)}
+                      </Text>
                     </View>
                     {showPrice && (
                       <View style={styles.priceRow}>
