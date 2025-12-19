@@ -7,7 +7,7 @@ $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
 $Shortcut.TargetPath = "$ProjectPath\start-project.bat"
 $Shortcut.WorkingDirectory = $ProjectPath
 $Shortcut.Description = "Start Backend and Mobile Development Servers"
-$Shortcut.IconLocation = "C:\Windows\System32\shell32.dll,14"  # Play icon
+$Shortcut.IconLocation = "C:\Windows\System32\imageres.dll,103"  # Music/Media icon
 $Shortcut.Save()
 
 Write-Host "Desktop shortcut created successfully!" -ForegroundColor Green

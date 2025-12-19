@@ -1,5 +1,5 @@
-import React, { createContext, useState, useContext, useRef, useEffect } from 'react';
-import { Audio } from 'expo-av';
+import React, { createContext, useState, useContext, useRef, useEffect, useCallback } from 'react';
+import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { songService } from '../services/songService';
@@ -41,8 +41,11 @@ export const PlayerProvider = ({ children }) => {
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [purchaseSong, setPurchaseSong] = useState(null);
   
-  const soundRef = useRef(null);
-  // positionInterval removed
+  // Player ref instead of hook
+  const playerRef = useRef(null);
+  const statusSubscriptionRef = useRef(null);
+  
+  // Refs
   const isRepeatRef = useRef(false);
   const isShuffleRef = useRef(false);
   const originalPlaylistRef = useRef([]);
@@ -55,6 +58,7 @@ export const PlayerProvider = ({ children }) => {
   const currentIndexRef = useRef(-1);
   const playbackRequestIdRef = useRef(0); // Track playback requests to prevent race conditions
   const currentSongRef = useRef(null); // Ref to track current song (won't be lost on state updates)
+  const lastDidFinishRef = useRef(false);
 
   useEffect(() => {
     playlistRef.current = playlist;
@@ -68,16 +72,14 @@ export const PlayerProvider = ({ children }) => {
     currentSongRef.current = currentSong;
   }, [currentSong]);
 
+  // Configure audio mode on mount
   useEffect(() => {
-    // Configure audio mode for background playback
     const configureAudio = async () => {
       try {
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: false,
-          staysActiveInBackground: true,
-          playsInSilentModeIOS: true,
-          shouldDuckAndroid: true,
-          playThroughEarpieceAndroid: false,
+        await setAudioModeAsync({
+          playsInSilentMode: true,
+          shouldPlayInBackground: true,
+          shouldRouteThroughEarpiece: false,
         });
       } catch (error) {
         console.error('Error configuring audio:', error);
@@ -86,72 +88,165 @@ export const PlayerProvider = ({ children }) => {
 
     configureAudio();
 
+    // Cleanup on unmount
     return () => {
-      if (soundRef.current) {
-        soundRef.current.unloadAsync();
+      if (playerRef.current) {
+        playerRef.current.remove();
+        playerRef.current = null;
       }
     };
   }, []);
 
-  // Record listening data for current song before switching
+  // Record listening data helper - restored for internal logic consistency
   const recordListeningData = async () => {
-
-    
-    if (!currentSong) {
-      return;
-    }
+    // USE REF to avoid stale state
+    const song = currentSongRef.current;
+    if (!song) return;
     
     try {
-      // Calculate total duration listened using our tracked time
       let totalDuration = accumulatedDurationRef.current;
       if (playStartTimeRef.current) {
-        const currentPlayDuration = Date.now() - playStartTimeRef.current;
-        totalDuration += currentPlayDuration;
+        totalDuration += (Date.now() - playStartTimeRef.current);
       }
-      
-      // Convert to seconds
       const durationSeconds = Math.floor(totalDuration / 1000);
       
-      console.log('🎵 [recordListeningData] Recording listening data', {
-        songId: currentSong.song_id,
-        songTitle: currentSong.title,
-        accumulatedDurationRef: accumulatedDurationRef.current,
-        playStartTimeRef: playStartTimeRef.current,
-        totalDuration: totalDuration,
-        durationSeconds: durationSeconds,
-      });
-      
-      // We now record even short listens (backend handles the count increment logic)
-      // The backend will only increment listen_count if percentage > 50%
-      // But it will always update total_duration and history record
-      
-      // Calculate listen percentage
-      const songDurationSeconds = Math.floor((duration || currentSong.duration || 0) / 1000);
+      const songDurationSeconds = Math.floor((duration || song.duration || 0) / 1000);
       const listenPercentage = songDurationSeconds > 0 ? durationSeconds / songDurationSeconds : 0;
-      
-      // Determine if completed (>=90% of song duration)
       const isCompleted = listenPercentage >= 0.9;
       
-      console.log('🎵 [recordListeningData] Sending to backend', {
-        songId: currentSong.song_id,
-        durationSeconds: durationSeconds,
-        songDurationSeconds: songDurationSeconds,
-        listenPercentage: listenPercentage,
-        isCompleted: isCompleted,
+      console.log('🎵 [recordListeningData] Manual record', {
+        songId: song.song_id,
+        durationSeconds,
+        isCompleted
       });
       
-      // Send to backend
-      const result = await songService.playSong(currentSong.song_id, durationSeconds, isCompleted);
+      await songService.playSong(song.song_id, durationSeconds, isCompleted);
       
-      console.log('🎵 [recordListeningData] Backend response:', result);
-      
-      // Reset tracking (allow same song to be tracked again if user replays it)
+      // Reset tracking
       playStartTimeRef.current = null;
       accumulatedDurationRef.current = 0;
     } catch (error) {
       console.error('❌ Error recording listening data:', error);
     }
   };
+
+  const handlePlaybackFinished = useCallback(async () => {
+    const finishedSong = currentSongRef.current;
+    let finalDuration = accumulatedDurationRef.current;
+    if (playStartTimeRef.current) {
+      const finalPlayDuration = Date.now() - playStartTimeRef.current;
+      finalDuration += finalPlayDuration;
+    }
+    const finalDurationSeconds = Math.floor(finalDuration / 1000);
+    
+    // Get actual song duration
+    const actualSongDurationMs = duration;
+    const actualSongDurationSeconds = Math.floor(actualSongDurationMs / 1000);
+    
+    let songDurationSeconds = actualSongDurationSeconds;
+    if (songDurationSeconds === 0) {
+      const songDuration = finishedSong?.duration || 0;
+      if (songDuration > 10000) {
+        songDurationSeconds = Math.floor(songDuration / 1000);
+      } else if (songDuration > 0) {
+        songDurationSeconds = songDuration;
+      }
+    }
+    
+    console.log('🎵 [AUTO-FINISH] Song finished automatically', {
+      finishedSongId: finishedSong?.song_id,
+      finishedSongTitle: finishedSong?.title,
+      finalDurationSeconds: finalDurationSeconds,
+      songDurationSeconds: songDurationSeconds,
+    });
+    
+    // Update accumulatedDurationRef
+    if (playStartTimeRef.current) {
+      accumulatedDurationRef.current = finalDuration;
+      playStartTimeRef.current = null;
+    }
+    
+    const listenPercentage = songDurationSeconds > 0 ? finalDurationSeconds / songDurationSeconds : 0;
+    const isCompleted = listenPercentage >= 0.9;
+    
+    if (isRepeatRef.current) {
+      // Repeat current song
+      if (finishedSong && finalDurationSeconds > 0) {
+        songService.playSong(finishedSong.song_id, finalDurationSeconds, isCompleted)
+          .then(result => {
+            console.log('🎵 [AUTO-FINISH] History recorded for repeated song:', result);
+          })
+          .catch(err => {
+            console.error('❌ [AUTO-FINISH] Error recording history for repeated song:', err);
+          });
+      }
+      
+      // Reset and replay
+      if (playerRef.current) {
+        try {
+          playStartTimeRef.current = Date.now();
+          accumulatedDurationRef.current = 0;
+          playerRef.current.seekTo(0);
+          playerRef.current.play();
+        } catch (error) {
+          console.error('Error repeating song:', error);
+        }
+      }
+    } else {
+      // Record history for finished song BEFORE calling playNext
+      if (finishedSong && finalDurationSeconds > 0) {
+        songService.playSong(finishedSong.song_id, finalDurationSeconds, isCompleted)
+          .then(result => {
+            console.log('🎵 [AUTO-FINISH] History recorded result:', result);
+          })
+          .catch(err => {
+            console.error('❌ [AUTO-FINISH] Error recording history:', err);
+          });
+      }
+      
+      // Now play next song
+      console.log('🎵 [AUTO-FINISH] Calling playNext()');
+      playNext();
+    }
+  }, [duration]);
+
+  const setupPlayerStatusListener = useCallback((player) => {
+    // Remove existing subscription
+    if (statusSubscriptionRef.current) {
+      statusSubscriptionRef.current.remove();
+      statusSubscriptionRef.current = null;
+    }
+
+    // Listen to player status changes
+    const subscription = player.addListener('playbackStatusUpdate', (status) => {
+      if (status) {
+        // Update position and duration (expo-audio uses seconds)
+        if (status.currentTime !== undefined) {
+          setPosition(Math.floor(status.currentTime * 1000)); // Convert to ms
+        }
+        if (status.duration !== undefined && status.duration > 0) {
+          setDuration(Math.floor(status.duration * 1000)); // Convert to ms
+        }
+        
+        // Update playing state
+        setIsPlaying(status.playing || false);
+        
+        // Handle playback finished - check if current time is at the end
+        const isAtEnd = status.duration > 0 && 
+                       status.currentTime >= status.duration - 0.5 && 
+                       !status.playing;
+        
+        if (isAtEnd && !lastDidFinishRef.current) {
+          lastDidFinishRef.current = true;
+          handlePlaybackFinished();
+        } else if (status.playing) {
+          lastDidFinishRef.current = false;
+        }
+      }
+    });
+
+    statusSubscriptionRef.current = subscription;
+  }, [handlePlaybackFinished]);
 
   const checkSongAccess = async (song) => {
     // If not premium song, everyone can access
@@ -177,11 +272,10 @@ export const PlayerProvider = ({ children }) => {
   };
 
   const togglePlayPause = async () => {
-    if (!soundRef.current) return;
+    if (!playerRef.current) return;
 
     try {
-      const status = await soundRef.current.getStatusAsync();
-      if (status.isPlaying) {
+      if (playerRef.current.playing) {
         // Pausing - accumulate current play duration
         if (playStartTimeRef.current) {
           const playDuration = Date.now() - playStartTimeRef.current;
@@ -189,13 +283,13 @@ export const PlayerProvider = ({ children }) => {
 
           playStartTimeRef.current = null;
         }
-        await soundRef.current.pauseAsync();
+        playerRef.current.pause();
         setIsPlaying(false);
       } else {
         // Resuming - start new play session
         playStartTimeRef.current = Date.now();
 
-        await soundRef.current.playAsync();
+        playerRef.current.play();
         setIsPlaying(true);
       }
     } catch (error) {
@@ -203,17 +297,23 @@ export const PlayerProvider = ({ children }) => {
     }
   };
 
-  // Helper function to stop current song immediately
+  // Helper function to stop current song immediately and consolidate duration
   const stopCurrentSong = async () => {
     try {
+      // Consolidate duration immediately
+      if (playStartTimeRef.current) {
+        const playDuration = Date.now() - playStartTimeRef.current;
+        accumulatedDurationRef.current += playDuration;
+        playStartTimeRef.current = null;
+      }
+
       setPosition(0);
       setIsPlaying(false);
+      // Removed setCurrentSong(null) to preserve state for history recording in playSongInternal
       
-      if (soundRef.current) {
-        const sound = soundRef.current;
-        soundRef.current = null;
-        await sound.stopAsync().catch(() => {});
-        await sound.unloadAsync().catch(() => {});
+      if (playerRef.current) {
+        playerRef.current.pause();
+        // playerRef.current.seekTo(0); 
       }
     } catch (error) {
       console.error('Error stopping current song:', error);
@@ -273,35 +373,38 @@ export const PlayerProvider = ({ children }) => {
       }
       const finalDurationSeconds = Math.floor(finalDuration / 1000);
       
+      // 2. Capture old song from REF to ensure we have the latest data even if state is stale
+      const oldSong = currentSongRef.current; // CHANGED FROM currentSong TO currentSongRef.current
+      const oldPlayer = playerRef.current;
+      
       console.log('🎵 [playSongInternal] Calculating duration for old song', {
-        oldSongId: currentSong?.song_id,
-        oldSongTitle: currentSong?.title,
+        oldSongId: oldSong?.song_id,
+        oldSongTitle: oldSong?.title,
         newSongId: song.song_id,
         newSongTitle: song.title,
-        accumulatedDurationRef: accumulatedDurationRef.current,
-        playStartTimeRef: playStartTimeRef.current,
         finalDuration: finalDuration,
         finalDurationSeconds: finalDurationSeconds,
       });
-      
-      // 2. Capture old song and sound for background processing
-      const oldSong = currentSong;
-      const oldSound = soundRef.current;
-      
+
       // 3. Reset UI and Refs IMMEDIATELY
       setPosition(0);
       setIsPlaying(false);
       
       playStartTimeRef.current = null;
       accumulatedDurationRef.current = 0;
-      soundRef.current = null; // Detach old sound immediately
+      lastDidFinishRef.current = false;
 
-      // 4. Process old song cleanup and recording in BACKGROUND (Fire and Forget)
+      // 4. Process old song cleanup and recording in BACKGROUND
       (async () => {
         try {
-          // Unload old sound
-          if (oldSound) {
-            await oldSound.unloadAsync();
+          // Release old player
+          if (oldPlayer) {
+            if (statusSubscriptionRef.current) {
+              statusSubscriptionRef.current.remove();
+              statusSubscriptionRef.current = null;
+            }
+            if (typeof oldPlayer.pause === 'function') oldPlayer.pause();
+            oldPlayer.remove();
           }
           
           // Record history if we had a song and it's different
@@ -312,20 +415,15 @@ export const PlayerProvider = ({ children }) => {
              
              console.log('🎵 [playSongInternal] Recording history for old song', {
                oldSongId: oldSong.song_id,
-               oldSongTitle: oldSong.title,
                finalDurationSeconds: finalDurationSeconds,
-               songDurationSeconds: songDurationSeconds,
-               listenPercentage: listenPercentage,
                isCompleted: isCompleted,
              });
              
-             const result = await songService.playSong(oldSong.song_id, finalDurationSeconds, isCompleted);
-             console.log('🎵 [playSongInternal] History recorded result:', result);
+             await songService.playSong(oldSong.song_id, finalDurationSeconds, isCompleted);
           } else {
             console.log('🎵 [playSongInternal] Skipping history record', {
               hasOldSong: !!oldSong,
               oldSongId: oldSong?.song_id,
-              newSongId: song.song_id,
               isSameSong: oldSong?.song_id === song.song_id,
             });
           }
@@ -334,9 +432,7 @@ export const PlayerProvider = ({ children }) => {
         }
       })();
       
-      // 5. Continue loading new song immediately
-      
-      // Check access before playing (unless skipped)
+      // 5. Check access before playing (unless skipped)
       if (!skipAccessCheck) {
         const accessInfo = await checkSongAccess(song);
         if (!accessInfo.hasAccess) {
@@ -347,12 +443,6 @@ export const PlayerProvider = ({ children }) => {
         }
       }
 
-      // Stop current song if playing (already handled above, but keeping for safety/cleanup of any new sound that might have crept in, though unlikely with requestId check)
-      if (soundRef.current) {
-        await soundRef.current.unloadAsync();
-        soundRef.current = null;
-      }
-      
       // Reset playback tracking for new song
       playStartTimeRef.current = Date.now();
       accumulatedDurationRef.current = 0;
@@ -407,21 +497,28 @@ export const PlayerProvider = ({ children }) => {
       // This ensures the song appears in history even if user listens for a short time
       songService.playSong(song.song_id, 0, false).catch(err => console.error('Error creating history record:', err));
 
-      // Load new song
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: song.file_url },
-        { shouldPlay: true }
-      );
-
-      // Check if a new request has started while we were loading
+      // Check if a new request has started while we were processing
       if (requestId !== playbackRequestIdRef.current) {
-        // A new request has started, so unload this sound immediately and don't update state
-        await sound.unloadAsync();
         return;
       }
 
-      soundRef.current = sound;
-      setIsPlaying(true);
+      // Create new player with the song source
+      const newPlayer = createAudioPlayer({ uri: song.file_url }, {
+        updateInterval: 1000, // Update every second (1000ms)
+      });
+      
+      playerRef.current = newPlayer;
+      
+      // Setup status listener
+      setupPlayerStatusListener(newPlayer);
+      
+      // Wait a bit for the player to initialize, then play
+      setTimeout(() => {
+        if (requestId === playbackRequestIdRef.current && playerRef.current) {
+          playerRef.current.play();
+          setIsPlaying(true);
+        }
+      }, 100);
 
       if (songList) {
         // Filter out premium songs user doesn't have access to (async, but we'll do it in background)
@@ -445,149 +542,6 @@ export const PlayerProvider = ({ children }) => {
       } else {
         setCurrentPlaylist(null);
       }
-
-      // Get duration
-      const status = await sound.getStatusAsync();
-      setDuration(status.durationMillis || 0);
-
-      // Update position
-      // startPositionTracking(); // Removed in favor of setOnPlaybackStatusUpdate
-
-      // Set progress update interval to 1 second
-      await sound.setProgressUpdateIntervalAsync(1000);
-
-      // Handle playback status
-      sound.setOnPlaybackStatusUpdate(async (status) => {
-        if (status.isLoaded) {
-          setPosition(status.positionMillis);
-        }
-
-        if (status.didJustFinish) {
-          // CRITICAL: Use currentSongRef instead of currentSong state
-          // because state might have been reset by playSongInternal before this callback runs
-          const finishedSong = currentSongRef.current;
-          let finalDuration = accumulatedDurationRef.current;
-          if (playStartTimeRef.current) {
-            const finalPlayDuration = Date.now() - playStartTimeRef.current;
-            finalDuration += finalPlayDuration;
-          }
-          const finalDurationSeconds = Math.floor(finalDuration / 1000);
-          
-          // Get actual song duration from sound status (most accurate)
-          // status.durationMillis is in milliseconds, convert to seconds
-          const actualSongDurationMs = status.durationMillis || 0;
-          const actualSongDurationSeconds = Math.floor(actualSongDurationMs / 1000);
-          
-          // Fallback: use finishedSong.duration or duration state if sound status doesn't have it
-          let songDurationSeconds = actualSongDurationSeconds;
-          if (songDurationSeconds === 0) {
-            // Try to get from finishedSong.duration (could be in seconds or milliseconds)
-            const songDuration = finishedSong?.duration || 0;
-            if (songDuration > 10000) {
-              // Likely in milliseconds
-              songDurationSeconds = Math.floor(songDuration / 1000);
-            } else if (songDuration > 0) {
-              // Likely in seconds
-              songDurationSeconds = songDuration;
-            } else {
-              // Last fallback: use duration state
-              songDurationSeconds = Math.floor((duration || 0) / 1000);
-            }
-          }
-          
-          console.log('🎵 [AUTO-FINISH] Song finished automatically', {
-            finishedSongId: finishedSong?.song_id,
-            finishedSongTitle: finishedSong?.title,
-            currentSongState: currentSong?.song_id,
-            currentSongRef: currentSongRef.current?.song_id,
-            playStartTimeRef: playStartTimeRef.current,
-            accumulatedDurationBefore: accumulatedDurationRef.current,
-            finalDuration: finalDuration,
-            finalDurationSeconds: finalDurationSeconds,
-            actualSongDurationMs: actualSongDurationMs,
-            actualSongDurationSeconds: actualSongDurationSeconds,
-            songDurationSeconds: songDurationSeconds,
-          });
-          
-          // Update accumulatedDurationRef for potential use in playSongInternal
-          if (playStartTimeRef.current) {
-            accumulatedDurationRef.current = finalDuration;
-            playStartTimeRef.current = null;
-          }
-          
-          // Calculate listen percentage and completion status
-          const listenPercentage = songDurationSeconds > 0 ? finalDurationSeconds / songDurationSeconds : 0;
-          const isCompleted = listenPercentage >= 0.9;
-          
-          if (isRepeatRef.current) {
-            // Repeat current song - record duration first, then reset and replay
-            // Use captured finishedSong and finalDuration instead of recordListeningData()
-            // because currentSong state might have been reset
-            if (finishedSong && finalDurationSeconds > 0) {
-              console.log('🎵 [AUTO-FINISH] Recording history for repeated song', {
-                finishedSongId: finishedSong.song_id,
-                finishedSongTitle: finishedSong.title,
-                finalDurationSeconds: finalDurationSeconds,
-                songDurationSeconds: songDurationSeconds,
-                listenPercentage: listenPercentage,
-                isCompleted: isCompleted,
-              });
-              
-              // Record in background (fire and forget) so it doesn't block replay
-              songService.playSong(finishedSong.song_id, finalDurationSeconds, isCompleted)
-                .then(result => {
-                  console.log('🎵 [AUTO-FINISH] History recorded for repeated song:', result);
-                })
-                .catch(err => {
-                  console.error('❌ [AUTO-FINISH] Error recording history for repeated song:', err);
-                });
-            }
-            
-            // Reset and replay
-            if (soundRef.current) {
-              try {
-                playStartTimeRef.current = Date.now();
-                accumulatedDurationRef.current = 0;
-                await soundRef.current.setPositionAsync(0);
-                await soundRef.current.playAsync();
-              } catch (error) {
-                console.error('Error repeating song:', error);
-              }
-            }
-          } else {
-            // Record history for finished song BEFORE calling playNext
-            // This ensures we have the song data before it gets reset
-            if (finishedSong && finalDurationSeconds > 0) {
-              console.log('🎵 [AUTO-FINISH] Recording history for finished song BEFORE playNext', {
-                finishedSongId: finishedSong.song_id,
-                finishedSongTitle: finishedSong.title,
-                finalDurationSeconds: finalDurationSeconds,
-                songDurationSeconds: songDurationSeconds,
-                listenPercentage: listenPercentage,
-                isCompleted: isCompleted,
-              });
-              
-              // Record in background (fire and forget) so it doesn't block playNext
-              songService.playSong(finishedSong.song_id, finalDurationSeconds, isCompleted)
-                .then(result => {
-                  console.log('🎵 [AUTO-FINISH] History recorded result:', result);
-                })
-                .catch(err => {
-                  console.error('❌ [AUTO-FINISH] Error recording history:', err);
-                });
-            } else {
-              console.log('🎵 [AUTO-FINISH] Skipping history record', {
-                hasFinishedSong: !!finishedSong,
-                finalDurationSeconds: finalDurationSeconds,
-              });
-            }
-            
-            // Now play next song
-            console.log('🎵 [AUTO-FINISH] Calling playNext()');
-            playNext();
-          }
-        }
-      });
 
       // Refresh song data after a delay to get updated listen_count and rating from backend
       // (Only updates after user has listened >50% of the song)
@@ -695,30 +649,55 @@ export const PlayerProvider = ({ children }) => {
   };
 
   const seekTo = async (value) => {
-    if (!soundRef.current) return;
+    if (!playerRef.current) return;
 
     try {
-      await soundRef.current.setPositionAsync(value);
+      // expo-audio seekTo uses seconds
+      playerRef.current.seekTo(value / 1000);
       setPosition(value);
     } catch (error) {
       console.error('Error seeking:', error);
     }
   };
 
-  // startPositionTracking and stopPositionTracking removed
-
+  // stopPlayer Function - FIXED with REF usage
   const stopPlayer = async () => {
     try {
-      // 1. Capture data for background recording BEFORE resetting
-      const oldSong = currentSong;
+      // 1. Pause immediately if playing
+      const oldPlayer = playerRef.current;
+      if (oldPlayer) {
+        try {
+          if (typeof oldPlayer.pause === 'function') oldPlayer.pause();
+        } catch (e) {}
+      }
+
+      // 2. Calculate final duration
+      // USE REF to ensure we get the song even if state is cleared/stale
+      const oldSong = currentSongRef.current; 
+      
       let finalDuration = accumulatedDurationRef.current;
       if (playStartTimeRef.current) {
         finalDuration += (Date.now() - playStartTimeRef.current);
       }
       const finalDurationSeconds = Math.floor(finalDuration / 1000);
-      const oldSound = soundRef.current;
       
-      // 2. Reset UI IMMEDIATELY (no await)
+      // 3. Record listening history IMMEDIATELY
+      if (oldSong) {
+        const songDurationSeconds = Math.floor((oldSong.duration || 0) / 1000);
+        const listenPercentage = songDurationSeconds > 0 ? finalDurationSeconds / songDurationSeconds : 0;
+        const isCompleted = listenPercentage >= 0.9;
+        
+        console.log('🎵 [stopPlayer] Saving history', {
+          song: oldSong.title,
+          duration: finalDurationSeconds,
+          completed: isCompleted
+        });
+        
+        songService.playSong(oldSong.song_id, finalDurationSeconds, isCompleted)
+          .catch(err => console.error('❌ Error saving history in stopPlayer:', err));
+      }
+
+      // 4. Reset UI and cleanup
       setCurrentSong(null);
       setIsPlaying(false);
       setPosition(0);
@@ -731,41 +710,28 @@ export const PlayerProvider = ({ children }) => {
       playStartTimeRef.current = null;
       accumulatedDurationRef.current = 0;
       lastRecordedSongRef.current = null;
-      soundRef.current = null;
+      playerRef.current = null;
       
-      // 3. Process cleanup and recording in BACKGROUND (Fire and Forget)
-      (async () => {
-        try {
-          // Record listening data in background
-          if (oldSong) {
-            const songDurationSeconds = Math.floor((oldSong.duration || 0) / 1000);
-            const listenPercentage = songDurationSeconds > 0 ? finalDurationSeconds / songDurationSeconds : 0;
-            const isCompleted = listenPercentage >= 0.9;
-            
-            await songService.playSong(oldSong.song_id, finalDurationSeconds, isCompleted);
-          }
-          
-          // Unload old sound
-          if (oldSound) {
-            await oldSound.stopAsync().catch(() => {});
-            await oldSound.unloadAsync().catch(() => {});
-          }
-          
-          // Reset flags
-          await AsyncStorage.setItem('isPlayingAlbum', '0').catch(() => {});
-          await AsyncStorage.removeItem('currentAlbumId').catch(() => {});
-          await AsyncStorage.setItem('isPlayingPlaylist', '0').catch(() => {});
-          await AsyncStorage.removeItem('currentPlaylistId').catch(() => {});
-        } catch (err) {
-          console.error('Background cleanup error:', err);
+      // 5. Cleanup player resources
+      if (oldPlayer) {
+        if (statusSubscriptionRef.current) {
+          statusSubscriptionRef.current.remove();
+          statusSubscriptionRef.current = null;
         }
-      })();
+        oldPlayer.remove();
+      }
+      
+      // Remove flags
+      AsyncStorage.setItem('isPlayingAlbum', '0').catch(() => {});
+      AsyncStorage.removeItem('currentAlbumId').catch(() => {});
+      AsyncStorage.setItem('isPlayingPlaylist', '0').catch(() => {});
+      AsyncStorage.removeItem('currentPlaylistId').catch(() => {});
+
     } catch (error) {
       console.error('Error stopping player:', error);
     }
   };
 
-  // Refresh current song data from API
   const refreshCurrentSong = async (songId = null) => {
     const idToRefresh = songId || currentSong?.song_id;
     if (!idToRefresh) return;
@@ -918,4 +884,3 @@ export const PlayerProvider = ({ children }) => {
     </PlayerContext.Provider>
   );
 };
-

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import { songService } from '../../services/songService';
 import { albumService } from '../../services/albumService';
 import { usePlayer } from '../../context/PlayerContext';
 import { COLORS, SIZES } from '../../config/theme';
+import { GlobalStyles } from '../../config/styles';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import AddToPlaylistModal from '../../components/Playlist/AddToPlaylistModal';
@@ -40,49 +41,76 @@ const HomeScreen = ({ navigation }) => {
   const albumCarouselRef = useRef(null);
   const albumScrollPosition = useRef(0);
 
+  // Generate infinite lists for UI looping
+  const infiniteTrendingSongs = useMemo(() => {
+    if (trendingSongs.length === 0) return [];
+    // Duplicate list 50 times to simulate infinite scrolling
+    return Array(50).fill(trendingSongs).flat();
+  }, [trendingSongs]);
+
+  const infiniteAlbums = useMemo(() => {
+    if (newAlbums.length === 0) return [];
+    return Array(50).fill(newAlbums).flat();
+  }, [newAlbums]);
+
   useEffect(() => {
     loadData();
   }, []);
 
+  // Reset scroll position when data refreshes
+  useEffect(() => {
+    scrollPosition.current = 0;
+    albumScrollPosition.current = 0;
+  }, [trendingSongs, newAlbums]);
+
   // Auto-scroll carousel for Trending
   useEffect(() => {
-    if (trendingSongs.length === 0) return;
+    if (infiniteTrendingSongs.length === 0) return;
 
     const interval = setInterval(() => {
-      if (flatListRef.current && trendingSongs.length > 0) {
-        scrollPosition.current = (scrollPosition.current + 1) % trendingSongs.length;
+      if (flatListRef.current) {
+        let nextIndex = scrollPosition.current + 1;
         
-        flatListRef.current.scrollToIndex({
-          index: scrollPosition.current,
-          animated: true,
-        });
+        // Loop back if we reach the very end
+        if (nextIndex >= infiniteTrendingSongs.length) {
+          nextIndex = 0;
+          flatListRef.current.scrollToIndex({ index: 0, animated: false });
+        } else {
+          flatListRef.current.scrollToIndex({
+            index: nextIndex,
+            animated: true,
+          });
+        }
+        scrollPosition.current = nextIndex;
       }
-    }, 3000); // Auto scroll every 3 seconds
+    }, 3000); 
 
     return () => clearInterval(interval);
-  }, [trendingSongs]);
+  }, [infiniteTrendingSongs]);
 
-  // Auto-scroll carousel for Albums (reverse direction)
+  // Auto-scroll carousel for Albums
   useEffect(() => {
-    if (newAlbums.length === 0) return;
-
-    // Start from the end
-    albumScrollPosition.current = newAlbums.length - 1;
+    if (infiniteAlbums.length === 0) return;
 
     const interval = setInterval(() => {
-      if (albumCarouselRef.current && newAlbums.length > 0) {
-        // Scroll backwards (reverse direction)
-        albumScrollPosition.current = (albumScrollPosition.current - 1 + newAlbums.length) % newAlbums.length;
+      if (albumCarouselRef.current) {
+        let nextIndex = albumScrollPosition.current + 1;
         
-        albumCarouselRef.current.scrollToIndex({
-          index: albumScrollPosition.current,
-          animated: true,
-        });
+        if (nextIndex >= infiniteAlbums.length) {
+          nextIndex = 0;
+          albumCarouselRef.current.scrollToIndex({ index: 0, animated: false });
+        } else {
+          albumCarouselRef.current.scrollToIndex({
+            index: nextIndex,
+            animated: true,
+          });
+        }
+        albumScrollPosition.current = nextIndex;
       }
-    }, 3000); // Auto scroll every 3 seconds
+    }, 3000);
 
     return () => clearInterval(interval);
-  }, [newAlbums]);
+  }, [infiniteAlbums]);
 
   const loadData = async () => {
     try {
@@ -215,42 +243,42 @@ const HomeScreen = ({ navigation }) => {
       : ['#161616', '#050505'];
 
     return (
-      <View key={song.song_id} style={styles.songItemWrapper}>
+      <View key={song.song_id} style={GlobalStyles.songItemWrapper}>
         <LinearGradient
           colors={gradientColors}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[styles.songItem, isCurrentSong && styles.songItemActive]}
+          style={[GlobalStyles.songItem, isCurrentSong && GlobalStyles.songItemActive]}
         >
           <TouchableOpacity
-            style={styles.songContent}
+            style={GlobalStyles.songContent}
             onPress={() => handleSongPress(song, index, list)}
             activeOpacity={0.8}
           >
-            <View style={styles.coverContainer}>
+            <View style={GlobalStyles.coverContainer}>
               <Image
                 source={{ uri: song.cover_url || 'https://via.placeholder.com/60' }}
-                style={styles.songImage}
+                style={GlobalStyles.songImage}
               />
               {isCurrentSong && isPlaying && (
-                <View style={styles.playingIndicator}>
+                <View style={GlobalStyles.playingIndicator}>
                   <Ionicons name="volume-high" size={24} color="#FFF" />
                 </View>
               )}
             </View>
-            <View style={styles.songInfo}>
-              <View style={styles.titleRow}>
-                <Text style={styles.songTitle} numberOfLines={1}>
+            <View style={GlobalStyles.songInfo}>
+              <View style={GlobalStyles.titleRow}>
+                <Text style={GlobalStyles.songTitle} numberOfLines={1}>
                   {song.title}
                 </Text>
                 <View style={{display: 'flex', flexDirection: 'row', position: 'relative', top: -10, right:-30}}>
-                  {song.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
+                  {song.is_premium === 1 && <PremiumBadge size="small" style={GlobalStyles.premiumBadge} />}
                   {song.is_premium === 1 && songAccessTypes[song.song_id] && (
                     <AccessBadge accessType={songAccessTypes[song.song_id]} size={16} />
                   )}
                 </View>
               </View>
-              <Text style={styles.songArtist} numberOfLines={1}>
+              <Text style={GlobalStyles.songArtist} numberOfLines={1}>
                 {song.artist_name || 'Unknown Artist'}
                 {song.album_title && (
                   <>
@@ -261,15 +289,15 @@ const HomeScreen = ({ navigation }) => {
                   </>
                 )}
               </Text>
-              <View style={styles.songMeta}>
+              <View style={GlobalStyles.songMeta}>
                 <Ionicons name="headset" size={12} color="#94A3B8" />
-                <Text style={styles.metaText}>
+                <Text style={GlobalStyles.metaText}>
                   {formatListenCount(song.listen_count)}
                 </Text>
                 {song.average_rating != null && (
                   <>
                     <Ionicons name="star" size={12} color={COLORS.warning} />
-                    <Text style={styles.metaText}>
+                    <Text style={GlobalStyles.metaText}>
                       {Number(song.average_rating).toFixed(1)}
                     </Text>
                   </>
@@ -277,16 +305,16 @@ const HomeScreen = ({ navigation }) => {
                 {song.duration > 0 && (
                   <>
                     <Ionicons name="time-outline" size={12} color="#94A3B8" />
-                    <Text style={styles.metaText}>
+                    <Text style={GlobalStyles.metaText}>
                       {formatDuration(song.duration)}
                     </Text>
                   </>
                 )}
               </View>
               {showPrice && (
-                <View style={styles.priceRow}>
+                <View style={GlobalStyles.priceRow}>
                   <Ionicons name="cash-outline" size={12} color={COLORS.warning} />
-                  <Text style={styles.priceText}>
+                  <Text style={GlobalStyles.priceText}>
                     {Number(song.price).toLocaleString('vi-VN')}đ
                   </Text>
                 </View>
@@ -294,9 +322,9 @@ const HomeScreen = ({ navigation }) => {
             </View>
           </TouchableOpacity>
 
-          <View style={styles.cardActions}>
+          <View style={GlobalStyles.cardActions}>
             <TouchableOpacity
-              style={styles.playButton}
+              style={GlobalStyles.playButton}
               onPress={() => handlePlaySong(song, index, list)}
             >
               <Ionicons 
@@ -306,7 +334,7 @@ const HomeScreen = ({ navigation }) => {
               />
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.addButton}
+              style={GlobalStyles.addButton}
               onPress={() => handleAddToPlaylist(song)}
             >
               <Ionicons name="add-circle-outline" size={24} color="#E2E8F0" />
@@ -352,15 +380,15 @@ const HomeScreen = ({ navigation }) => {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Đang tải...</Text>
+      <View style={GlobalStyles.loadingContainer}>
+        <Text style={GlobalStyles.loadingText}>Đang tải...</Text>
       </View>
     );
   }
 
   return (
     <ScrollView 
-      style={styles.container}
+      style={GlobalStyles.container}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -371,46 +399,49 @@ const HomeScreen = ({ navigation }) => {
       }
     >
       {/* Trending Songs */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>🔥 Trending</Text>
+      <View style={GlobalStyles.section}>
+        <Text style={GlobalStyles.sectionTitle}>🔥 Trending</Text>
         <FlatList
           ref={flatListRef}
           horizontal
           showsHorizontalScrollIndicator={false}
-          data={trendingSongs}
-          keyExtractor={(item) => item.song_id.toString()}
+          data={infiniteTrendingSongs}
+          keyExtractor={(item, index) => `trending-${item.song_id}-${index}`}
           pagingEnabled
           snapToInterval={112 + SIZES.padding}
           decelerationRate="fast"
+          initialNumToRender={3}
+          maxToRenderPerBatch={5}
+          windowSize={5}
           onScrollToIndexFailed={(info) => {
-            const wait = new Promise(resolve => setTimeout(resolve, 500));
-            wait.then(() => {
-              flatListRef.current?.scrollToIndex({ index: info.index, animated: true });
-            });
+            console.warn('Scroll failed:', info);
+             // Don't retry immediately to avoid loop
           }}
           renderItem={({ item, index }) => {
             const isCurrentSong = currentSong?.song_id === item.song_id;
+            // Calculate original index to pass correct context to player
+            const originalIndex = index % trendingSongs.length;
             
             return (
               <TouchableOpacity
-                style={styles.trendingItem}
-                onPress={() => handlePlaySong(item, index, trendingSongs)}
+                style={GlobalStyles.trendingItem}
+                onPress={() => handlePlaySong(item, originalIndex, trendingSongs)}
               >
-                <View style={styles.trendingImageContainer}>
+                <View style={GlobalStyles.trendingImageContainer}>
                   <Image
                     source={{ uri: item.cover_url || 'https://via.placeholder.com/150' }}
-                    style={styles.trendingImage}
+                    style={GlobalStyles.trendingImage}
                   />
                   {isCurrentSong && isPlaying && (
-                    <View style={styles.trendingPlayingIndicator}>
+                    <View style={GlobalStyles.trendingPlayingIndicator}>
                       <Ionicons name="volume-high" size={28} color="#FFF" />
                     </View>
                   )}
                 </View>
-                <Text style={styles.trendingTitle} numberOfLines={1}>
+                <Text style={GlobalStyles.trendingTitle} numberOfLines={1}>
                   {item.title}
                 </Text>
-                <Text style={styles.trendingArtist} numberOfLines={1}>
+                <Text style={GlobalStyles.trendingArtist} numberOfLines={1}>
                   {item.artist_name}
                 </Text>
               </TouchableOpacity>
@@ -420,52 +451,53 @@ const HomeScreen = ({ navigation }) => {
       </View>
 
       {/* New Albums */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
+      <View style={GlobalStyles.section}>
+        <View style={GlobalStyles.sectionHeader}>
           <Ionicons name="albums" size={24} color={COLORS.primary} />
-          <Text style={styles.sectionTitle}>Album mới</Text>
+          <Text style={GlobalStyles.sectionTitle}>Album mới</Text>
         </View>
         <FlatList
           ref={albumCarouselRef}
           horizontal
+          inverted
           showsHorizontalScrollIndicator={false}
-          data={newAlbums}
-          keyExtractor={(item) => item.album_id.toString()}
+          data={infiniteAlbums}
+          keyExtractor={(item, index) => `album-${item.album_id}-${index}`}
           pagingEnabled
           snapToInterval={112 + SIZES.padding}
           decelerationRate="fast"
+          initialNumToRender={3}
+          maxToRenderPerBatch={5}
+          windowSize={5}
           onScrollToIndexFailed={(info) => {
-            const wait = new Promise(resolve => setTimeout(resolve, 500));
-            wait.then(() => {
-              albumCarouselRef.current?.scrollToIndex({ index: info.index, animated: true });
-            });
+             console.warn('Album scroll failed:', info);
           }}
           renderItem={({ item }) => (
             <TouchableOpacity
-              style={styles.trendingItem}
+              style={GlobalStyles.trendingItem}
               onPress={() => navigation.navigate('AlbumDetail', { albumId: item.album_id })}
             >
-              <View style={styles.trendingImageContainer}>
+              <View style={GlobalStyles.trendingImageContainer}>
                 <Image
                   source={{ uri: item.cover_url || 'https://via.placeholder.com/150' }}
-                  style={styles.trendingImage}
+                  style={GlobalStyles.trendingImage}
                 />
                 {item.is_premium === 1 && (
-                  <View style={styles.albumPremiumBadge}>
+                  <View style={GlobalStyles.albumPremiumBadge}>
                     <PremiumBadge small />
                   </View>
                 )}
               </View>
-              <Text style={styles.trendingTitle} numberOfLines={1}>
+              <Text style={GlobalStyles.trendingTitle} numberOfLines={1}>
                 {item.title}
               </Text>
-              <Text style={styles.trendingArtist} numberOfLines={1}>
+              <Text style={GlobalStyles.trendingArtist} numberOfLines={1}>
                 {item.artist_name || 'Unknown Artist'}
               </Text>
               {item.song_count !== undefined && (
-                <View style={styles.albumSongCount}>
+                <View style={GlobalStyles.albumSongCount}>
                   <Ionicons name="musical-notes" size={12} color={COLORS.textMuted} />
-                  <Text style={styles.albumSongCountText}>
+                  <Text style={GlobalStyles.albumSongCountText}>
                     {item.song_count} bài hát
                   </Text>
                 </View>
@@ -476,8 +508,8 @@ const HomeScreen = ({ navigation }) => {
       </View>
 
       {/* Recent Songs */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Mới nhất</Text>
+      <View style={GlobalStyles.section}>
+        <Text style={GlobalStyles.sectionTitle}>Mới nhất</Text>
         {recentSongs.map((song, index) =>
           renderSongItem(song, index, recentSongs)
         )}
@@ -517,224 +549,6 @@ const HomeScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-  },
-  loadingText: {
-    color: COLORS.text,
-    fontSize: SIZES.md,
-  },
-  section: {
-    marginVertical: 16,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: SIZES.padding,
-    marginBottom: 12,
-    gap: 8,
-  },
-  sectionTitle: {
-    fontSize: SIZES.xl,
-    fontWeight: 'bold',
-    color: COLORS.text,
-  },
-  trendingItem: {
-    width: 112, // Same as album carousel
-    marginLeft: SIZES.padding,
-  },
-  trendingImageContainer: {
-    position: 'relative',
-    marginBottom: 8,
-  },
-  trendingImage: {
-    width: 112,
-    height: 112,
-    borderRadius: SIZES.borderRadius,
-  },
-  trendingPlayingIndicator: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    borderRadius: SIZES.borderRadius,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  trendingTitle: {
-    color: COLORS.text,
-    fontSize: SIZES.base,
-    fontWeight: '600',
-  },
-  trendingArtist: {
-    color: COLORS.textSecondary,
-    fontSize: SIZES.sm,
-  },
-  songItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SIZES.padding,
-    paddingVertical: 12,
-    borderRadius: SIZES.borderRadius,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    marginVertical: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 6,
-    gap: 12,
-  },
-  songItemActive: {
-    borderColor: COLORS.primary,
-  },
-  songContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  coverContainer: {
-    position: 'relative',
-    marginRight: 12,
-  },
-  songImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-  },
-  playingIndicator: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  songInfo: {
-    flex: 1,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  songTitle: {
-    color: '#F8FAFC',
-    fontSize: SIZES.md,
-    fontWeight: '700',
-    flex: 1,
-    minWidth: 150,
-  },
-  premiumBadge: {
-    marginLeft: 6,
-  },
-  purchasedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: 6,
-    backgroundColor: '#E8F5E9',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
-    gap: 4,
-  },
-  purchasedText: {
-    color: '#4CAF50',
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  songArtist: {
-    color: '#E2E8F0',
-    fontSize: SIZES.sm,
-    marginBottom: 4,
-  },
-  songMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
-  },
-  metaSeparator: {
-    color: '#94A3B8',
-    fontSize: SIZES.xs,
-    marginHorizontal: 4,
-  },
-  metaText: {
-    color: '#CBD5F5',
-    fontSize: SIZES.xs,
-    fontWeight: '600',
-  },
-  metaText: {
-    color: '#CBD5F5',
-    fontSize: SIZES.xs,
-    fontWeight: '600',
-  },
-  ratingText: {
-    color: COLORS.warning,
-    fontSize: SIZES.xs,
-    fontWeight: '600',
-  },
-  priceText: {
-    color: COLORS.primary,
-    fontSize: SIZES.xs,
-    fontWeight: '700',
-  },
-  priceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-  },
-  playButton: {
-    padding: 4,
-  },
-  cardActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingTop: 6,
-  },
-  songItemWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    maxWidth: 380,
-    marginBottom: 4,
-    marginLeft: 3,
-  },
-  addButton: {
-    padding: 8,
-    marginRight: SIZES.padding,
-  },
-  albumPremiumBadge: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    zIndex: 2,
-  },
-  albumSongCount: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-    gap: 4,
-  },
-  albumSongCountText: {
-    color: COLORS.textMuted,
-    fontSize: SIZES.xs,
-  },
-});
+const styles = StyleSheet.create({});
 
 export default HomeScreen;

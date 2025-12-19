@@ -21,6 +21,7 @@ import { genreService } from '../../services/genreService';
 import { usePlayer } from '../../context/PlayerContext';
 import { useAlert } from '../../context/AlertContext';
 import { COLORS, SIZES } from '../../config/theme';
+import { GlobalStyles } from '../../config/styles';
 import PremiumBadge from '../../components/Common/PremiumBadge';
 import AccessBadge from '../../components/Common/AccessBadge';
 import { premiumService } from '../../services/premiumService';
@@ -384,48 +385,48 @@ const SearchScreen = ({ navigation }) => {
 
   const renderAlbumItem = ({ item }) => {
     return (
-      <View style={styles.songItemWrapper}>
+      <View style={GlobalStyles.songItemWrapper}>
         <LinearGradient
           colors={['#161616', '#050505']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={styles.songItem}
+          style={GlobalStyles.songItem}
         >
           <TouchableOpacity
-            style={styles.songContent}
+            style={GlobalStyles.songContent}
             onPress={() => navigation.navigate('AlbumDetail', { albumId: item.album_id })}
             activeOpacity={0.8}
           >
-            <View style={styles.coverContainer}>
+            <View style={GlobalStyles.coverContainer}>
               <Image
                 source={{ uri: item.cover_url || 'https://via.placeholder.com/150' }}
-                style={styles.songImage}
+                style={GlobalStyles.songImage}
               />
             </View>
             
-            <View style={styles.songInfo}>
-              <View style={[styles.songTitleRow, { justifyContent: 'space-between' }]}>
-                <Text style={styles.songTitle} numberOfLines={1}>
+            <View style={GlobalStyles.songInfo}>
+              <View style={[GlobalStyles.titleRow, { justifyContent: 'space-between' }]}>
+                <Text style={GlobalStyles.songTitle} numberOfLines={1}>
                   {item.title}
                 </Text>
                 <View style={{display: 'flex', flexDirection: 'row', position: 'relative', top: -10, right:-15}}>
-                  {item.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
+                  {item.is_premium === 1 && <PremiumBadge size="small" style={GlobalStyles.premiumBadge} />}
                 </View>
               </View>
               
-              <Text style={styles.songArtist} numberOfLines={1}>
+              <Text style={GlobalStyles.songArtist} numberOfLines={1}>
                 {item.artist_name}
               </Text>
               
-              <View style={styles.songMeta}>
+              <View style={GlobalStyles.songMeta}>
                 <Ionicons name="calendar-outline" size={12} color="#94A3B8" />
-                <Text style={styles.metaText}>
+                <Text style={GlobalStyles.metaText}>
                   {item.release_date ? new Date(item.release_date).getFullYear() : 'N/A'}
                 </Text>
                 {item.is_premium === 1 && item.price > 0 && (
                   <>
                     <Ionicons name="cash-outline" size={12} color={COLORS.warning} />
-                    <Text style={styles.priceText}>
+                    <Text style={GlobalStyles.priceText}>
                       {parseFloat(item.price).toLocaleString('vi-VN')}đ
                     </Text>
                   </>
@@ -434,9 +435,9 @@ const SearchScreen = ({ navigation }) => {
             </View>
           </TouchableOpacity>
 
-          <View style={styles.cardActions}>
+          <View style={GlobalStyles.cardActions}>
             <TouchableOpacity
-              style={styles.addButton}
+              style={GlobalStyles.addButton}
               onPress={() => navigation.navigate('AlbumDetail', { albumId: item.album_id })}
             >
               <Ionicons name="chevron-forward-circle-outline" size={28} color="#E2E8F0" />
@@ -457,43 +458,43 @@ const SearchScreen = ({ navigation }) => {
       : ['#161616', '#050505'];
 
     return (
-      <View style={styles.songItemWrapper}>
+      <View style={GlobalStyles.songItemWrapper}>
         <LinearGradient
           colors={gradientColors}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[styles.songItem, isCurrentSong && styles.songItemActive]}
+          style={[GlobalStyles.songItem, isCurrentSong && GlobalStyles.songItemActive]}
         >
           <TouchableOpacity
-            style={styles.songContent}
+            style={GlobalStyles.songContent}
             onPress={() => handleSongPress(item, index)}
             activeOpacity={0.8}
           >
-            <View style={styles.coverContainer}>
+            <View style={GlobalStyles.coverContainer}>
               <Image
                 source={{ uri: item.cover_url || 'https://via.placeholder.com/60' }}
-                style={styles.songImage}
+                style={GlobalStyles.songImage}
               />
               {isCurrentPlaying && (
-                <View style={styles.playingIndicator}>
+                <View style={GlobalStyles.playingIndicator}>
                   <Ionicons name="volume-high" size={20} color="#FFF" />
                 </View>
               )}
             </View>
 
-            <View style={styles.songInfo}>
-              <View style={[styles.songTitleRow, { justifyContent: 'space-between' }]}>
-                <Text style={styles.songTitle} numberOfLines={1}>
+            <View style={GlobalStyles.songInfo}>
+              <View style={[GlobalStyles.titleRow, { justifyContent: 'space-between' }]}>
+                <Text style={GlobalStyles.songTitle} numberOfLines={1}>
                   {item.title}
                 </Text>
                 <View style={{display: 'flex', flexDirection: 'row', position: 'relative', top: -10, right:-15}}>
-                  {item.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
+                  {item.is_premium === 1 && <PremiumBadge size="small" style={GlobalStyles.premiumBadge} />}
                   {item.is_premium === 1 && songAccessTypes[item.song_id] && (
                     <AccessBadge accessType={songAccessTypes[item.song_id]} size={16} />
                   )}
                 </View>
               </View>
-              <Text style={styles.songArtist} numberOfLines={1}>
+              <Text style={GlobalStyles.songArtist} numberOfLines={1}>
                 {item.artist_name || 'Unknown Artist'}
                 {item.album_title && (
                   <>
@@ -504,15 +505,15 @@ const SearchScreen = ({ navigation }) => {
                   </>
                 )}
               </Text>
-              <View style={styles.songMeta}>
+              <View style={GlobalStyles.songMeta}>
                 <Ionicons name="headset" size={12} color="#94A3B8" />
-                <Text style={styles.metaText}>
+                <Text style={GlobalStyles.metaText}>
                   {formatListenCount(item.listen_count)}
                 </Text>
                 {item.average_rating != null && (
                   <>
                     <Ionicons name="star" size={12} color={COLORS.warning} />
-                    <Text style={styles.metaText}>
+                    <Text style={GlobalStyles.metaText}>
                       {Number(item.average_rating).toFixed(1)}
                     </Text>
                   </>
@@ -520,16 +521,16 @@ const SearchScreen = ({ navigation }) => {
                 {item.duration > 0 && (
                   <>
                     <Ionicons name="time-outline" size={12} color="#94A3B8" />
-                    <Text style={styles.metaText}>
+                    <Text style={GlobalStyles.metaText}>
                       {formatDuration(item.duration)}
                     </Text>
                   </>
                 )}
               </View>
               {showPrice && (
-                <View style={styles.priceRow}>
+                <View style={GlobalStyles.priceRow}>
                   <Ionicons name="cash-outline" size={12} color={COLORS.warning} />
-                  <Text style={styles.priceText}>
+                  <Text style={GlobalStyles.priceText}>
                     {Number(item.price).toLocaleString('vi-VN')}đ
                   </Text>
                 </View>
@@ -537,9 +538,9 @@ const SearchScreen = ({ navigation }) => {
             </View>
           </TouchableOpacity>
 
-          <View style={styles.cardActions}>
+          <View style={GlobalStyles.cardActions}>
             <TouchableOpacity
-              style={styles.playButton}
+              style={GlobalStyles.playButton}
               onPress={() => handlePlaySong(item, index)}
             >
               <Ionicons
@@ -549,7 +550,7 @@ const SearchScreen = ({ navigation }) => {
               />
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.addButton}
+              style={GlobalStyles.addButton}
               onPress={() => handleAddToPlaylist(item)}
             >
               <Ionicons name="add-circle-outline" size={24} color="#E2E8F0" />
@@ -794,9 +795,9 @@ const SearchScreen = ({ navigation }) => {
 
   if (loadingInitial) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={GlobalStyles.loadingContainer}>
         <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Đang tải...</Text>
+        <Text style={GlobalStyles.loadingText}>Đang tải...</Text>
       </View>
     );
   }
@@ -1121,17 +1122,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-  },
-  loadingText: {
-    color: COLORS.textSecondary,
-    fontSize: SIZES.md,
-    marginTop: 12,
-  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1234,129 +1224,9 @@ const styles = StyleSheet.create({
   songsList: {
     paddingBottom: 100,
   },
-  songItemWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: SIZES.padding,
-    marginBottom: 8,
-  },
-  songItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SIZES.padding,
-    paddingVertical: 12,
-    borderRadius: SIZES.borderRadius,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 6,
-    gap: 12,
-    flex: 1,
-  },
-  songItemActive: {
-    borderColor: COLORS.primary,
-  },
-  songContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  coverContainer: {
-    position: 'relative',
-    marginRight: 12,
-  },
-  songImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-  },
-  playingIndicator: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 8,
-  },
-  songInfo: {
-    flex: 1,
-  },
-  songTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  songTitle: {
-    color: '#F8FAFC',
-    fontSize: SIZES.md,
-    fontWeight: '700',
-    minWidth: 150,
-    flex: 1,
-  },
-  premiumBadge: {
-    marginLeft: 6,
-  },
-  songMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
-  },
-  songArtist: {
-    color: '#E2E8F0',
-    fontSize: SIZES.sm,
-    marginBottom: 4,
-  },
-  metaText: {
-    color: '#CBD5F5',
-    fontSize: SIZES.xs,
-    fontWeight: '600',
-  },
-  metaSeparator: {
-    color: '#94A3B8',
-    fontSize: SIZES.xs,
-    marginHorizontal: 4,
-  },
   metaDot: {
     color: '#94A3B8',
     fontSize: SIZES.sm,
-  },
-  priceText: {
-    color: COLORS.warning,
-    fontSize: SIZES.xs,
-    fontWeight: '600',
-  },
-  priceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-  },
-  ratingText: {
-    color: COLORS.warning,
-    fontSize: SIZES.xs,
-    fontWeight: '600',
-  },
-  purchasedBadge: {
-    marginLeft: 4,
-  },
-  playButton: {
-    padding: 4,
-  },
-  cardActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingTop: 6,
-  },
-  addButton: {
-    padding: 8,
   },
   artistsList: {
     paddingBottom: 100,

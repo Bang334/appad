@@ -6,10 +6,13 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  TouchableWithoutFeedback
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, SIZES } from '../../config/theme';
+import { COLORS, SIZES, SHADOWS } from '../../config/theme';
+
+import { useNavigation } from '@react-navigation/native';
 
 const PurchaseConfirmationModal = ({ 
   visible, 
@@ -20,12 +23,29 @@ const PurchaseConfirmationModal = ({
   price,
   currentBalance,
   additionalInfo = {},
-  loading = false
+  loading = false,
+  onDeposit // Callback for deposit action
 }) => {
+  const navigation = useNavigation();
+  
   if (!visible) return null;
 
   const remainingBalance = currentBalance - price;
   const hasInsufficientBalance = remainingBalance < 0;
+
+  const handleConfirm = () => {
+    if (hasInsufficientBalance) {
+      if (onDeposit) {
+         onDeposit();
+      } else {
+        onClose();
+        // Fallback navigation if no onDeposit provided
+        navigation.navigate('Wallet');
+      }
+    } else {
+      onConfirm();
+    }
+  };
 
   const getTypeInfo = () => {
     switch (type) {
@@ -35,20 +55,26 @@ const PurchaseConfirmationModal = ({
           color: COLORS.primary,
           refundInfo: 'Không thể hoàn tiền sau khi mua.',
           description: 'Bạn sẽ sở hữu bài hát này vĩnh viễn.',
+          badge: 'Mua một lần',
+          badgeColor: ['#06b6d4', '#3b82f6']
         };
       case 'membership':
         return {
-          icon: 'person-circle',
-          color: COLORS.accent,
+          icon: 'heart',
+          color: '#ec4899',
           refundInfo: 'Không thể hoàn tiền sau khi đăng ký.',
-          description: `Hội viên sẽ có hiệu lực trong ${additionalInfo.duration_days || 30} ngày.`,
+          description: `Hội viên trong ${additionalInfo.duration_days || 30} ngày.`,
+          badge: 'Gói hội viên',
+          badgeColor: ['#ec4899', '#db2777']
         };
       case 'premium':
         return {
           icon: 'star',
-          color: COLORS.primary,
-          refundInfo: 'Có thể hủy bất cứ lúc nào. Hoàn tiền 50% nếu hủy trong 7 ngày đầu.',
-          description: 'Đăng ký Premium để nghe tất cả bài hát không giới hạn.',
+          color: '#8b5cf6',
+          refundInfo: 'Có thể hủy bất cứ lúc nào.',
+          description: 'Nghe không giới hạn toàn bộ kho nhạc.',
+          badge: 'Gói Premium',
+          badgeColor: ['#8b5cf6', '#d946ef']
         };
       default:
         return {
@@ -56,6 +82,8 @@ const PurchaseConfirmationModal = ({
           color: COLORS.primary,
           refundInfo: '',
           description: '',
+          badge: 'Thông tin',
+          badgeColor: [COLORS.primary, COLORS.secondary]
         };
     }
   };
@@ -69,213 +97,233 @@ const PurchaseConfirmationModal = ({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <TouchableOpacity 
-        style={styles.overlay} 
-        activeOpacity={1}
-        onPress={onClose}
-      >
-        <View 
-          style={styles.modal}
-          onStartShouldSetResponder={() => true}
-          onTouchEnd={(e) => e.stopPropagation()}
-        >
-          <TouchableOpacity 
-            style={styles.closeButton} 
-            onPress={onClose}
-            activeOpacity={0.7}
-            disabled={loading}
-          >
-            <Ionicons name="close" size={24} color={COLORS.text} />
-          </TouchableOpacity>
+      <View style={styles.overlayContainer}>
+        {/* Overlay click to close - Independent from Modal Content */}
+        <TouchableWithoutFeedback onPress={onClose}>
+          <View style={styles.overlayBackground} />
+        </TouchableWithoutFeedback>
 
-          <ScrollView 
-            style={styles.scrollView}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={true}
-            bounces={true}
-            nestedScrollEnabled={true}
-            scrollEventThrottle={16}
-            removeClippedSubviews={false}
-            keyboardShouldPersistTaps="handled"
-            alwaysBounceVertical={false}
-            scrollEnabled={true}
+        {/* Modal Content */}
+        <View style={styles.modal}>
+          <LinearGradient
+            colors={['#1F1F1F', '#121212']}
+            style={styles.gradientBackground}
           >
             <View style={styles.header}>
-              <Ionicons name={typeInfo.icon} size={60} color={typeInfo.color} />
-              <Text style={styles.title}>Xác nhận giao dịch</Text>
+              <View style={styles.iconContainer}>
+                 <LinearGradient
+                    colors={typeInfo.badgeColor}
+                    style={styles.iconGradient}
+                 >
+                    <Ionicons name={typeInfo.icon} size={32} color="#FFF" />
+                 </LinearGradient>
+              </View>
+              <Text style={styles.title}>Xác nhận thanh toán</Text>
+              <View style={styles.badgeContainer}>
+                <Text style={[styles.badgeText, { color: typeInfo.badgeColor[1] }]}>
+                  {typeInfo.badge}
+                </Text>
+              </View>
             </View>
 
-            <View style={styles.content}>
-              <Text style={styles.itemTitle}>{title}</Text>
-              
-              <View style={styles.priceSection}>
-                <View style={styles.priceRow}>
-                  <Text style={styles.priceLabel}>Giá:</Text>
-                  <Text style={styles.priceValue}>
-                    {price.toLocaleString('vi-VN')}đ
-                  </Text>
-                </View>
-                <View style={styles.priceRow}>
-                  <Text style={styles.priceLabel}>Số dư hiện tại:</Text>
-                  <Text style={styles.balanceValue}>
-                    {currentBalance.toLocaleString('vi-VN')}đ
-                  </Text>
-                </View>
-                <View style={[styles.priceRow, styles.remainingRow]}>
-                  <Text style={styles.remainingLabel}>Số dư còn lại:</Text>
-                  <Text style={[
-                    styles.remainingValue,
-                    hasInsufficientBalance && styles.insufficientBalance
-                  ]}>
-                    {remainingBalance.toLocaleString('vi-VN')}đ
-                  </Text>
-                </View>
-              </View>
-
-              {hasInsufficientBalance && (
-                <View style={styles.warningBox}>
-                  <Ionicons name="warning" size={20} color="#EF5350" />
-                  <Text style={styles.warningText}>
-                    Số dư không đủ! Bạn cần nạp thêm {(Math.abs(remainingBalance)).toLocaleString('vi-VN')}đ
-                  </Text>
-                </View>
-              )}
-
-              <View style={styles.infoSection}>
-                <Text style={styles.infoText}>{typeInfo.description}</Text>
+            <ScrollView 
+              style={styles.scrollView}
+              contentContainerStyle={styles.scrollContent}
+              showsVerticalScrollIndicator={true}
+              indicatorStyle="white"
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={styles.content}>
+                <Text style={styles.itemTitle}>{title}</Text>
                 
-                <View style={styles.noticeBox}>
-                  <Ionicons name="information-circle" size={18} color={COLORS.warning} />
-                  <Text style={styles.noticeText}>{typeInfo.refundInfo}</Text>
+                <View style={styles.invoiceCard}>
+                  <View style={styles.priceRow}>
+                    <Text style={styles.priceLabel}>Đơn giá</Text>
+                    <Text style={styles.priceValue}>
+                      {price.toLocaleString('vi-VN')}đ
+                    </Text>
+                  </View>
+                  <View style={styles.divider} />
+                  <View style={styles.priceRow}>
+                    <Text style={styles.priceLabel}>Số dư hiện tại</Text>
+                    <Text style={styles.balanceValue}>
+                      {currentBalance.toLocaleString('vi-VN')}đ
+                    </Text>
+                  </View>
+                  
+                  <View style={[styles.priceRow, styles.totalRow]}>
+                    <Text style={styles.totalLabel}>Số dư còn lại</Text>
+                    <Text style={[
+                      styles.totalValue,
+                      hasInsufficientBalance && styles.insufficientBalance
+                    ]}>
+                      {remainingBalance.toLocaleString('vi-VN')}đ
+                    </Text>
+                  </View>
                 </View>
 
-                {type === 'premium' && (
-                  <View style={styles.premiumInfoBox}>
-                    <Text style={styles.premiumInfoTitle}>Chính sách hủy Premium:</Text>
-                    <Text style={styles.premiumInfoText}>
-                      • Hủy trong 7 ngày đầu: Hoàn tiền 50%{'\n'}
-                      • Hủy sau 7 ngày: Không hoàn tiền{'\n'}
-                      • Có thể hủy bất cứ lúc nào trong cài đặt
+                {hasInsufficientBalance && (
+                  <View style={styles.warningBox}>
+                    <Ionicons name="warning" size={20} color="#EF5350" />
+                    <Text style={styles.warningText}>
+                      Số dư không đủ. Vui lòng nạp thêm {(Math.abs(remainingBalance)).toLocaleString('vi-VN')}đ.
                     </Text>
                   </View>
                 )}
 
-                {type === 'membership' && additionalInfo.artist_name && (
-                  <View style={styles.membershipInfoBox}>
-                    <Text style={styles.membershipInfoText}>
-                      Hội viên của {additionalInfo.artist_name} sẽ cho phép bạn nghe tất cả bài hát premium của artist này.
-                    </Text>
-                  </View>
-                )}
+                <View style={styles.infoSection}>
+                  <Text style={styles.descriptionText}>
+                    {typeInfo.description}
+                  </Text>
+                  
+                  {typeInfo.refundInfo ? (
+                     <View style={styles.refundBox}>
+                       <Ionicons name="shield-checkmark" size={16} color={COLORS.textSecondary} />
+                       <Text style={styles.refundText}>{typeInfo.refundInfo}</Text>
+                     </View>
+                  ) : null}
+                </View>
+
+                {/* Actions inside ScrollView to enforce scrolling */}
+                <View style={styles.actionsContainerInline}>
+                  <TouchableOpacity
+                    style={styles.cancelButton}
+                    onPress={onClose}
+                    disabled={loading}
+                  >
+                    <Text style={styles.cancelButtonText}>Hủy bỏ</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[
+                      styles.confirmButton,
+                      // Remove opacity for 'disabled' look if we want it to be clickable
+                      // hasInsufficientBalance && styles.disabledButtonWrapper 
+                    ]}
+                    onPress={handleConfirm}
+                    disabled={loading} // Only disable if loading
+                  >
+                    <LinearGradient
+                      colors={hasInsufficientBalance ? ['#333', '#333'] : COLORS.gradient.primary}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={styles.gradientButton}
+                    >
+                      {loading ? (
+                        <Text style={styles.confirmButtonText}>Đang xử lý...</Text>
+                      ) : (
+                        <Text style={[styles.confirmButtonText, hasInsufficientBalance && { color: '#EF5350' }]}>
+                          {hasInsufficientBalance ? 'Nạp tiền ngay' : 'Xác nhận mua'}
+                        </Text>
+                      )}
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
-          </ScrollView>
-
-          {/* Fixed Actions at Bottom */}
-          <View style={styles.actionsContainer}>
-            <TouchableOpacity
-              style={[styles.button, styles.cancelButton]}
-              onPress={onClose}
-              disabled={loading}
-            >
-              <Text style={styles.cancelButtonText}>Hủy</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.button, 
-                styles.confirmButton,
-                hasInsufficientBalance && styles.disabledButton
-              ]}
-              onPress={onConfirm}
-              disabled={loading || hasInsufficientBalance}
-            >
-              {loading ? (
-                <Text style={styles.confirmButtonText}>Đang xử lý...</Text>
-              ) : (
-                <Text style={styles.confirmButtonText}>Xác nhận</Text>
-              )}
-            </TouchableOpacity>
-          </View>
+            </ScrollView>
+          </LinearGradient>
         </View>
-      </TouchableOpacity>
+      </View>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  overlay: {
+  overlayContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
   },
+  overlayBackground: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+  },
   modal: {
-    backgroundColor: COLORS.card,
-    borderRadius: 20,
     width: '100%',
-    maxWidth: 400,
-    maxHeight: '85%',
-    flexDirection: 'column',
+    maxWidth: 360,
+    borderRadius: 24,
     overflow: 'hidden',
-    position: 'relative',
+    ...SHADOWS.medium,
+    // Ensure modal sits above overlay background
+    zIndex: 1, 
+  },
+  gradientBackground: {
+    padding: 0,
+    maxHeight: '100%',
+  },
+  header: {
+    alignItems: 'center',
+    paddingTop: 32,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  iconContainer: {
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  iconGradient: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFF',
+    marginBottom: 8,
+  },
+  badgeContainer: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 12,
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   scrollView: {
-    height: 1200,
-    flexGrow: 1,
+    maxHeight: 500, // Limit height to ensure scrolling behavior if content is long
   },
   scrollContent: {
     padding: 24,
-    paddingTop: 48,
-    paddingBottom: 24,
-    flexGrow: 1,
-  },
-  closeButton: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    zIndex: 1,
-    padding: 4,
-  },
-  header: {
-    height: 100,
-    alignItems: 'center',
-    marginBottom: 24,
-    marginTop: 8,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginTop: 12,
   },
   content: {
-    marginBottom: 24,
+    gap: 24,
   },
   itemTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
     color: COLORS.text,
     textAlign: 'center',
-    marginBottom: 20,
+    fontWeight: '600',
+    lineHeight: 26,
   },
-  priceSection: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+  invoiceCard: {
+    backgroundColor: '#2A2A2A',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
   },
   priceRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    paddingVertical: 6,
   },
-  remainingRow: {
-    marginTop: 8,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    marginVertical: 14,
   },
   priceLabel: {
     fontSize: 14,
@@ -283,21 +331,23 @@ const styles = StyleSheet.create({
   },
   priceValue: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.primary,
+    fontWeight: '600',
+    color: '#FFF',
   },
   balanceValue: {
     fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.text,
+    color: '#E0E0E0',
   },
-  remainingLabel: {
+  totalRow: {
+    marginTop: 6,
+  },
+  totalLabel: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: COLORS.text,
+    color: '#FFF',
   },
-  remainingValue: {
-    fontSize: 18,
+  totalValue: {
+    fontSize: 20,
     fontWeight: 'bold',
     color: COLORS.success,
   },
@@ -308,108 +358,80 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(239, 83, 80, 0.1)',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    gap: 8,
+    borderRadius: 12,
+    padding: 14,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 83, 80, 0.2)',
   },
   warningText: {
     flex: 1,
     fontSize: 13,
     color: '#EF5350',
-    fontWeight: '500',
+    lineHeight: 20,
   },
   infoSection: {
-    gap: 12,
-  },
-  infoText: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    lineHeight: 20,
-  },
-  noticeBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: 'rgba(255, 193, 7, 0.1)',
-    borderRadius: 8,
-    padding: 12,
-    gap: 8,
-  },
-  noticeText: {
-    flex: 1,
-    fontSize: 13,
-    color: COLORS.warning,
-    lineHeight: 18,
-  },
-  premiumInfoBox: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 8,
-  },
-  premiumInfoTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: 8,
-  },
-  premiumInfoText: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    lineHeight: 20,
-  },
-  membershipInfoBox: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 8,
-  },
-  membershipInfoText: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    lineHeight: 20,
-  },
-  actionsContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    padding: 16,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    backgroundColor: COLORS.card,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-  },
-  button: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 12,
+  },
+  descriptionText: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  refundBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  refundText: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+  },
+  actionsContainerInline: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
   },
   cancelButton: {
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    flex: 1,
+    paddingVertical: 16,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#333',
   },
   cancelButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: COLORS.text,
+    color: '#E0E0E0',
   },
   confirmButton: {
-    backgroundColor: COLORS.primary,
+    flex: 1.5,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  disabledButtonWrapper: {
+    opacity: 0.7,
+  },
+  gradientButton: {
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   disabledButton: {
-    backgroundColor: COLORS.textSecondary,
     opacity: 0.5,
   },
   confirmButtonText: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: 'bold',
     color: '#FFF',
   },
 });
 
 export default PurchaseConfirmationModal;
-
