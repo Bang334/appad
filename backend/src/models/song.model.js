@@ -3,7 +3,13 @@ const db = require('../config/database');
 class SongModel {
   // Create new song
   static async create(songData) {
-    const { title, artist_id, album_id, genre_id, duration, file_url, cover_url, release_date, lyrics, is_premium, price, status } = songData;
+    let { title, artist_id, album_id, genre_id, duration, file_url, cover_url, release_date, lyrics, is_premium, price, status } = songData;
+    
+    // If release date is in the future, automatically set status to 0 (Hidden/Scheduled)
+    if (release_date && new Date(release_date) > new Date()) {
+      status = 0;
+    }
+
     const [result] = await db.execute(
       'INSERT INTO songs (title, artist_id, album_id, genre_id, duration, file_url, cover_url, release_date, lyrics, is_premium, price, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [title, artist_id || null, album_id || null, genre_id || null, duration, file_url, cover_url || null, release_date || null, lyrics || null, is_premium || 0, price || 0, status !== undefined ? status : 1]
@@ -190,6 +196,11 @@ class SongModel {
 
   // Update song
   static async update(songId, songData) {
+    // If updating release date to the future, automatically set status to 0 (Hidden)
+    if (songData.release_date && new Date(songData.release_date) > new Date()) {
+      songData.status = 0;
+    }
+
     const fields = [];
     const values = [];
 
@@ -319,6 +330,33 @@ class SongModel {
        WHERE s.is_premium = 1
        ORDER BY s.song_id DESC
        LIMIT ${limit} OFFSET ${offset}`
+    );
+    return rows;
+  }
+
+  // Get top songs by artist (for followed artists preview)
+  static async findTopSongsByArtist(artistId, limit = 3) {
+    limit = parseInt(limit) || 3;
+    const [rows] = await db.query(
+      `SELECT s.*, 
+              a.name as artist_name, 
+              al.title as album_title, 
+              g.name as genre_name,
+              COALESCE(rc.rating_count, 0) as rating_count
+       FROM songs s
+       LEFT JOIN artists a ON s.artist_id = a.artist_id
+       LEFT JOIN albums al ON s.album_id = al.album_id
+       LEFT JOIN genres g ON s.genre_id = g.genre_id
+       LEFT JOIN (
+         SELECT song_id, COUNT(*) as rating_count
+         FROM comments
+         WHERE rating IS NOT NULL
+         GROUP BY song_id
+       ) rc ON s.song_id = rc.song_id
+       WHERE s.artist_id = ? AND s.status = 1
+       ORDER BY s.listen_count DESC
+       LIMIT ?`,
+      [artistId, limit]
     );
     return rows;
   }

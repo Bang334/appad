@@ -125,6 +125,26 @@ class FollowController {
     }
   }
 
+  // Get user's followed artists with songs
+  static async getFollowedArtistsWithSongs(req, res) {
+    try {
+      const userId = req.user.user_id;
+      const { limit = 3 } = req.query;
+      const artists = await FollowModel.getFollowedArtistsWithSongs(userId, parseInt(limit));
+
+      res.json({
+        success: true,
+        data: artists
+      });
+    } catch (error) {
+      console.error('Get followed artists with songs error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Server error'
+      });
+    }
+  }
+
   // Get artist's followers
   static async getArtistFollowers(req, res) {
     try {

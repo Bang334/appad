@@ -48,6 +48,8 @@ const MiniPlayer = ({ bottomOffset }) => {
     return 0;
   }, [duration, currentSong?.duration]);
 
+  const [isCollapsed, setIsCollapsed] = React.useState(false);
+
   // Optimize progress calculation
   const progress = useMemo(() => {
     return displayDuration > 0 ? Math.min(position / displayDuration, 1) : 0;
@@ -61,6 +63,14 @@ const MiniPlayer = ({ bottomOffset }) => {
     stopPlayer();
   };
 
+  const handleCollapse = () => {
+    setIsCollapsed(true);
+  };
+
+  const handleExpand = () => {
+    setIsCollapsed(false);
+  };
+
   const formatTime = (ms) => {
     const totalSeconds = Math.round((ms || 0) / 1000);
     const minutes = Math.floor(totalSeconds / 60);
@@ -70,12 +80,31 @@ const MiniPlayer = ({ bottomOffset }) => {
 
   if (!currentSong) return null;
 
+  if (isCollapsed) {
+    return (
+      <TouchableOpacity
+        style={[styles.collapsedContainer, { bottom: calculatedBottom + 20 }]}
+        onPress={handleExpand}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="chevron-back" size={24} color={COLORS.primary} />
+        <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.2)']}
+            style={StyleSheet.absoluteFillObject}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            pointerEvents="none"
+        />
+      </TouchableOpacity>
+    );
+  }
+
   return (
     <View
       style={[styles.container, { bottom: calculatedBottom }]}
     >
       <View style={styles.contentRow}>
-        {/* Close Button */}
+        {/* Close Button - Top Right */}
         <TouchableOpacity 
           onPress={handleClose} 
           style={styles.closeButton}
@@ -83,6 +112,16 @@ const MiniPlayer = ({ bottomOffset }) => {
           hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
         >
           <Ionicons name="close" size={20} color={COLORS.textSecondary} />
+        </TouchableOpacity>
+
+        {/* Collapse Button - Below Close Button */}
+        <TouchableOpacity 
+          onPress={handleCollapse} 
+          style={styles.collapseButton}
+          activeOpacity={0.7}
+          hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
+        >
+          <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
         </TouchableOpacity>
 
         <TouchableOpacity 
@@ -172,18 +211,56 @@ const styles = StyleSheet.create({
     elevation: 10,
     gap: 8,
   },
+  collapsedContainer: {
+    position: 'absolute',
+    right: 0,
+    backgroundColor: '#050505',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderTopLeftRadius: 30,
+    borderBottomLeftRadius: 30,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    borderRightWidth: 0,
+    shadowColor: '#000',
+    shadowOffset: { width: -2, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 10,
+    zIndex: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   contentRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   closeButton: {
     position: 'absolute',
-    top: -3,
-    right: -3,
+    top: -25,
+    right: -5,
     zIndex: 10,
     padding: 4,
-    borderRadius: 10,
-    backgroundColor: COLORS.background,
+    borderRadius: 12,
+    backgroundColor: '#2a0a0a', // Solid dark red (opaque)
+    borderWidth: 1,
+    borderColor: 'rgba(255, 60, 60, 0.2)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  collapseButton: {
+    position: 'absolute',
+    top: 20,
+    right: -5,
+    zIndex: 10,
+    padding: 4,
+    borderRadius: 12,
+    backgroundColor: '#0a0a2a', // Solid dark blue (opaque)
+    borderWidth: 1,
+    borderColor: 'rgba(60, 100, 255, 0.2)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,

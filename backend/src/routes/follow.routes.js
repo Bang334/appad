@@ -18,6 +18,9 @@ router.get('/check/:artist_id', FollowController.checkFollowing);
 // Get user's followed artists
 router.get('/my-follows', FollowController.getUserFollowedArtists);
 
+// Get user's followed artists with songs
+router.get('/my-follows-with-songs', FollowController.getFollowedArtistsWithSongs);
+
 // Get artist's followers
 router.get('/artist/:artist_id/followers', FollowController.getArtistFollowers);
 

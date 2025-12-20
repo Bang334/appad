@@ -53,6 +53,21 @@ class FollowModel {
     return rows;
   }
 
+  // Get user's followed artists with top songs
+  static async getFollowedArtistsWithSongs(userId, songLimit = 3) {
+    const artists = await this.getUserFollowedArtists(userId);
+    const SongModel = require('./song.model');
+    
+    // Enrich with top songs
+    // We use Promise.all to fetch songs for all artists in parallel
+    const enrichedArtists = await Promise.all(artists.map(async artist => {
+      const topSongs = await SongModel.findTopSongsByArtist(artist.artist_id, songLimit);
+      return { ...artist, top_songs: topSongs };
+    }));
+    
+    return enrichedArtists;
+  }
+
   // Get artist's followers
   static async getArtistFollowers(artistId, limit = 50, offset = 0) {
     // Validate inputs

@@ -16,6 +16,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import DateTimePicker from '@react-native-community/datetimepicker';
+
 import { COLORS, SIZES } from '../../config/theme';
 import { artistService } from '../../services/artistService';
 import { songService } from '../../services/songService';
@@ -39,6 +41,11 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
   const [newAlbumPrice, setNewAlbumPrice] = useState('0');
   const [creatingAlbum, setCreatingAlbum] = useState(false);
   
+  // Picker State
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [tempDate, setTempDate] = useState(new Date());
+
   // Get current date in YYYY-MM-DD format
   const getCurrentDate = () => {
     const today = new Date();
@@ -52,12 +59,11 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
     title: song?.title || '',
     album_id: song?.album_id || '',
     genre_id: song?.genre_id || '',
-    // Duration in seconds (auto-detected or manual)
     duration: song?.duration?.toString() || '',
     lyrics: song?.lyrics || '',
     release_date: song?.release_date 
-      ? song.release_date.split('T')[0] 
-      : getCurrentDate(),
+      ? song.release_date.replace('T', ' ').slice(0, 16) 
+      : getCurrentDate() + ' 00:00',
     file_url: song?.file_url || '',
     cover_url: song?.cover_url || '',
     is_premium: song?.is_premium === 1 || song?.is_premium === true || false,
@@ -95,6 +101,59 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
     }));
   };
 
+  // Date/Time Picker Handlers
+  const handleDateChange = (event, selectedDate) => {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
+    
+    if (event.type === 'set' && selectedDate) {
+      if (Platform.OS === 'android') {
+        setTempDate(selectedDate);
+        setShowTimePicker(true);
+      } else {
+        // iOS
+        const dateString = formatDateTime(selectedDate);
+        handleInputChange('release_date', dateString);
+        setTempDate(selectedDate);
+      }
+    } else if (Platform.OS === 'ios' && event.type === 'dismissed') {
+       setShowDatePicker(false);
+    }
+  };
+
+  const handleTimeChange = (event, selectedDate) => {
+    if (Platform.OS === 'android') {
+      setShowTimePicker(false);
+    }
+
+    if (event.type === 'set' && selectedDate) {
+      const dateString = formatDateTime(selectedDate);
+      handleInputChange('release_date', dateString);
+      setTempDate(selectedDate);
+    }
+  };
+
+  const formatDateTime = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  };
+
+  const openDatePicker = () => {
+    let currentDate = new Date();
+    if (formData.release_date) {
+      const datePart = formData.release_date.replace(' ', 'T');
+      const parsed = new Date(datePart);
+      if (!isNaN(parsed.getTime())) currentDate = parsed;
+    }
+    setTempDate(currentDate);
+    setShowDatePicker(true);
+  };
+
   const validateForm = () => {
     if (!formData.title.trim()) {
       showError('Lỗi', 'Vui lòng nhập tên bài hát');
@@ -120,13 +179,10 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
         copyToCacheDirectory: true,
       });
 
-      console.log('File picker result:', result);
-
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
         setSongFile(asset);
         setFormData(prev => ({ ...prev, file_url: asset.name }));
-        console.log('Selected file asset:', asset);
       }
     } catch (error) {
       console.error('Error picking song file:', error);
@@ -185,7 +241,6 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
 
     setLoading(true);
     try {
-      // Prepare data
       const songData = {
         title: formData.title.trim(),
         album_id: formData.album_id && formData.album_id !== '' ? parseInt(formData.album_id) : null,
@@ -198,22 +253,15 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
         status: formData.status ? 1 : 0,
       };
 
-      console.log('Preparing to upload/update song with data:', songData);
-      if (songFile) {
-        console.log('Uploading with new audio file:', songFile.name);
-      }
-
       const files = {};
       if (songFile) files.audio = songFile;
       if (coverFile) files.cover = coverFile;
 
       if (song) {
-        // Update existing song
         await artistService.updateSong(artistId, song.song_id, songData, files);
         showSuccess('Thành công', 'Đã cập nhật bài hát thành công');
         setTimeout(() => navigation.goBack(), 1500);
       } else {
-        // Create new song
         await artistService.createSong(artistId, songData, files);
         showSuccess('Thành công', 'Đã tạo bài hát mới thành công');
         setTimeout(() => navigation.goBack(), 1500);
@@ -232,11 +280,7 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
       'Bạn có chắc chắn muốn xóa bài hát này? Hành động này không thể hoàn tác.',
       [
         { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Xóa',
-          style: 'destructive',
-          onPress: confirmDelete
-        }
+        { text: 'Xóa', style: 'destructive', onPress: confirmDelete }
       ]
     );
   };
@@ -283,7 +327,6 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
 
       <ScrollView style={styles.content} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.form}>
-          {/* Title */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Tên bài hát *</Text>
             <TextInput
@@ -295,7 +338,6 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
             />
           </View>
 
-          {/* Album */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Album</Text>
             <TouchableOpacity
@@ -327,19 +369,13 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
             </TouchableOpacity>
           </View>
 
-          {/* Genre (Dropdown) */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Thể loại</Text>
             <TouchableOpacity
               style={styles.dropdownButton}
               onPress={() => setShowGenreModal(true)}
             >
-              <Text
-                style={[
-                  styles.pickerText,
-                  !formData.genre_id && styles.placeholderText,
-                ]}
-              >
+              <Text style={[styles.pickerText, !formData.genre_id && styles.placeholderText]}>
                 {formData.genre_id
                   ? genres.find(g => g.genre_id === formData.genre_id)?.name
                   : 'Chọn thể loại'}
@@ -348,7 +384,6 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
             </TouchableOpacity>
           </View>
 
-          {/* Song File Upload */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>File nhạc *</Text>
             <TouchableOpacity
@@ -374,10 +409,6 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
             )}
           </View>
 
-          {/* Duration (Hidden, handled by backend) */}
-
-
-          {/* Cover Image Upload */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Ảnh bìa</Text>
             <TouchableOpacity
@@ -404,7 +435,53 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
             )}
           </View>
 
-          {/* Premium Toggle */}
+          {/* Release Date Picker */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Ngày phát hành</Text>
+            <TouchableOpacity
+              style={styles.datePickerButton}
+              onPress={openDatePicker}
+            >
+              <Text style={styles.datePickerText}>
+                {formData.release_date || 'Chọn ngày giờ'}
+              </Text>
+              <Ionicons name="calendar-outline" size={20} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+            
+            <Text style={styles.helperText}>
+              Nếu đặt ngày trong tương lai, bài hát sẽ tự động chuyển sang trạng thái "Hiển thị" khi đến thời gian này.
+            </Text>
+
+            {/* DateTimePicker for Android (Two steps) */}
+            {Platform.OS === 'android' && showDatePicker && (
+              <DateTimePicker
+                value={tempDate}
+                mode="date"
+                display="default"
+                onChange={handleDateChange}
+              />
+            )}
+            {Platform.OS === 'android' && showTimePicker && (
+              <DateTimePicker
+                value={tempDate}
+                mode="time"
+                display="default"
+                onChange={handleTimeChange}
+              />
+            )}
+
+            {/* DateTimePicker for iOS */}
+            {Platform.OS === 'ios' && showDatePicker && (
+               <DateTimePicker
+                 value={tempDate || new Date()}
+                 mode="datetime"
+                 display="default"
+                 onChange={handleDateChange}
+                 style={{ width: '100%', marginTop: 10 }}
+               />
+            )}
+          </View>
+
           <View style={styles.inputGroup}>
             <View style={styles.switchContainer}>
               <View style={styles.switchLabelContainer}>
@@ -423,7 +500,6 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
             </Text>
           </View>
 
-          {/* Status Toggle (Show/Hide Song) */}
           <View style={styles.inputGroup}>
             <View style={styles.switchContainer}>
               <View style={styles.switchLabelContainer}>
@@ -448,7 +524,6 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
             </Text>
           </View>
 
-          {/* Price (only if premium) */}
           {formData.is_premium && (
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Giá (VNĐ) *</Text>
@@ -463,7 +538,6 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
             </View>
           )}
 
-          {/* Lyrics */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Lời bài hát</Text>
             <TextInput
@@ -496,8 +570,7 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
           )}
         </TouchableOpacity>
       </View>
-      {/* Genre Selection Modal */}
-      {/* Album Selection Modal */}
+      
       <Modal
         visible={showAlbumModal}
         transparent
@@ -513,7 +586,6 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.modalList}>
-              {/* Option: No album */}
               <TouchableOpacity
                 style={[styles.albumModalItem, !formData.album_id && styles.albumModalItemActive]}
                 onPress={() => {
@@ -533,7 +605,6 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
                 )}
               </TouchableOpacity>
 
-              {/* Create new album option */}
               <TouchableOpacity
                 style={styles.createAlbumButton}
                 onPress={() => {
@@ -551,7 +622,6 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
                 <Ionicons name="chevron-forward" size={20} color={COLORS.primary} />
               </TouchableOpacity>
 
-              {/* Album list */}
               {albums.map(album => (
                 <TouchableOpacity
                   key={album.album_id}
@@ -591,7 +661,6 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
         </View>
       </Modal>
 
-      {/* Create Album Modal */}
       <Modal
         visible={showCreateAlbumModal}
         transparent
@@ -611,7 +680,6 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
               contentContainerStyle={{ paddingBottom: 24 }}
               showsVerticalScrollIndicator={false}
             >
-              {/* Album Cover Picker */}
               <View style={{ alignItems: 'center', marginBottom: 20 }}>
                 <TouchableOpacity onPress={pickNewAlbumCover}>
                   {newAlbumCover ? (
@@ -646,7 +714,6 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
                 placeholderTextColor={COLORS.textSecondary}
               />
 
-              {/* Album Premium Toggle */}
               <View style={[styles.switchContainer, { marginTop: 12, paddingVertical: 0, borderBottomWidth: 0 }]}>
                 <View style={styles.switchLabelContainer}>
                   <Ionicons name="star" size={20} color={newAlbumIsPremium ? COLORS.warning : COLORS.textSecondary} />
@@ -698,10 +765,8 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
                     
                     if (result?.album_id || result?.data?.album_id) {
                       const newAlbumId = result.album_id || result.data.album_id;
-                      // Reload albums
                       const albumsRes = await artistService.getMyAlbums(artistId);
                       setAlbums(albumsRes.data || []);
-                      // Select the new album
                       handleInputChange('album_id', newAlbumId);
                       showSuccess('Thành công', 'Đã tạo album mới');
                       setNewAlbumTitle('');
@@ -727,7 +792,6 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
         </View>
       </Modal>
 
-      {/* Genre Modal */}
       <Modal
         visible={showGenreModal}
         transparent
@@ -939,6 +1003,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  datePickerButton: {
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  datePickerText: {
+    color: COLORS.text,
+    fontSize: 16,
+  },
   footer: {
     padding: SIZES.padding,
     backgroundColor: COLORS.background,
@@ -1025,7 +1104,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: 20,
   },
-  // Album Selection Modal Styles
   selectedAlbumPreview: {
     flexDirection: 'row',
     alignItems: 'center',

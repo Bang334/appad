@@ -25,6 +25,12 @@ export const followService = {
     return response.data;
   },
 
+  // Get user's followed artists with songs
+  getMyFollowedArtistsWithSongs: async (limit = 3) => {
+    const response = await api.get(`/follows/my-follows-with-songs?limit=${limit}`);
+    return response.data;
+  },
+
   // Get artist's followers
   getArtistFollowers: async (artistId, limit = 50, offset = 0) => {
     const response = await api.get(`/follows/artist/${artistId}/followers?limit=${limit}&offset=${offset}`);

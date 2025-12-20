@@ -18,6 +18,7 @@ import { playlistService } from '../../services/playlistService';
 import { songService } from '../../services/songService';
 import { premiumService } from '../../services/premiumService';
 import { historyService } from '../../services/historyService';
+import { followService } from '../../services/followService';
 import { usePlayer } from '../../context/PlayerContext';
 import { COLORS, SIZES } from '../../config/theme';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -50,6 +51,8 @@ const LibraryScreen = ({ navigation }) => {
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [selectedSong, setSelectedSong] = useState(null);
   const [selectedSongList, setSelectedSongList] = useState([]);
+  const [followedArtists, setFollowedArtists] = useState([]);
+  const [filteredFollowedArtists, setFilteredFollowedArtists] = useState([]);
   
   // History Pagination
   const [historyOffset, setHistoryOffset] = useState(0);
@@ -102,12 +105,13 @@ const LibraryScreen = ({ navigation }) => {
   const loadData = async () => {
     try {
       console.log('Loading library data...');
-      const [favoritesData, playlistsData, purchasedData, purchasedAlbumsData, historyData] = await Promise.all([
+      const [favoritesData, playlistsData, purchasedData, purchasedAlbumsData, historyData, followedData] = await Promise.all([
         favoriteService.getUserFavorites(),
         playlistService.getUserPlaylists(),
         premiumService.getPurchasedSongs().catch(() => ({ data: [] })),
         premiumService.getPurchasedAlbums().catch(() => ({ data: [] })),
         historyService.getUserHistoryByDay(3, 0).catch(() => ({ success: true, data: [] })),
+        followService.getMyFollowedArtistsWithSongs().catch(() => ({ success: true, data: [] })),
       ]);
       console.log('Favorites data:', favoritesData);
       const favs = favoritesData.data || [];
@@ -115,6 +119,7 @@ const LibraryScreen = ({ navigation }) => {
       const purchased = purchasedData.data || [];
       const purchasedAlbs = purchasedAlbumsData.data || [];
       const history = historyData.data || [];
+      const followed = followedData ? (followedData.data || []) : [];
       
       setFavorites(favs);
       setFilteredFavorites(favs);
@@ -126,6 +131,8 @@ const LibraryScreen = ({ navigation }) => {
       setFilteredPurchasedAlbums(purchasedAlbs);
       setHistoryByDay(history);
       setFilteredHistory(history);
+      setFollowedArtists(followed);
+      setFilteredFollowedArtists(followed);
       setHistoryOffset(3);
       setHistoryHasMore(history.length >= 3);
       
@@ -321,6 +328,8 @@ const LibraryScreen = ({ navigation }) => {
       source = purchasedSongs;
     } else if (activeTab === 'albums') {
       source = purchasedAlbums;
+    } else if (activeTab === 'followed_artists') {
+      source = followedArtists;
     } else {
       return;
     }
@@ -330,12 +339,19 @@ const LibraryScreen = ({ navigation }) => {
     // Search
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        song =>
-          song.title?.toLowerCase().includes(query) ||
-          song.artist_name?.toLowerCase().includes(query) ||
-          song.album_title?.toLowerCase().includes(query)
-      );
+      
+      if (activeTab === 'followed_artists') {
+        filtered = filtered.filter(
+          artist => artist.name?.toLowerCase().includes(query)
+        );
+      } else {
+        filtered = filtered.filter(
+          song =>
+            song.title?.toLowerCase().includes(query) ||
+            song.artist_name?.toLowerCase().includes(query) ||
+            song.album_title?.toLowerCase().includes(query)
+        );
+      }
     }
     
     // Sort and Group by Artist if applicable
@@ -365,25 +381,30 @@ const LibraryScreen = ({ navigation }) => {
       } else if (activeTab === 'premium') {
         setFilteredPurchasedSongs(sections);
       }
-    } else {
-      // Regular sorting for non-artist sort or albums tab
-      if (sortBy === 'title') {
-        filtered.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
-      } else if (sortBy === 'artist') {
-        filtered.sort((a, b) => (a.artist_name || '').localeCompare(b.artist_name || ''));
-      } else if (sortBy === 'recent') {
-        filtered.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+      } else if (activeTab === 'followed_artists') {
+        if (sortBy === 'title' || sortBy === 'artist') {
+          filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        }
+        setFilteredFollowedArtists(filtered);
+      } else {
+        // Regular sorting for non-artist sort or albums tab
+        if (sortBy === 'title') {
+          filtered.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+        } else if (sortBy === 'artist') {
+          filtered.sort((a, b) => (a.artist_name || '').localeCompare(b.artist_name || ''));
+        } else if (sortBy === 'recent') {
+          filtered.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+        }
+        
+        if (activeTab === 'favorites') {
+          setFilteredFavorites(filtered);
+        } else if (activeTab === 'premium') {
+          setFilteredPurchasedSongs(filtered);
+        } else if (activeTab === 'albums') {
+          setFilteredPurchasedAlbums(filtered);
+        }
       }
-      
-      if (activeTab === 'favorites') {
-        setFilteredFavorites(filtered);
-      } else if (activeTab === 'premium') {
-        setFilteredPurchasedSongs(filtered);
-      } else if (activeTab === 'albums') {
-        setFilteredPurchasedAlbums(filtered);
-      }
-    }
-  }, [searchQuery, sortBy, favorites, purchasedSongs, purchasedAlbums, activeTab]);
+  }, [searchQuery, sortBy, favorites, purchasedSongs, purchasedAlbums, followedArtists, activeTab]);
 
   // Filter playlists
   useEffect(() => {
@@ -438,6 +459,8 @@ const LibraryScreen = ({ navigation }) => {
         return 'Bài hát đã mua';
       case 'albums':
         return 'Album đã mua';
+      case 'followed_artists':
+        return 'Nghệ sĩ đã follow';
       case 'history':
         return 'Lịch sử';
       default:
@@ -455,6 +478,8 @@ const LibraryScreen = ({ navigation }) => {
         return '#FFD700';
       case 'albums':
         return '#9C27B0';
+      case 'followed_artists':
+        return '#FF9800';
       case 'history':
         return '#4CAF50';
       default:
@@ -472,6 +497,8 @@ const LibraryScreen = ({ navigation }) => {
         return 'musical-note';
       case 'albums':
         return 'disc';
+      case 'followed_artists':
+        return 'people';
       case 'history':
         return 'time';
       default:
@@ -656,6 +683,51 @@ const LibraryScreen = ({ navigation }) => {
         </View>
         {daySection.songs.map((song, songIndex) => 
           renderHistorySongItem(song, songIndex, allSongs)
+        )}
+      </View>
+    );
+  };
+
+  const renderFollowedArtistItem = ({ item, index }) => {
+    // If filtering by search, we might want to highlight
+    if (!item) return null;
+
+    return (
+      <View key={item.artist_id || index} style={styles.artistSectionWrapper}>
+        <View style={styles.artistHeaderWrapper}>
+          <TouchableOpacity 
+            style={styles.artistHeader}
+            onPress={() => navigation.navigate('ArtistDetail', { artistId: item.artist_id })}
+          >
+            <Image 
+              source={{ uri: getImageUrl(item.image_url) || getImageUrl(item.avatar_url) || 'https://via.placeholder.com/60' }} 
+              style={styles.artistAvatar}
+            />
+            <View style={styles.artistInfo}>
+              <Text style={styles.artistName}>{item.name}</Text>
+              <Text style={styles.artistStats}>
+                {item.song_count || 0} bài hát
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={24} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+        </View>
+
+        {item.top_songs && item.top_songs.length > 0 ? (
+          <View style={styles.artistTopSongs}>
+            {item.top_songs.map((song, songIndex) => 
+               renderFavoriteSongItem(song, songIndex, item.top_songs)
+            )}
+            <TouchableOpacity 
+              style={styles.seeMoreButton}
+              onPress={() => navigation.navigate('ArtistDetail', { artistId: item.artist_id })}
+            >
+              <Text style={styles.seeMoreText}>Xem thêm</Text>
+              <Ionicons name="arrow-forward" size={14} color={COLORS.link} />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <Text style={styles.noSongsText}>Chưa có bài hát nổi bật</Text>
         )}
       </View>
     );
@@ -1075,6 +1147,22 @@ const LibraryScreen = ({ navigation }) => {
               />
               <Text style={[styles.dropdownItemText, activeTab === 'albums' && styles.dropdownItemTextActive]}>
                 Album đã mua
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.dropdownItem, activeTab === 'followed_artists' && styles.dropdownItemActive]}
+              onPress={() => {
+                handleTabChange('followed_artists');
+              }}
+            >
+              <Ionicons
+                name="people"
+                size={20}
+                color={getTabIconColor('followed_artists')}
+              />
+              <Text style={[styles.dropdownItemText, activeTab === 'followed_artists' && styles.dropdownItemTextActive]}>
+                Nghệ sĩ đã follow
               </Text>
             </TouchableOpacity>
 
@@ -1504,6 +1592,49 @@ const LibraryScreen = ({ navigation }) => {
               <Ionicons name="disc-outline" size={64} color={COLORS.textMuted} />
               <Text style={styles.emptyText}>
                 {searchQuery ? 'Không tìm thấy album' : 'Chưa có album đã mua nào'}
+              </Text>
+            </View>
+          )
+        ) : activeTab === 'followed_artists' ? (
+          filteredFollowedArtists.length > 0 ? (
+            <FlatList
+              data={filteredFollowedArtists}
+              renderItem={renderFollowedArtistItem}
+              keyExtractor={(item) => item.artist_id.toString()}
+              contentContainerStyle={styles.list}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  colors={[COLORS.primary]}
+                  tintColor={COLORS.primary}
+                />
+              }
+              ListHeaderComponent={
+                <>
+                  <View style={[styles.searchContainer, { marginTop: 10 }]}>
+                    <Ionicons name="search" size={20} color={COLORS.textSecondary} style={styles.searchIcon} />
+                    <TextInput
+                      style={styles.searchInput}
+                      placeholder="Tìm nghệ sĩ đã follow..."
+                      placeholderTextColor={COLORS.textSecondary}
+                      value={searchQuery}
+                      onChangeText={setSearchQuery}
+                    />
+                    {searchQuery.length > 0 && (
+                      <TouchableOpacity onPress={() => setSearchQuery('')}>
+                        <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </>
+              }
+            />
+          ) : (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="people-outline" size={64} color={COLORS.textMuted} />
+              <Text style={styles.emptyText}>
+                {searchQuery ? 'Không tìm thấy nghệ sĩ' : 'Bạn chưa follow nghệ sĩ nào'}
               </Text>
             </View>
           )
@@ -2166,6 +2297,66 @@ const styles = StyleSheet.create({
   dayCount: {
     color: COLORS.textSecondary,
     fontSize: SIZES.sm,
+  },
+  artistSectionWrapper: {
+    marginBottom: 20,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: SIZES.borderRadius,
+    marginHorizontal: SIZES.padding,
+    overflow: 'hidden',
+  },
+  artistHeaderWrapper: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  artistHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  artistAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+  },
+  artistInfo: {
+    flex: 1,
+  },
+  artistName: {
+    color: COLORS.text,
+    fontSize: SIZES.lg,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  artistStats: {
+    color: COLORS.textSecondary,
+    fontSize: SIZES.sm,
+  },
+  artistTopSongs: {
+    paddingVertical: 8,
+  },
+  seeMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    marginTop: 4,
+    gap: 4,
+  },
+  seeMoreText: {
+    color: COLORS.link || '#3B82F6',
+    fontSize: SIZES.sm,
+    fontWeight: '600',
+  },
+  noSongsText: {
+    color: COLORS.textSecondary,
+    fontSize: SIZES.sm,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    padding: 16,
   },
 });
 

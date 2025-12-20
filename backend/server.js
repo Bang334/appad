@@ -136,11 +136,28 @@ cron.schedule('0 0 * * *', async () => {
   timezone: "Asia/Ho_Chi_Minh"
 });
 
+const SongReleaseJob = require('./src/jobs/song-release.job');
+
+// ... (other imports)
+
+// Song Release Job: Chạy mỗi phút để check và release nhạc đã đến giờ hẹn
+cron.schedule('* * * * *', async () => {
+  // console.log('[Cron] Checking for scheduled song releases...');
+  const result = await SongReleaseJob.checkAndRelease();
+  if (result.released_count > 0) {
+    console.log(`[Cron] 🎵 Released ${result.released_count} scheduled songs!`);
+  }
+}, {
+  scheduled: true,
+  timezone: "Asia/Ho_Chi_Minh"
+});
+
 // Log cron job schedules
 console.log('📅 Cron jobs scheduled:');
 console.log('  - Monthly Revenue: 1:00 AM on 1st of every month');
 console.log('  - Premium Expiring: 9:00 AM every day');
 console.log('  - Artist Membership Expiring: 12:00 AM (midnight) every day');
+console.log('  - Song Release: Every minute');
 
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on port ${PORT}`);
