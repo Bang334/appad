@@ -1,16 +1,10 @@
-# PowerShell script to create desktop shortcut
-$WshShell = New-Object -ComObject WScript.Shell
-$ProjectPath = (Get-Location).Path
-$ShortcutPath = "$env:USERPROFILE\Desktop\Start App.lnk"
-
-$Shortcut = $WshShell.CreateShortcut($ShortcutPath)
-$Shortcut.TargetPath = "$ProjectPath\start-project.bat"
-$Shortcut.WorkingDirectory = $ProjectPath
-$Shortcut.Description = "Start Backend and Mobile Development Servers"
-$Shortcut.IconLocation = "C:\Windows\System32\imageres.dll,103"  # Music/Media icon
+$WshShell = New-Object -comObject WScript.Shell
+$DesktopPath = [Environment]::GetFolderPath("Desktop")
+$ShortcutFile = "$DesktopPath\Run Appad Project.lnk"
+$Shortcut = $WshShell.CreateShortcut($ShortcutFile)
+$Shortcut.TargetPath = "e:\appad\start-project.bat"
+$Shortcut.IconLocation = "e:\appad\mobile\assets\app.ico"
+$Shortcut.WorkingDirectory = "e:\appad"
+$Shortcut.Description = "Start Appad Backend and Mobile"
 $Shortcut.Save()
-
-Write-Host "Desktop shortcut created successfully!" -ForegroundColor Green
-Write-Host "Location: $ShortcutPath" -ForegroundColor Cyan
-Write-Host "Project Path: $ProjectPath" -ForegroundColor Yellow
-
+Write-Host "Shortcut created successfully at: $ShortcutFile"

@@ -30,6 +30,14 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
   const [albums, setAlbums] = useState([]);
   const [genres, setGenres] = useState([]);
   const [showGenreModal, setShowGenreModal] = useState(false);
+  const [showAlbumModal, setShowAlbumModal] = useState(false);
+  const [showCreateAlbumModal, setShowCreateAlbumModal] = useState(false);
+  const [newAlbumTitle, setNewAlbumTitle] = useState('');
+  const [newAlbumCover, setNewAlbumCover] = useState(null); // { uri, type, name }
+  const [newAlbumReleaseDate, setNewAlbumReleaseDate] = useState('');
+  const [newAlbumIsPremium, setNewAlbumIsPremium] = useState(false);
+  const [newAlbumPrice, setNewAlbumPrice] = useState('0');
+  const [creatingAlbum, setCreatingAlbum] = useState(false);
   
   // Get current date in YYYY-MM-DD format
   const getCurrentDate = () => {
@@ -44,7 +52,7 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
     title: song?.title || '',
     album_id: song?.album_id || '',
     genre_id: song?.genre_id || '',
-    // Thời lượng sẽ được tính tự động từ file nhạc (ẩn khỏi form)
+    // Duration in seconds (auto-detected or manual)
     duration: song?.duration?.toString() || '',
     lyrics: song?.lyrics || '',
     release_date: song?.release_date 
@@ -54,6 +62,7 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
     cover_url: song?.cover_url || '',
     is_premium: song?.is_premium === 1 || song?.is_premium === true || false,
     price: song?.price?.toString() || '0',
+    status: song?.status !== undefined ? song.status : 1, // 1=active, 0=hidden
   });
 
   // File objects to upload
@@ -105,14 +114,19 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
   // Pick MP3 file
   const pickSongFile = async () => {
     try {
+      console.log('Starting file picker...');
       const result = await DocumentPicker.getDocumentAsync({
         type: 'audio/*',
         copyToCacheDirectory: true,
       });
 
+      console.log('File picker result:', result);
+
       if (!result.canceled && result.assets[0]) {
-        setSongFile(result.assets[0]);
-        setFormData(prev => ({ ...prev, file_url: result.assets[0].name }));
+        const asset = result.assets[0];
+        setSongFile(asset);
+        setFormData(prev => ({ ...prev, file_url: asset.name }));
+        console.log('Selected file asset:', asset);
       }
     } catch (error) {
       console.error('Error picking song file:', error);
@@ -131,12 +145,38 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
       });
 
       if (!result.canceled && result.assets[0]) {
-        setCoverFile(result.assets[0]);
+        setCoverFile({
+          uri: result.assets[0].uri,
+          type: result.assets[0].mimeType || 'image/jpeg',
+          name: result.assets[0].fileName || 'cover.jpg',
+        });
         setFormData(prev => ({ ...prev, cover_url: result.assets[0].uri }));
       }
     } catch (error) {
       console.error('Error picking cover image:', error);
       showError('Lỗi', 'Không thể chọn ảnh bìa');
+    }
+  };
+
+  const pickNewAlbumCover = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setNewAlbumCover({
+          uri: result.assets[0].uri,
+          type: result.assets[0].mimeType || 'image/jpeg',
+          name: result.assets[0].fileName || 'album_cover.jpg',
+        });
+      }
+    } catch (error) {
+      console.error('Error picking new album cover:', error);
+      showError('Lỗi', 'Không thể chọn ảnh bìa album');
     }
   };
 
@@ -155,7 +195,13 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
         release_date: formData.release_date && formData.release_date !== '' ? formData.release_date : null,
         is_premium: formData.is_premium ? 1 : 0,
         price: formData.is_premium ? parseFloat(formData.price) || 0 : 0,
+        status: formData.status ? 1 : 0,
       };
+
+      console.log('Preparing to upload/update song with data:', songData);
+      if (songFile) {
+        console.log('Uploading with new audio file:', songFile.name);
+      }
 
       const files = {};
       if (songFile) files.audio = songFile;
@@ -252,37 +298,33 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
           {/* Album */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Album</Text>
-            <View style={styles.pickerContainer}>
-              <View style={styles.pickerWrapper}>
-                <Text style={[
-                  styles.pickerText,
-                  !formData.album_id && styles.placeholderText
-                ]}>
-                  {formData.album_id 
-                    ? albums.find(a => a.album_id == formData.album_id)?.title
-                    : 'Chọn album (Tùy chọn)'
-                  }
+            <TouchableOpacity
+              style={styles.dropdownButton}
+              onPress={() => setShowAlbumModal(true)}
+            >
+              {formData.album_id ? (
+                <View style={styles.selectedAlbumPreview}>
+                  {albums.find(a => a.album_id == formData.album_id)?.cover_url ? (
+                    <Image 
+                      source={{ uri: albums.find(a => a.album_id == formData.album_id)?.cover_url }}
+                      style={styles.albumThumbnail}
+                    />
+                  ) : (
+                    <View style={styles.albumThumbnailPlaceholder}>
+                      <Ionicons name="disc" size={16} color={COLORS.textSecondary} />
+                    </View>
+                  )}
+                  <Text style={styles.pickerText}>
+                    {albums.find(a => a.album_id == formData.album_id)?.title}
+                  </Text>
+                </View>
+              ) : (
+                <Text style={[styles.pickerText, styles.placeholderText]}>
+                  Chọn album (Tùy chọn)
                 </Text>
-              </View>
-              {/* Simple dropdown simulation - in real app use a Modal or Picker */}
-              <ScrollView horizontal style={styles.chipContainer} showsHorizontalScrollIndicator={false}>
-                {albums.map(album => (
-                  <TouchableOpacity
-                    key={album.album_id}
-                    style={[
-                      styles.chip,
-                      formData.album_id === album.album_id && styles.chipActive
-                    ]}
-                    onPress={() => handleInputChange('album_id', album.album_id)}
-                  >
-                    <Text style={[
-                      styles.chipText,
-                      formData.album_id === album.album_id && styles.chipTextActive
-                    ]}>{album.title}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
+              )}
+              <Ionicons name="chevron-down" size={20} color={COLORS.textSecondary} />
+            </TouchableOpacity>
           </View>
 
           {/* Genre (Dropdown) */}
@@ -332,6 +374,9 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
             )}
           </View>
 
+          {/* Duration (Hidden, handled by backend) */}
+
+
           {/* Cover Image Upload */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Ảnh bìa</Text>
@@ -375,6 +420,31 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
             </View>
             <Text style={styles.helperText}>
               Bài hát Premium chỉ dành cho người dùng trả phí hoặc mua lẻ.
+            </Text>
+          </View>
+
+          {/* Status Toggle (Show/Hide Song) */}
+          <View style={styles.inputGroup}>
+            <View style={styles.switchContainer}>
+              <View style={styles.switchLabelContainer}>
+                <Ionicons 
+                  name={formData.status ? "eye" : "eye-off"} 
+                  size={20} 
+                  color={formData.status ? COLORS.success : COLORS.error} 
+                />
+                <Text style={styles.label}>Hiển thị bài hát</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.switch, formData.status && styles.switchActive]}
+                onPress={() => handleInputChange('status', formData.status ? 0 : 1)}
+              >
+                <View style={[styles.switchThumb, formData.status && styles.switchThumbActive]} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.helperText}>
+              {formData.status 
+                ? 'Bài hát đang hiển thị với người dùng.' 
+                : 'Bài hát đang ẩn, người dùng không thể tìm thấy.'}
             </Text>
           </View>
 
@@ -427,6 +497,237 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
         </TouchableOpacity>
       </View>
       {/* Genre Selection Modal */}
+      {/* Album Selection Modal */}
+      <Modal
+        visible={showAlbumModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowAlbumModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Chọn album</Text>
+              <TouchableOpacity onPress={() => setShowAlbumModal(false)}>
+                <Ionicons name="close" size={24} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalList}>
+              {/* Option: No album */}
+              <TouchableOpacity
+                style={[styles.albumModalItem, !formData.album_id && styles.albumModalItemActive]}
+                onPress={() => {
+                  handleInputChange('album_id', '');
+                  setShowAlbumModal(false);
+                }}
+              >
+                <View style={styles.albumThumbnailPlaceholderLarge}>
+                  <Ionicons name="musical-notes" size={24} color={COLORS.textSecondary} />
+                </View>
+                <View style={styles.albumModalItemInfo}>
+                  <Text style={styles.albumModalItemTitle}>Không thuộc album</Text>
+                  <Text style={styles.albumModalItemSubtitle}>Bài hát đơn lẻ (Single)</Text>
+                </View>
+                {!formData.album_id && (
+                  <Ionicons name="checkmark-circle" size={24} color={COLORS.primary} />
+                )}
+              </TouchableOpacity>
+
+              {/* Create new album option */}
+              <TouchableOpacity
+                style={styles.createAlbumButton}
+                onPress={() => {
+                  setShowAlbumModal(false);
+                  setShowCreateAlbumModal(true);
+                }}
+              >
+                <View style={styles.createAlbumIconContainer}>
+                  <Ionicons name="add" size={28} color={COLORS.primary} />
+                </View>
+                <View style={styles.albumModalItemInfo}>
+                  <Text style={[styles.albumModalItemTitle, { color: COLORS.primary }]}>Tạo album mới</Text>
+                  <Text style={styles.albumModalItemSubtitle}>Thêm album mới cho bài hát này</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={COLORS.primary} />
+              </TouchableOpacity>
+
+              {/* Album list */}
+              {albums.map(album => (
+                <TouchableOpacity
+                  key={album.album_id}
+                  style={[styles.albumModalItem, formData.album_id == album.album_id && styles.albumModalItemActive]}
+                  onPress={() => {
+                    handleInputChange('album_id', album.album_id);
+                    setShowAlbumModal(false);
+                  }}
+                >
+                  {album.cover_url ? (
+                    <Image source={{ uri: album.cover_url }} style={styles.albumModalThumbnail} />
+                  ) : (
+                    <View style={styles.albumThumbnailPlaceholderLarge}>
+                      <Ionicons name="disc" size={24} color={COLORS.textSecondary} />
+                    </View>
+                  )}
+                  <View style={styles.albumModalItemInfo}>
+                    <Text style={styles.albumModalItemTitle} numberOfLines={1}>{album.title}</Text>
+                    <Text style={styles.albumModalItemSubtitle}>
+                      {album.song_count || 0} bài hát • {album.release_year || 'Chưa phát hành'}
+                    </Text>
+                  </View>
+                  {formData.album_id == album.album_id && (
+                    <Ionicons name="checkmark-circle" size={24} color={COLORS.primary} />
+                  )}
+                </TouchableOpacity>
+              ))}
+              {albums.length === 0 && (
+                <View style={styles.emptyAlbumContainer}>
+                  <Ionicons name="disc-outline" size={48} color={COLORS.textMuted} />
+                  <Text style={styles.emptyText}>Chưa có album nào</Text>
+                  <Text style={styles.emptySubtext}>Tạo album mới để nhóm các bài hát</Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Create Album Modal */}
+      <Modal
+        visible={showCreateAlbumModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowCreateAlbumModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '90%' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Tạo album mới</Text>
+              <TouchableOpacity onPress={() => setShowCreateAlbumModal(false)}>
+                <Ionicons name="close" size={24} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView 
+              style={styles.createAlbumForm}
+              contentContainerStyle={{ paddingBottom: 24 }}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* Album Cover Picker */}
+              <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                <TouchableOpacity onPress={pickNewAlbumCover}>
+                  {newAlbumCover ? (
+                    <Image source={{ uri: newAlbumCover.uri }} style={styles.newAlbumCoverPreview} />
+                  ) : (
+                    <View style={styles.newAlbumCoverPlaceholder}>
+                      <Ionicons name="image-outline" size={30} color={COLORS.textSecondary} />
+                      <Text style={styles.newAlbumCoverPlaceholderText}>Chọn ảnh bìa</Text>
+                    </View>
+                  )}
+                  <View style={styles.editIconBadge}>
+                    <Ionicons name="camera" size={12} color="#FFF" />
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.label}>Tên album *</Text>
+              <TextInput
+                style={styles.input}
+                value={newAlbumTitle}
+                onChangeText={setNewAlbumTitle}
+                placeholder="Nhập tên album"
+                placeholderTextColor={COLORS.textSecondary}
+              />
+
+              <Text style={styles.label}>Ngày phát hành (YYYY-MM-DD)</Text>
+              <TextInput
+                style={styles.input}
+                value={newAlbumReleaseDate}
+                onChangeText={setNewAlbumReleaseDate}
+                placeholder={getCurrentDate()}
+                placeholderTextColor={COLORS.textSecondary}
+              />
+
+              {/* Album Premium Toggle */}
+              <View style={[styles.switchContainer, { marginTop: 12, paddingVertical: 0, borderBottomWidth: 0 }]}>
+                <View style={styles.switchLabelContainer}>
+                  <Ionicons name="star" size={20} color={newAlbumIsPremium ? COLORS.warning : COLORS.textSecondary} />
+                  <Text style={styles.label}>Album Premium</Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.switch, newAlbumIsPremium && styles.switchActive]}
+                  onPress={() => setNewAlbumIsPremium(!newAlbumIsPremium)}
+                >
+                  <View style={[styles.switchThumb, newAlbumIsPremium && styles.switchThumbActive]} />
+                </TouchableOpacity>
+              </View>
+
+              {newAlbumIsPremium && (
+                <View style={{ marginTop: 12 }}>
+                  <Text style={styles.label}>Giá Album (VNĐ) *</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={newAlbumPrice}
+                    onChangeText={(v) => setNewAlbumPrice(v.replace(/[^0-9]/g, ''))}
+                    placeholder="Nhập giá album"
+                    placeholderTextColor={COLORS.textSecondary}
+                    keyboardType="numeric"
+                  />
+                </View>
+              )}
+
+              <TouchableOpacity
+                style={[styles.createAlbumSubmitButton, (!newAlbumTitle.trim() || creatingAlbum) && styles.buttonDisabled]}
+                disabled={!newAlbumTitle.trim() || creatingAlbum}
+                onPress={async () => {
+                  if (!newAlbumTitle.trim()) return;
+                  if (newAlbumIsPremium && (!newAlbumPrice || parseInt(newAlbumPrice) <= 0)) {
+                    showError('Lỗi', 'Vui lòng nhập giá hợp lệ');
+                    return;
+                  }
+
+                  setCreatingAlbum(true);
+                  try {
+                    const albumData = { 
+                      title: newAlbumTitle.trim(),
+                      release_date: newAlbumReleaseDate || getCurrentDate(),
+                      is_premium: newAlbumIsPremium ? 1 : 0,
+                      price: newAlbumIsPremium ? parseInt(newAlbumPrice) : 0
+                    };
+                    const files = newAlbumCover ? { cover: newAlbumCover } : null;
+                    
+                    const result = await artistService.createAlbum(artistId, albumData, files);
+                    
+                    if (result?.album_id || result?.data?.album_id) {
+                      const newAlbumId = result.album_id || result.data.album_id;
+                      // Reload albums
+                      const albumsRes = await artistService.getMyAlbums(artistId);
+                      setAlbums(albumsRes.data || []);
+                      // Select the new album
+                      handleInputChange('album_id', newAlbumId);
+                      showSuccess('Thành công', 'Đã tạo album mới');
+                      setNewAlbumTitle('');
+                      setNewAlbumCover(null);
+                      setShowCreateAlbumModal(false);
+                    }
+                  } catch (error) {
+                    console.error('Create album error:', error);
+                    showError('Lỗi', error.response?.data?.message || 'Không thể tạo album');
+                  } finally {
+                    setCreatingAlbum(false);
+                  }
+                }}
+              >
+                {creatingAlbum ? (
+                  <ActivityIndicator size="small" color={COLORS.white} />
+                ) : (
+                  <Text style={styles.createAlbumSubmitText}>Tạo album</Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Genre Modal */}
       <Modal
         visible={showGenreModal}
         transparent
@@ -723,6 +1024,154 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     paddingVertical: 20,
+  },
+  // Album Selection Modal Styles
+  selectedAlbumPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  albumThumbnail: {
+    width: 28,
+    height: 28,
+    borderRadius: 4,
+    marginRight: 10,
+  },
+  albumThumbnailPlaceholder: {
+    width: 28,
+    height: 28,
+    borderRadius: 4,
+    backgroundColor: COLORS.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  albumThumbnailPlaceholderLarge: {
+    width: 50,
+    height: 50,
+    borderRadius: 8,
+    backgroundColor: COLORS.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  albumModalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.card,
+  },
+  albumModalItemActive: {
+    backgroundColor: COLORS.primary + '15',
+    borderRadius: 8,
+    marginHorizontal: -4,
+    paddingHorizontal: 8,
+  },
+  albumModalThumbnail: {
+    width: 50,
+    height: 50,
+    borderRadius: 8,
+    marginRight: 12,
+  },
+  albumModalItemInfo: {
+    flex: 1,
+  },
+  albumModalItemTitle: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  albumModalItemSubtitle: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+  },
+  createAlbumButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.card,
+    backgroundColor: COLORS.primary + '08',
+    borderRadius: 8,
+    marginVertical: 8,
+  },
+  createAlbumIconContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 8,
+    backgroundColor: COLORS.primary + '20',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+    borderStyle: 'dashed',
+  },
+  emptyAlbumContainer: {
+    alignItems: 'center',
+    paddingVertical: 32,
+  },
+  emptySubtext: {
+    color: COLORS.textMuted,
+    fontSize: 13,
+    marginTop: 4,
+  },
+  createAlbumForm: {
+    paddingHorizontal: SIZES.padding,
+    paddingTop: 8,
+  },
+  createAlbumSubmitButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 14,
+    borderRadius: SIZES.borderRadius,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  createAlbumSubmitText: {
+    color: COLORS.white,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  newAlbumCoverPreview: {
+    width: 120,
+    height: 120,
+    borderRadius: 8,
+  },
+  newAlbumCoverPlaceholder: {
+    width: 120,
+    height: 120,
+    borderRadius: 8,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  newAlbumCoverPlaceholderText: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+  },
+  editIconBadge: {
+    position: 'absolute',
+    bottom: -6,
+    right: -6,
+    backgroundColor: COLORS.primary,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.background,
   },
 });
 

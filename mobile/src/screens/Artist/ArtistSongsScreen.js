@@ -10,11 +10,14 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SIZES } from '../../config/theme';
+import { GlobalStyles } from '../../config/styles';
 import { artistService } from '../../services/artistService';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAlert } from '../../context/AlertContext';
 import { usePlayer } from '../../context/PlayerContext';
+import PremiumBadge from '../../components/Common/PremiumBadge';
 
 const ArtistSongsScreen = ({ route, navigation }) => {
   const { artistId } = route.params;
@@ -98,59 +101,103 @@ const ArtistSongsScreen = ({ route, navigation }) => {
     }
   };
 
-  const renderSongItem = ({ item }) => (
-    <TouchableOpacity
-      style={styles.songItem}
-      onPress={() => handlePlaySong(item)}
-      activeOpacity={0.7}
-    >
-      <Image
-        source={{ uri: item.cover_url || 'https://via.placeholder.com/60' }}
-        style={styles.songImage}
-      />
-      <View style={styles.songInfo}>
-        <Text style={styles.songTitle} numberOfLines={1}>
-          {item.title}
-        </Text>
-        <View style={styles.songMeta}>
-          <Ionicons name="headset" size={12} color={COLORS.textMuted} />
-          <Text style={styles.metaText}>
-            {item.listen_count?.toLocaleString('vi-VN') || '0'} lượt nghe
-          </Text>
-          {item.is_premium === 1 && (
-            <>
-              <Text style={styles.metaSeparator}>•</Text>
-              <Ionicons name="cash" size={12} color={COLORS.primary} />
-              <Text style={styles.metaText}>
-                {parseFloat(item.price || 0).toLocaleString('vi-VN')}đ
+  const renderSongItem = ({ item }) => {
+    const isHidden = item.status === 0;
+    const gradientColors = isHidden 
+      ? ['#2D1F1F', '#0F0505'] // Red tint for hidden songs
+      : ['#161616', '#050505'];
+
+    return (
+      <View style={GlobalStyles.songItemWrapper}>
+        <LinearGradient
+          colors={gradientColors}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[GlobalStyles.songItem, isHidden && styles.hiddenSongItem]}
+        >
+          <TouchableOpacity
+            style={GlobalStyles.songContent}
+            onPress={() => handlePlaySong(item)}
+            activeOpacity={0.8}
+          >
+            <View style={GlobalStyles.coverContainer}>
+              <Image
+                source={{ uri: item.cover_url || 'https://via.placeholder.com/60' }}
+                style={GlobalStyles.songImage}
+              />
+              {isHidden && (
+                <View style={styles.hiddenOverlay}>
+                  <Ionicons name="eye-off" size={20} color="#FFF" />
+                </View>
+              )}
+            </View>
+
+            <View style={GlobalStyles.songInfo}>
+              <View style={[GlobalStyles.titleRow, { justifyContent: 'space-between' }]}>
+                <Text style={GlobalStyles.songTitle} numberOfLines={1}>
+                  {item.title}
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 4 }}>
+                  {isHidden && (
+                    <View style={styles.hiddenBadge}>
+                      <Text style={styles.hiddenBadgeText}>Ẩn</Text>
+                    </View>
+                  )}
+                  {item.is_premium === 1 && <PremiumBadge size="small" />}
+                </View>
+              </View>
+              <Text style={GlobalStyles.songArtist} numberOfLines={1}>
+                {item.album_title || 'Single'}
               </Text>
-            </>
-          )}
-        </View>
+              <View style={GlobalStyles.songMeta}>
+                <Ionicons name="headset" size={12} color="#94A3B8" />
+                <Text style={GlobalStyles.metaText}>
+                  {item.listen_count?.toLocaleString('vi-VN') || '0'}
+                </Text>
+                {item.duration > 0 && (
+                  <>
+                    <Ionicons name="time-outline" size={12} color="#94A3B8" />
+                    <Text style={GlobalStyles.metaText}>
+                      {formatDuration(item.duration)}
+                    </Text>
+                  </>
+                )}
+                {item.is_premium === 1 && (
+                  <>
+                    <Ionicons name="cash" size={12} color={COLORS.primary} />
+                    <Text style={[GlobalStyles.metaText, { color: COLORS.primary }]}>
+                      {parseFloat(item.price || 0).toLocaleString('vi-VN')}đ
+                    </Text>
+                  </>
+                )}
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          <View style={styles.songActions}>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                navigation.navigate('ArtistEditSong', { artistId, song: item });
+              }}
+            >
+              <Ionicons name="create-outline" size={24} color={COLORS.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                handleDeleteSong(item);
+              }}
+            >
+              <Ionicons name="trash-outline" size={24} color={COLORS.error} />
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
       </View>
-      <View style={styles.songActions}>
-        <Text style={styles.duration}>{formatDuration(item.duration)}</Text>
-        <TouchableOpacity
-          style={[styles.actionButton, { marginLeft: 12 }]}
-          onPress={(e) => {
-            e.stopPropagation();
-            navigation.navigate('ArtistEditSong', { artistId, song: item });
-          }}
-        >
-          <Ionicons name="create-outline" size={22} color={COLORS.primary} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.actionButton, { marginLeft: 4 }]}
-          onPress={(e) => {
-            e.stopPropagation();
-            handleDeleteSong(item);
-          }}
-        >
-          <Ionicons name="trash-outline" size={22} color={COLORS.error} />
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
-  );
+    );
+  };
 
   if (loading) {
     return (
@@ -246,55 +293,45 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: SIZES.padding,
+    paddingBottom: 100,
   },
-  songItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.card,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-  },
-  songImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-    marginRight: 12,
-  },
-  songInfo: {
-    flex: 1,
-  },
-  songTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: 4,
-  },
-  songMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  metaText: {
-    fontSize: 12,
-    color: COLORS.textMuted,
-  },
-  metaSeparator: {
-    fontSize: 12,
-    color: COLORS.textMuted,
-    marginHorizontal: 4,
-  },
+  // Song actions (edit, delete buttons)
   songActions: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
-  },
-  duration: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+    gap: 4,
   },
   actionButton: {
-    padding: 8,
+    padding: 6,
   },
+  // Hidden song styling
+  hiddenSongItem: {
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    opacity: 0.85,
+  },
+  hiddenOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  hiddenBadge: {
+    backgroundColor: COLORS.error,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  hiddenBadgeText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  // Empty state
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',

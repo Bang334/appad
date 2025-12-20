@@ -25,7 +25,7 @@ import { GlobalStyles } from '../../config/styles';
 import PremiumBadge from '../../components/Common/PremiumBadge';
 import AccessBadge from '../../components/Common/AccessBadge';
 import { premiumService } from '../../services/premiumService';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+// MiniPlayer removed - rendered in TabNavigator
 import PremiumAccessModal from '../../components/Common/PremiumAccessModal';
 import AddToPlaylistModal from '../../components/Playlist/AddToPlaylistModal';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -1077,7 +1077,7 @@ const SearchScreen = ({ navigation }) => {
         </>
       )}
 
-      <MiniPlayer bottomOffset={0} />
+      {/* MiniPlayer removed - rendered in TabNavigator */}
       <PremiumAccessModal
         visible={showPremiumModal}
         song={selectedSong}

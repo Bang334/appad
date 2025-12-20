@@ -59,10 +59,17 @@ class AlbumModel {
     return rows;
   }
 
-  // Get albums by artist
+  // Get albums by artist with song count
   static async findByArtist(artistId) {
     const [rows] = await db.execute(
-      'SELECT * FROM albums WHERE artist_id = ? ORDER BY release_date DESC',
+      `SELECT al.*, 
+              COUNT(s.song_id) as song_count,
+              YEAR(al.release_date) as release_year
+       FROM albums al
+       LEFT JOIN songs s ON al.album_id = s.album_id
+       WHERE al.artist_id = ?
+       GROUP BY al.album_id
+       ORDER BY al.release_date DESC`,
       [artistId]
     );
     return rows;

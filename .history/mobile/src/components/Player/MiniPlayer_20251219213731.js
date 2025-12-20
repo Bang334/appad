@@ -19,39 +19,25 @@ const MiniPlayer = ({ bottomOffset }) => {
   const insets = useSafeAreaInsets();
   
   // Calculate bottom position to be above the tab bar
-  // Tab bar height is 60px (simplified since SafeAreaView handles safe area)
-  const tabBarHeight = 60;
+  // Tab bar height is 60 + bottomPadding (from MainTabNavigator)
+  const bottomPadding = 60;
+  
+  const tabBarHeight = 60 + bottomPadding;
   
   // Use provided bottomOffset or calculate from tab bar height
   // If bottomOffset is undefined (for tab screens), calculate from tab bar height + spacing
-  // If bottomOffset is provided (for stack screens), use it directly
+  // If bottomOffset is provided (for stack screens), use it directly (they handle their own layout)
   const calculatedBottom = bottomOffset !== undefined 
-    ? bottomOffset + 8 
+    ? bottomOffset 
     : tabBarHeight + 8; // 8px spacing above tab bar for tab screens
   const navigation = useNavigation();
   const { currentSong, isPlaying, togglePlayPause, playNext, playPrevious, stopPlayer, seekTo } = usePlayer();
   const { position, duration } = usePlayerProgress();
 
-  // Use player duration if available, otherwise fallback to song duration from database
-  const displayDuration = useMemo(() => {
-    if (duration > 0) {
-      return duration; // Use player duration (in milliseconds)
-    }
-    // Fallback to song duration from database
-    if (currentSong?.duration) {
-      // Convert to milliseconds if needed (duration could be in seconds or milliseconds)
-      const songDuration = currentSong.duration > 10000 
-        ? currentSong.duration // Already in milliseconds
-        : currentSong.duration * 1000; // Convert seconds to milliseconds
-      return songDuration;
-    }
-    return 0;
-  }, [duration, currentSong?.duration]);
-
   // Optimize progress calculation
   const progress = useMemo(() => {
-    return displayDuration > 0 ? Math.min(position / displayDuration, 1) : 0;
-  }, [position, displayDuration]);
+    return duration > 0 ? Math.min(position / duration, 1) : 0;
+  }, [position, duration]);
 
   const openFullPlayer = () => {
     navigation.navigate('FullPlayer');
@@ -135,7 +121,7 @@ const MiniPlayer = ({ bottomOffset }) => {
         <Slider
           style={styles.slider}
           minimumValue={0}
-          maximumValue={displayDuration || 1}
+          maximumValue={duration || 1}
           value={position}
           minimumTrackTintColor={COLORS.primary}
           maximumTrackTintColor={COLORS.border}
@@ -144,7 +130,7 @@ const MiniPlayer = ({ bottomOffset }) => {
         />
         <View style={styles.progressTimes}>
           <Text style={styles.progressTime}>{formatTime(position)}</Text>
-          <Text style={styles.progressTime}>{formatTime(displayDuration)}</Text>
+          <Text style={styles.progressTime}>{formatTime(duration)}</Text>
         </View>
       </View>
     </View>

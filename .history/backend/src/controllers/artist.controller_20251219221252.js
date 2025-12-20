@@ -494,39 +494,26 @@ class ArtistController {
       }
 
       const file = req.file;
-      console.log('📤 [uploadSong] File received:', JSON.stringify(file, null, 2));
-      
       // Khi dùng Cloudinary, file.path hoặc file.secure_url chứa link trực tiếp
       const fileUrl = file.path || file.secure_url;
-      console.log('📤 [uploadSong] File URL:', fileUrl);
 
       // Extract duration from audio file
       let duration = null;
       try {
         // Try to get duration from Cloudinary response first
-        console.log('⏱️ [uploadSong] Checking Cloudinary duration...');
-        console.log('⏱️ [uploadSong] file.duration:', file.duration);
-        console.log('⏱️ [uploadSong] file.format:', file.format);
-        
         if (file.duration) {
           duration = Math.round(file.duration);
-          console.log('✅ [uploadSong] Got duration from file.duration:', duration);
         } else if (file.format && file.format.duration) {
           duration = Math.round(file.format.duration);
-          console.log('✅ [uploadSong] Got duration from file.format.duration:', duration);
         } else {
           // If not in response, fetch the file and extract duration
-          console.log('⏱️ [uploadSong] No duration in Cloudinary response, extracting from URL...');
           duration = await ArtistController.extractDurationFromUrl(fileUrl);
-          console.log('✅ [uploadSong] Extracted duration from URL:', duration);
         }
       } catch (durationError) {
-        console.error('❌ [uploadSong] Error extracting duration:', durationError.message);
+        console.error('Error extracting duration:', durationError);
         // Continue without duration if extraction fails
       }
 
-      console.log('📤 [uploadSong] Final response duration:', duration);
-      
       res.json({
         success: true,
         message: 'Upload successful',
@@ -548,67 +535,128 @@ class ArtistController {
   }
 
   // Helper method to extract duration from audio file URL
-  static async extractDurationFromUrl(url) {
-    console.log('⏱️ [extractDurationFromUrl] Starting extraction for:', url);
-    
+  static async extractDurationFromUrl(url, retries = 2) {
     return new Promise((resolve, reject) => {
       const protocol = url.startsWith('https') ? https : http;
       
-      protocol.get(url, (response) => {
-        console.log('⏱️ [extractDurationFromUrl] Response status:', response.statusCode);
+      const attemptExtract = (attemptNumber) => {
+        console.log(`🔄 [extractDurationFromUrl] Attempt ${attemptNumber}/${retries + 1} for URL: ${url}`);
         
-        if (response.statusCode !== 200) {
-          reject(new Error(`Failed to fetch file: ${response.statusCode}`));
-          return;
-        }
-
-        const chunks = [];
-        let totalSize = 0;
-        
-        response.on('data', (chunk) => {
-          chunks.push(chunk);
-          totalSize += chunk.length;
-        });
-
-        response.on('end', async () => {
-          try {
-            console.log('⏱️ [extractDurationFromUrl] Downloaded', totalSize, 'bytes');
-            const buffer = Buffer.concat(chunks);
-            const metadata = await mm.parseBuffer(buffer);
-            console.log('⏱️ [extractDurationFromUrl] Metadata format:', metadata.format);
-            
-            let durationInSeconds = 0;
-            
-            // Try to get duration directly from metadata
-            if (metadata.format.duration && metadata.format.duration > 0) {
-              durationInSeconds = Math.round(metadata.format.duration);
-              console.log('✅ [extractDurationFromUrl] Duration from metadata:', durationInSeconds, 'seconds');
-            } 
-            // Fallback: Calculate from bitrate and file size (for ADTS/AAC streams)
-            else if (metadata.format.bitrate && totalSize > 0) {
-              // duration = (fileSize in bits) / (bitrate in bits per second)
-              durationInSeconds = Math.round((totalSize * 8) / metadata.format.bitrate);
-              console.log('✅ [extractDurationFromUrl] Duration calculated from bitrate:', durationInSeconds, 'seconds');
-              console.log('   (bitrate:', metadata.format.bitrate, 'bps, size:', totalSize, 'bytes)');
-            } else {
-              console.warn('⚠️ [extractDurationFromUrl] Cannot determine duration - no duration or bitrate in metadata');
+        protocol.get(url, (response) => {
+          if (response.statusCode !== 200) {
+            if (attemptNumber < retries) {
+              console.log(`⚠️ [extractDurationFromUrl] Failed with status ${response.statusCode}, retrying...`);
+              setTimeout(() => attemptExtract(attemptNumber + 1), 1000 * attemptNumber); // Wait longer for each retry
+              return;
             }
-            
-            resolve(durationInSeconds);
-          } catch (error) {
-            console.error('❌ [extractDurationFromUrl] Error parsing audio metadata:', error.message);
+            reject(new Error(`Failed to fetch file: ${response.statusCode}`));
+            return;
+          }
+
+          const chunks = [];
+          let totalSize = 0;
+          const maxSize = 50 * 1024 * 1024; // 50MB limit
+          
+          response.on('data', (chunk) => {
+            chunks.push(chunk);
+            totalSize += chunk.length;
+            if (totalSize > maxSize) {
+              response.destroy();
+              reject(new Error('File too large'));
+            }
+          });
+
+          response.on('end', async () => {
+            try {
+              const buffer = Buffer.concat(chunks);
+              console.log(`📦 [extractDurationFromUrl] Downloaded ${buffer.length} bytes, parsing metadata...`);
+              
+              // Detect mime type from URL and content-type header
+              let mimeType = response.headers['content-type'] || 'audio/mpeg';
+              
+              // Auto-detect format from URL extension if content-type is not specific
+              if (!mimeType || mimeType === 'application/octet-stream' || mimeType === 'binary/octet-stream') {
+                const urlLower = url.toLowerCase();
+                if (urlLower.includes('.m4a') || urlLower.includes('.aac')) {
+                  mimeType = 'audio/mp4'; // m4a uses MP4 container
+                } else if (urlLower.includes('.mp3')) {
+                  mimeType = 'audio/mpeg';
+                } else if (urlLower.includes('.wav')) {
+                  mimeType = 'audio/wav';
+                } else if (urlLower.includes('.ogg')) {
+                  mimeType = 'audio/ogg';
+                }
+                console.log(`🔍 [extractDurationFromUrl] Auto-detected mimeType: ${mimeType} from URL`);
+              }
+              
+              // Parse with options to handle various audio formats including m4a
+              const parseOptions = {
+                mimeType: mimeType,
+                size: buffer.length
+              };
+              
+              // For m4a/aac files, ensure we use the correct parser
+              if (mimeType === 'audio/mp4' || mimeType === 'audio/x-m4a' || mimeType === 'audio/m4a') {
+                parseOptions.mimeType = 'audio/mp4'; // m4a uses MP4 container format
+              }
+              
+              console.log(`🔍 [extractDurationFromUrl] Parsing with options:`, parseOptions);
+              const metadata = await mm.parseBuffer(buffer, parseOptions);
+              
+              const durationInSeconds = metadata.format.duration 
+                ? Math.round(metadata.format.duration) 
+                : 0;
+              
+              console.log(`✅ [extractDurationFromUrl] Extracted duration: ${durationInSeconds}s from metadata:`, {
+                format: metadata.format.container,
+                codec: metadata.format.codec,
+                duration: metadata.format.duration,
+                mimeType: mimeType
+              });
+              
+              if (durationInSeconds > 0) {
+                resolve(durationInSeconds);
+              } else {
+                // If duration is 0, try retry if we have attempts left
+                if (attemptNumber < retries) {
+                  console.log(`⚠️ [extractDurationFromUrl] Duration is 0, retrying...`);
+                  setTimeout(() => attemptExtract(attemptNumber + 1), 2000 * attemptNumber);
+                } else {
+                  console.warn(`⚠️ [extractDurationFromUrl] Duration is 0 after all attempts`);
+                  resolve(0); // Return 0 instead of rejecting
+                }
+              }
+            } catch (error) {
+              console.error(`❌ [extractDurationFromUrl] Error parsing audio metadata (attempt ${attemptNumber}):`, error.message);
+              console.error(`❌ [extractDurationFromUrl] Error stack:`, error.stack);
+              if (attemptNumber < retries) {
+                console.log(`🔄 [extractDurationFromUrl] Retrying due to parse error...`);
+                setTimeout(() => attemptExtract(attemptNumber + 1), 2000 * attemptNumber);
+              } else {
+                reject(error);
+              }
+            }
+          });
+
+          response.on('error', (error) => {
+            console.error(`❌ [extractDurationFromUrl] Response error (attempt ${attemptNumber}):`, error.message);
+            if (attemptNumber < retries) {
+              setTimeout(() => attemptExtract(attemptNumber + 1), 1000 * attemptNumber);
+            } else {
+              reject(error);
+            }
+          });
+        }).on('error', (error) => {
+          console.error(`❌ [extractDurationFromUrl] Request error (attempt ${attemptNumber}):`, error.message);
+          if (attemptNumber < retries) {
+            setTimeout(() => attemptExtract(attemptNumber + 1), 1000 * attemptNumber);
+          } else {
             reject(error);
           }
         });
-
-        response.on('error', (error) => {
-          console.error('❌ [extractDurationFromUrl] Response error:', error.message);
-          reject(error);
-        });
-      }).on('error', (error) => {
-        console.error('❌ [extractDurationFromUrl] Request error:', error.message);
-        reject(error);
-      });
+      };
+      
+      attemptExtract(0);
     });
   }
 
@@ -666,18 +714,29 @@ class ArtistController {
         }
       }
 
-      // Auto-extract duration if file_url is provided but duration is missing
-      if (songData.file_url && !songData.duration && (songData.file_url.startsWith('http://') || songData.file_url.startsWith('https://'))) {
+      // Auto-extract duration if file_url is provided but duration is missing or 0
+      // This ensures duration is always set when creating a song
+      if (songData.file_url && (!songData.duration || songData.duration === 0) && (songData.file_url.startsWith('http://') || songData.file_url.startsWith('https://'))) {
         try {
-          const extractedDuration = await ArtistController.extractDurationFromUrl(songData.file_url);
+          console.log(`🔄 [createSong] Extracting duration from file_url for song: ${songData.title}`);
+          // Add a small delay to ensure Cloudinary has processed the file
+          await new Promise(resolve => setTimeout(resolve, 500));
+          const extractedDuration = await ArtistController.extractDurationFromUrl(songData.file_url, 2);
           if (extractedDuration && extractedDuration > 0) {
             songData.duration = extractedDuration;
-            console.log(`✅ Auto-extracted duration: ${extractedDuration} seconds for song: ${songData.title}`);
+            console.log(`✅ [createSong] Auto-extracted duration: ${extractedDuration} seconds for song: ${songData.title}`);
+          } else {
+            console.warn(`⚠️ [createSong] Extracted duration is invalid or 0: ${extractedDuration}, will try again later when playing`);
           }
         } catch (durationError) {
-          console.error('⚠️ Could not extract duration from file_url:', durationError.message);
-          // Continue without duration if extraction fails
+          console.error('⚠️ [createSong] Could not extract duration from file_url:', durationError.message);
+          console.log(`ℹ️ [createSong] Duration will be extracted when song is played`);
+          // Continue without duration if extraction fails - it will be updated when played
         }
+      } else if (songData.duration && songData.duration > 0) {
+        console.log(`ℹ️ [createSong] Duration already provided: ${songData.duration}s for song: ${songData.title}`);
+      } else if (!songData.file_url) {
+        console.warn(`⚠️ [createSong] No file_url provided, cannot extract duration`);
       }
 
       const songId = await SongModel.create(songData);
@@ -759,18 +818,29 @@ class ArtistController {
         }
       }
 
-      // Auto-extract duration if file_url is provided/updated but duration is missing
-      if (songData.file_url && !songData.duration && (songData.file_url.startsWith('http://') || songData.file_url.startsWith('https://'))) {
+      // Auto-extract duration if file_url is provided/updated but duration is missing or 0
+      // This ensures duration is always set when updating a song
+      if (songData.file_url && (!songData.duration || songData.duration === 0) && (songData.file_url.startsWith('http://') || songData.file_url.startsWith('https://'))) {
         try {
-          const extractedDuration = await ArtistController.extractDurationFromUrl(songData.file_url);
+          console.log(`🔄 [updateSong] Extracting duration from file_url for song: ${song_id}`);
+          // Add a small delay to ensure Cloudinary has processed the file
+          await new Promise(resolve => setTimeout(resolve, 500));
+          const extractedDuration = await ArtistController.extractDurationFromUrl(songData.file_url, 2);
           if (extractedDuration && extractedDuration > 0) {
             songData.duration = extractedDuration;
-            console.log(`✅ Auto-extracted duration: ${extractedDuration} seconds for song update: ${song_id}`);
+            console.log(`✅ [updateSong] Auto-extracted duration: ${extractedDuration} seconds for song update: ${song_id}`);
+          } else {
+            console.warn(`⚠️ [updateSong] Extracted duration is invalid or 0: ${extractedDuration}, will try again later when playing`);
           }
         } catch (durationError) {
-          console.error('⚠️ Could not extract duration from file_url:', durationError.message);
-          // Continue without duration if extraction fails
+          console.error('⚠️ [updateSong] Could not extract duration from file_url:', durationError.message);
+          console.log(`ℹ️ [updateSong] Duration will be extracted when song is played`);
+          // Continue without duration if extraction fails - it will be updated when played
         }
+      } else if (songData.duration && songData.duration > 0) {
+        console.log(`ℹ️ [updateSong] Duration already provided: ${songData.duration}s for song: ${song_id}`);
+      } else if (!songData.file_url) {
+        console.warn(`⚠️ [updateSong] No file_url provided, cannot extract duration`);
       }
 
       const updated = await SongModel.update(song_id, songData);
@@ -883,9 +953,7 @@ class ArtistController {
       
       // Handle file uploads if present
       if (req.files && req.files.cover) {
-        const file = req.files.cover[0];
-        // Use Cloudinary URL (path or secure_url)
-        albumData.cover_url = file.path || file.secure_url;
+        albumData.cover_url = `/uploads/covers/${req.files.cover[0].filename}`;
       }
 
       const albumId = await AlbumModel.create(albumData);
@@ -932,9 +1000,7 @@ class ArtistController {
       
       // Handle file uploads if present
       if (req.files && req.files.cover) {
-        const file = req.files.cover[0];
-        // Use Cloudinary URL (path or secure_url)
-        albumData.cover_url = file.path || file.secure_url;
+        albumData.cover_url = `/uploads/covers/${req.files.cover[0].filename}`;
       }
 
       const updated = await AlbumModel.update(album_id, albumData);

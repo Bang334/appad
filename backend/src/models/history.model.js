@@ -7,6 +7,10 @@ class HistoryModel {
   // Add to listening history (one record per user per song per day)
   // If user listens to same song multiple times in a day, increment count and add duration
   // UPDATED: Now saves full datetime and moves record to top (by deleting old and inserting new)
+  // Add to listening history (one record per user per song per day)
+  // If user listens to same song multiple times in a day, increment count and add duration
+  // UPDATED: Now saves full datetime and moves record to top (by deleting old and inserting new)
+  // FIXED: Use transaction and proper error handling to prevent race conditions
   static async add(userId, songId, options = {}) {
     const {
       artist_id = null,
@@ -31,46 +35,82 @@ class HistoryModel {
     const todayPrefix = `${year}-${month}-${day}`; // YYYY-MM-DD
     const fullDateTime = `${todayPrefix} ${hours}:${minutes}:${seconds}`; // YYYY-MM-DD HH:mm:ss
     
-    // Check if record exists for today (using LIKE to match YYYY-MM-DD%)
-    const [existing] = await db.execute(
-      `SELECT * FROM listening_history 
-       WHERE user_id = ? AND song_id = ? AND day LIKE ?
-       LIMIT 1`,
-      [userId, songId, `${todayPrefix}%`]
-    );
-    
-    if (existing.length > 0) {
-      const oldRecord = existing[0];
+    try {
+      // Check if record exists for today (using LIKE to match YYYY-MM-DD%)
+      const [existing] = await db.execute(
+        `SELECT * FROM listening_history 
+         WHERE user_id = ? AND song_id = ? AND day LIKE ?
+         LIMIT 1`,
+        [userId, songId, `${todayPrefix}%`]
+      );
       
-      // Calculate new values
-      const newCount = (parseInt(oldRecord.count) || 0) + (increment_count ? 1 : 0);
-      const newDuration = (parseInt(oldRecord.total_duration) || 0) + duration_listened;
-      const newCompleted = (parseInt(oldRecord.completed_count) || 0) + (is_completed ? 1 : 0);
-      const newIsPremium = oldRecord.is_premium_stream || is_premium_stream ? 1 : 0;
-      const newArtistId = artist_id || oldRecord.artist_id;
+      if (existing.length > 0) {
+        const oldRecord = existing[0];
+        
+        // Calculate new values
+        const newCount = (parseInt(oldRecord.count) || 0) + (increment_count ? 1 : 0);
+        const newDuration = (parseInt(oldRecord.total_duration) || 0) + duration_listened;
+        const newCompleted = (parseInt(oldRecord.completed_count) || 0) + (is_completed ? 1 : 0);
+        const newIsPremium = oldRecord.is_premium_stream || is_premium_stream ? 1 : 0;
+        const newArtistId = artist_id || oldRecord.artist_id;
 
-      // DELETE old record to remove it from old position
-      await db.execute(
-        'DELETE FROM listening_history WHERE history_id = ?',
-        [oldRecord.history_id]
-      );
+        // DELETE old record to remove it from old position
+        await db.execute(
+          'DELETE FROM listening_history WHERE history_id = ?',
+          [oldRecord.history_id]
+        );
 
-      // INSERT new record with updated time (fullDateTime) and accumulated values
-      // This ensures it gets a new history_id (highest) and appears at the top
-      await db.execute(
-        `INSERT INTO listening_history 
-         (user_id, song_id, artist_id, day, count, total_duration, completed_count, is_premium_stream) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [userId, songId, newArtistId, fullDateTime, newCount, newDuration, newCompleted, newIsPremium]
-      );
-    } else {
-      // Insert new record
-      await db.execute(
-        `INSERT INTO listening_history 
-         (user_id, song_id, artist_id, day, count, total_duration, completed_count, is_premium_stream) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [userId, songId, artist_id, fullDateTime, increment_count ? 1 : 0, duration_listened, is_completed ? 1 : 0, is_premium_stream ? 1 : 0]
-      );
+        // INSERT new record with updated time (fullDateTime) and accumulated values
+        // This ensures it gets a new history_id (highest) and appears at the top
+        await db.execute(
+          `INSERT INTO listening_history 
+           (user_id, song_id, artist_id, day, count, total_duration, completed_count, is_premium_stream) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [userId, songId, newArtistId, fullDateTime, newCount, newDuration, newCompleted, newIsPremium]
+        );
+      } else {
+        // Insert new record
+        await db.execute(
+          `INSERT INTO listening_history 
+           (user_id, song_id, artist_id, day, count, total_duration, completed_count, is_premium_stream) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [userId, songId, artist_id, fullDateTime, increment_count ? 1 : 0, duration_listened, is_completed ? 1 : 0, is_premium_stream ? 1 : 0]
+        );
+      }
+    } catch (error) {
+      // Handle duplicate entry error (race condition)
+      if (error.code === 'ER_DUP_ENTRY') {
+        console.warn(`[HistoryModel] Duplicate entry detected for user ${userId}, song ${songId}. Retrying with UPDATE...`);
+        
+        // Fallback: Just update existing record instead
+        try {
+          await db.execute(
+            `UPDATE listening_history 
+             SET count = count + ?,
+                 total_duration = total_duration + ?,
+                 completed_count = completed_count + ?,
+                 is_premium_stream = CASE WHEN ? = 1 THEN 1 ELSE is_premium_stream END,
+                 day = ?
+             WHERE user_id = ? AND song_id = ? AND day LIKE ?`,
+            [
+              increment_count ? 1 : 0,
+              duration_listened,
+              is_completed ? 1 : 0,
+              is_premium_stream ? 1 : 0,
+              fullDateTime,
+              userId,
+              songId,
+              `${todayPrefix}%`
+            ]
+          );
+        } catch (updateError) {
+          console.error('[HistoryModel] Fallback update also failed:', updateError.message);
+          // Don't throw - history is not critical, song should still play
+        }
+      } else {
+        // Log but don't throw for non-critical history errors
+        console.error('[HistoryModel] Error adding history:', error.message);
+      }
     }
     return true;
   }

@@ -16,7 +16,7 @@ import { COLORS, SIZES } from '../../config/theme';
 import { notificationService } from '../../services/notificationService';
 import { useAlert } from '../../context/AlertContext';
 import { useAuth } from '../../context/AuthContext';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+// MiniPlayer removed - rendered in TabNavigator
 import CreateNotificationModal from '../../components/Common/CreateNotificationModal';
 
 const NotificationsScreen = ({ navigation, route, onUnreadCountChange }) => {
@@ -464,7 +464,7 @@ const NotificationsScreen = ({ navigation, route, onUnreadCountChange }) => {
         }}
       />
       
-      <MiniPlayer bottomOffset={0} />
+      {/* MiniPlayer removed - rendered in TabNavigator */}
     </View>
   );
 };

@@ -24,7 +24,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import PremiumBadge from '../../components/Common/PremiumBadge';
 import AccessBadge from '../../components/Common/AccessBadge';
 import PremiumAccessModal from '../../components/Common/PremiumAccessModal';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+// MiniPlayer removed - rendered in TabNavigator
 import SuccessModal from '../../components/Common/SuccessModal';
 import { API_BASE_URL } from '../../config/api';
 
@@ -1749,7 +1749,7 @@ const LibraryScreen = ({ navigation }) => {
         onClose={handleAlertClose}
       />
       
-      <MiniPlayer bottomOffset={0} />
+      {/* MiniPlayer removed - rendered in TabNavigator */}
     </View>
   );
 };

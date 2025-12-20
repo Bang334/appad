@@ -3,10 +3,10 @@ const db = require('../config/database');
 class SongModel {
   // Create new song
   static async create(songData) {
-    const { title, artist_id, album_id, genre_id, duration, file_url, cover_url, release_date, lyrics, is_premium, price } = songData;
+    const { title, artist_id, album_id, genre_id, duration, file_url, cover_url, release_date, lyrics, is_premium, price, status } = songData;
     const [result] = await db.execute(
-      'INSERT INTO songs (title, artist_id, album_id, genre_id, duration, file_url, cover_url, release_date, lyrics, is_premium, price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [title, artist_id || null, album_id || null, genre_id || null, duration, file_url, cover_url || null, release_date || null, lyrics || null, is_premium || 0, price || 0]
+      'INSERT INTO songs (title, artist_id, album_id, genre_id, duration, file_url, cover_url, release_date, lyrics, is_premium, price, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [title, artist_id || null, album_id || null, genre_id || null, duration, file_url, cover_url || null, release_date || null, lyrics || null, is_premium || 0, price || 0, status !== undefined ? status : 1]
     );
     return result.insertId;
   }
@@ -35,7 +35,7 @@ class SongModel {
     return rows[0];
   }
 
-  // Get all songs with pagination
+  // Get all songs with pagination (only active songs for users)
   static async findAll(limit = 20, offset = 0) {
     limit = parseInt(limit) || 20;
     offset = parseInt(offset) || 0;
@@ -55,13 +55,14 @@ class SongModel {
          WHERE rating IS NOT NULL
          GROUP BY song_id
        ) rc ON s.song_id = rc.song_id
+       WHERE s.status = 1
        ORDER BY s.song_id DESC
        LIMIT ${limit} OFFSET ${offset}`
     );
     return rows;
   }
 
-  // Search songs
+  // Search songs (only active songs)
   static async search(keyword, limit = 20) {
     limit = parseInt(limit) || 20;
     const [rows] = await db.execute(
@@ -80,15 +81,16 @@ class SongModel {
          WHERE rating IS NOT NULL
          GROUP BY song_id
        ) rc ON s.song_id = rc.song_id
-       WHERE s.title LIKE ? OR a.name LIKE ?
+       WHERE s.status = 1 AND (s.title LIKE ? OR a.name LIKE ?)
        LIMIT ${limit}`,
       [`%${keyword}%`, `%${keyword}%`]
     );
     return rows;
   }
 
-  // Get songs by artist
-  static async findByArtist(artistId) {
+  // Get songs by artist (ALL songs - for artist management, regardless of status)
+  static async findByArtist(artistId, includeHidden = true) {
+    const statusFilter = includeHidden ? '' : 'AND s.status = 1';
     const [rows] = await db.execute(
       `SELECT s.*, 
               a.name as artist_name, 
@@ -105,7 +107,7 @@ class SongModel {
          WHERE rating IS NOT NULL
          GROUP BY song_id
        ) rc ON s.song_id = rc.song_id
-       WHERE s.artist_id = ?`,
+       WHERE s.artist_id = ? ${statusFilter}`,
       [artistId]
     );
     return rows;
@@ -136,7 +138,7 @@ class SongModel {
     return rows;
   }
 
-  // Get songs by genre
+  // Get songs by genre (only active songs)
   static async findByGenre(genreId) {
     const [rows] = await db.execute(
       `SELECT s.*, 
@@ -154,13 +156,13 @@ class SongModel {
          WHERE rating IS NOT NULL
          GROUP BY song_id
        ) rc ON s.song_id = rc.song_id
-       WHERE s.genre_id = ?`,
+       WHERE s.genre_id = ? AND s.status = 1`,
       [genreId]
     );
     return rows;
   }
 
-  // Get trending songs (most listened)
+  // Get trending songs (most listened, only active)
   static async getTrending(limit = 10) {
     limit = parseInt(limit) || 10;
     const [rows] = await db.query(
@@ -179,6 +181,7 @@ class SongModel {
          WHERE rating IS NOT NULL
          GROUP BY song_id
        ) rc ON s.song_id = rc.song_id
+       WHERE s.status = 1
        ORDER BY s.listen_count DESC
        LIMIT ${limit}`
     );

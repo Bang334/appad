@@ -9,19 +9,25 @@ import {
   ScrollView,
   Image,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { COLORS, SIZES } from '../../config/theme';
 import { artistService } from '../../services/artistService';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+import { useAlert } from '../../context/AlertContext';
 
 const ArtistEditAlbumScreen = ({ route, navigation }) => {
   const { artistId, album } = route.params;
+  const { showError, showSuccess } = useAlert();
   const [loading, setLoading] = useState(false);
+  const [coverFile, setCoverFile] = useState(null); // { uri, type, name }
+  
   const [formData, setFormData] = useState({
     title: album?.title || '',
     artist_id: artistId,
-    release_date: album?.release_date ? new Date(album.release_date).toISOString().split('T')[0] : '',
+    release_date: album?.release_date ? new Date(album.release_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
     cover_url: album?.cover_url || '',
     is_premium: album?.is_premium === 1,
     price: album?.price ? album.price.toString() : '0',
@@ -34,17 +40,41 @@ const ArtistEditAlbumScreen = ({ route, navigation }) => {
     }));
   };
 
+  const pickCoverImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        console.log('Selected album cover:', result.assets[0]);
+        setCoverFile({
+          uri: result.assets[0].uri,
+          type: result.assets[0].mimeType || 'image/jpeg',
+          name: result.assets[0].fileName || 'album_cover.jpg',
+        });
+        setFormData(prev => ({ ...prev, cover_url: result.assets[0].uri }));
+      }
+    } catch (error) {
+      console.error('Error picking cover image:', error);
+      showError('Lỗi', 'Không thể chọn ảnh bìa');
+    }
+  };
+
   const validateForm = () => {
     if (!formData.title.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập tên album');
+      showError('Lỗi', 'Vui lòng nhập tên album');
       return false;
     }
     if (!formData.release_date) {
-      Alert.alert('Lỗi', 'Vui lòng chọn ngày phát hành');
+      showError('Lỗi', 'Vui lòng chọn ngày phát hành');
       return false;
     }
     if (formData.is_premium && (!formData.price || parseFloat(formData.price) < 0)) {
-      Alert.alert('Lỗi', 'Vui lòng nhập giá hợp lệ');
+      showError('Lỗi', 'Vui lòng nhập giá hợp lệ');
       return false;
     }
     return true;
@@ -55,67 +85,69 @@ const ArtistEditAlbumScreen = ({ route, navigation }) => {
 
     setLoading(true);
     try {
+      const files = coverFile ? { cover: coverFile } : null;
+
       if (album) {
         // Update existing album
-        await artistService.updateAlbum(artistId, album.album_id, formData);
-        Alert.alert('Thành công', 'Đã cập nhật album', [
-          { text: 'OK', onPress: () => navigation.goBack() }
-        ]);
+        await artistService.updateAlbum(artistId, album.album_id, formData, files);
+        showSuccess('Thành công', 'Đã cập nhật album');
+        setTimeout(() => navigation.goBack(), 1000);
       } else {
         // Create new album
-        await artistService.createAlbum(artistId, formData);
-        Alert.alert('Thành công', 'Đã tạo album mới', [
-          { text: 'OK', onPress: () => navigation.goBack() }
-        ]);
+        await artistService.createAlbum(artistId, formData, files);
+        showSuccess('Thành công', 'Đã tạo album mới');
+        setTimeout(() => navigation.goBack(), 1000);
       }
     } catch (error) {
       console.error('Error saving album:', error);
-      Alert.alert('Lỗi', 'Không thể lưu album');
+      showError('Lỗi', error.response?.data?.message || 'Không thể lưu album');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView 
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="arrow-back" size={24} color={COLORS.text} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>
+          {album ? 'Chỉnh sửa album' : 'Thêm album mới'}
+        </Text>
+        <View style={styles.placeholder} />
+      </View>
+
       <ScrollView 
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons name="arrow-back" size={24} color={COLORS.text} />
-          </TouchableOpacity>
-          <Text style={styles.title}>
-            {album ? 'Chỉnh sửa album' : 'Thêm album mới'}
-          </Text>
-          <View style={styles.placeholder} />
-        </View>
-
         <View style={styles.content}>
           {/* Album Cover */}
-          <View style={styles.coverSection}>
-            <Text style={styles.sectionTitle}>Ảnh bìa album</Text>
+          <View style={styles.inputSection}>
+            <Text style={styles.sectionTitle}>Ảnh bìa</Text>
             <View style={styles.coverContainer}>
-              {formData.cover_url ? (
-                <Image source={{ uri: formData.cover_url }} style={styles.coverImage} />
-              ) : (
-                <View style={styles.coverPlaceholder}>
-                  <Ionicons name="musical-notes" size={48} color={COLORS.primary} />
-                  <Text style={styles.coverPlaceholderText}>Chưa có ảnh bìa</Text>
+              <TouchableOpacity onPress={pickCoverImage} style={styles.coverWrapper}>
+                {formData.cover_url ? (
+                  <Image source={{ uri: formData.cover_url }} style={styles.coverImage} />
+                ) : (
+                  <View style={styles.coverPlaceholder}>
+                    <Ionicons name="musical-notes" size={48} color={COLORS.primary} />
+                    <Text style={styles.coverPlaceholderText}>Chạm để chọn ảnh</Text>
+                  </View>
+                )}
+                <View style={styles.editIconBadge}>
+                  <Ionicons name="camera" size={16} color="#FFF" />
                 </View>
-              )}
+              </TouchableOpacity>
             </View>
-            <TextInput
-              style={styles.input}
-              placeholder="URL ảnh bìa album"
-              value={formData.cover_url}
-              onChangeText={(value) => handleInputChange('cover_url', value)}
-              placeholderTextColor={COLORS.textSecondary}
-            />
           </View>
 
           {/* Album Title */}
@@ -130,10 +162,25 @@ const ArtistEditAlbumScreen = ({ route, navigation }) => {
             />
           </View>
 
-          {/* Premium Status */}
+          {/* Release Date */}
           <View style={styles.inputSection}>
-            <View style={styles.switchContainer}>
-              <Text style={styles.sectionTitle}>Album Premium</Text>
+            <Text style={styles.sectionTitle}>Ngày phát hành (YYYY-MM-DD)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="YYYY-MM-DD"
+              value={formData.release_date}
+              onChangeText={(value) => handleInputChange('release_date', value)}
+              placeholderTextColor={COLORS.textSecondary}
+            />
+          </View>
+
+          {/* Premium Status */}
+          <View style={[styles.inputSection, styles.premiumSection]}>
+            <View style={styles.switchRow}>
+              <View style={styles.switchLabelContainer}>
+                <Ionicons name="star" size={20} color={formData.is_premium ? COLORS.warning : COLORS.textSecondary} />
+                <Text style={styles.sectionTitleWithoutMargin}>Album Premium</Text>
+              </View>
               <TouchableOpacity
                 style={[styles.switch, formData.is_premium && styles.switchActive]}
                 onPress={() => handleInputChange('is_premium', !formData.is_premium)}
@@ -142,7 +189,7 @@ const ArtistEditAlbumScreen = ({ route, navigation }) => {
               </TouchableOpacity>
             </View>
             <Text style={styles.helperText}>
-              Album premium chỉ dành cho người dùng trả phí hoặc mua lẻ.
+              Album premium chỉ dành cho người dùng gói Premium hoặc phải mua lẻ.
             </Text>
           </View>
 
@@ -154,24 +201,12 @@ const ArtistEditAlbumScreen = ({ route, navigation }) => {
                 style={styles.input}
                 placeholder="0"
                 value={formData.price}
-                onChangeText={(value) => handleInputChange('price', value)}
+                onChangeText={(value) => handleInputChange('price', value.replace(/[^0-9]/g, ''))}
                 keyboardType="numeric"
                 placeholderTextColor={COLORS.textSecondary}
               />
             </View>
           )}
-
-          {/* Release Date */}
-          <View style={styles.inputSection}>
-            <Text style={styles.sectionTitle}>Ngày phát hành *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="YYYY-MM-DD"
-              value={formData.release_date}
-              onChangeText={(value) => handleInputChange('release_date', value)}
-              placeholderTextColor={COLORS.textSecondary}
-            />
-          </View>
 
           {/* Action Buttons */}
           <View style={styles.actionsContainer}>
@@ -184,16 +219,15 @@ const ArtistEditAlbumScreen = ({ route, navigation }) => {
                 <ActivityIndicator size="small" color={COLORS.white} />
               ) : (
                 <>
-                  <Ionicons name="checkmark" size={20} color={COLORS.white} />
-                  <Text style={styles.saveButtonText}>Lưu</Text>
+                  <Ionicons name="save-outline" size={20} color={COLORS.white} />
+                  <Text style={styles.saveButtonText}>Lưu thay đổi</Text>
                 </>
               )}
             </TouchableOpacity>
           </View>
         </View>
       </ScrollView>
-      <MiniPlayer bottomOffset={0} />
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -201,12 +235,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 100, // Space for MiniPlayer
   },
   header: {
     flexDirection: 'row',
@@ -217,6 +245,7 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
+    backgroundColor: COLORS.background,
   },
   backButton: {
     width: 40,
@@ -224,88 +253,105 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  title: {
+  headerTitle: {
     color: COLORS.text,
     fontSize: SIZES.lg,
-    fontWeight: '600',
+    fontWeight: 'bold',
     flex: 1,
     textAlign: 'center',
   },
   placeholder: {
     width: 40,
   },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 40,
+  },
   content: {
     padding: SIZES.padding,
-  },
-  coverSection: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    color: COLORS.text,
-    fontSize: SIZES.md,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  coverContainer: {
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  coverImage: {
-    width: 150,
-    height: 150,
-    borderRadius: 8,
-  },
-  coverPlaceholder: {
-    width: 150,
-    height: 150,
-    borderRadius: 8,
-    backgroundColor: COLORS.primary + '20',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  coverPlaceholderText: {
-    color: COLORS.textSecondary,
-    fontSize: SIZES.sm,
-    marginTop: 8,
   },
   inputSection: {
     marginBottom: 24,
   },
+  sectionTitle: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  sectionTitleWithoutMargin: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  coverContainer: {
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  coverWrapper: {
+    position: 'relative',
+  },
+  coverImage: {
+    width: 160,
+    height: 160,
+    borderRadius: 8,
+  },
+  coverPlaceholder: {
+    width: 160,
+    height: 160,
+    borderRadius: 8,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+  },
+  coverPlaceholderText: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+  },
+  editIconBadge: {
+    position: 'absolute',
+    bottom: -8,
+    right: -8,
+    backgroundColor: COLORS.primary,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: COLORS.background,
+  },
   input: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.card,
     borderRadius: SIZES.borderRadius,
     padding: 16,
     color: COLORS.text,
-    fontSize: SIZES.md,
+    fontSize: 16,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  actionsContainer: {
-    gap: 12,
-    marginTop: 32,
-    marginBottom: 32,
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+  premiumSection: {
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
     padding: 16,
-    borderRadius: SIZES.borderRadius,
-    gap: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  saveButton: {
-    backgroundColor: COLORS.primary,
-  },
-  saveButtonText: {
-    color: COLORS.white,
-    fontSize: SIZES.md,
-    fontWeight: '600',
-  },
-  switchContainer: {
+  switchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+  },
+  switchLabelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   switch: {
     width: 50,
@@ -328,8 +374,33 @@ const styles = StyleSheet.create({
   },
   helperText: {
     color: COLORS.textSecondary,
-    fontSize: SIZES.sm,
-    marginTop: 4,
+    fontSize: 13,
+    marginTop: 8,
+    lineHeight: 18,
+  },
+  actionsContainer: {
+    marginTop: 8,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: SIZES.borderRadius,
+    gap: 8,
+  },
+  saveButton: {
+    backgroundColor: COLORS.primary,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  saveButtonText: {
+    color: COLORS.white,
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
 

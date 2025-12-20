@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../config/theme';
 import { notificationService } from '../services/notificationService';
 
@@ -72,6 +74,7 @@ const Stack = createStackNavigator();
 
 const TabNavigator = () => {
   const [unreadCount, setUnreadCount] = useState(0);
+  const insets = useSafeAreaInsets();
 
   const fetchUnreadCount = React.useCallback(async () => {
     try {
@@ -97,6 +100,10 @@ const TabNavigator = () => {
     const interval = setInterval(fetchUnreadCount, 30000);
     return () => clearInterval(interval);
   }, [fetchUnreadCount]);
+
+  // Calculate bottom padding - now simplified since SafeAreaView handles safe area
+  // Just add a small padding for visual consistency
+  const bottomPadding = 8;
 
   return (
     <>
@@ -140,7 +147,9 @@ const TabNavigator = () => {
             borderTopColor: 'rgba(255,255,255,0.08)',
             borderTopWidth: 1,
             height: 60,
-            paddingBottom: 8,
+            paddingBottom: bottomPadding,
+            paddingTop: 8,
+            elevation: 8, // Ensure tab bar is above other content on Android
           },
           headerStyle: {
             backgroundColor: COLORS.background,
@@ -190,8 +199,9 @@ const TabNavigator = () => {
 
 const MainTabNavigator = () => {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="MainTabs" component={TabNavigator} />
+    <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="MainTabs" component={TabNavigator} />
       <Stack.Screen 
         name="FullPlayer" 
         component={FullPlayerScreen}
@@ -589,11 +599,16 @@ const MainTabNavigator = () => {
             title: 'Quản lý nạp tiền',
           }}
         />
-    </Stack.Navigator>
+      </Stack.Navigator>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
   iconContainer: {
     position: 'relative',
     width: 24,

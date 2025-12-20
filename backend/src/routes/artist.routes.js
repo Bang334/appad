@@ -36,10 +36,10 @@ router.delete('/:artist_id/songs/:song_id', authenticateToken, isArtistOwner, Ar
 
 // Albums management
 router.get('/:artist_id/albums', authenticateToken, isArtistOwner, ArtistController.getMyAlbums);
-router.post('/:artist_id/albums', authenticateToken, isArtistOwner, upload.fields([
+router.post('/:artist_id/albums', authenticateToken, isArtistOwner, uploadCover.fields([
   { name: 'cover', maxCount: 1 }
 ]), ArtistController.createAlbum);
-router.put('/:artist_id/albums/:album_id', authenticateToken, isArtistOwner, upload.fields([
+router.put('/:artist_id/albums/:album_id', authenticateToken, isArtistOwner, uploadCover.fields([
   { name: 'cover', maxCount: 1 }
 ]), ArtistController.updateAlbum);
 router.delete('/:artist_id/albums/:album_id', authenticateToken, isArtistOwner, ArtistController.deleteAlbum);
