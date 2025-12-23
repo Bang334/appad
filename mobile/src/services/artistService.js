@@ -100,14 +100,17 @@ export const artistService = {
   },
 
   // Upload helper methods
-  uploadSongFile: async (artistId, fileUri) => {
+  uploadSongFile: async (artistId, file) => {
     try {
       const formData = new FormData();
-      const fileName = fileUri.split('/').pop() || 'song.mp3';
+      // Handle both file object or uri string (backward compatibility)
+      const fileUri = file.uri || file;
+      const fileName = file.name || fileUri.split('/').pop() || 'song.mp3';
+      const fileType = file.mimeType || 'audio/mpeg';
       
       formData.append('song', {
         uri: fileUri,
-        type: 'audio/mpeg',
+        type: fileType,
         name: fileName,
       });
 
@@ -129,14 +132,16 @@ export const artistService = {
     }
   },
 
-  uploadCoverFile: async (artistId, fileUri) => {
+  uploadCoverFile: async (artistId, file) => {
     try {
       const formData = new FormData();
-      const fileName = fileUri.split('/').pop() || 'cover.jpg';
+      const fileUri = file.uri || file;
+      const fileName = file.name || fileUri.split('/').pop() || 'cover.jpg';
+      const fileType = file.mimeType || 'image/jpeg';
       
       formData.append('cover', {
         uri: fileUri,
-        type: 'image/jpeg',
+        type: fileType,
         name: fileName,
       });
 
@@ -165,7 +170,8 @@ export const artistService = {
       try {
         if (files.audio) {
           console.log('📤 Uploading audio file separately...');
-          const audioRes = await artistService.uploadSongFile(artistId, files.audio.uri);
+          console.log('📤 Uploading audio file separately...');
+          const audioRes = await artistService.uploadSongFile(artistId, files.audio);
           finalSongData.file_url = audioRes.data.url;
           if (audioRes.data.duration) {
             finalSongData.duration = Math.round(audioRes.data.duration);
@@ -174,7 +180,8 @@ export const artistService = {
         
         if (files.cover) {
           console.log('📤 Uploading cover file separately...');
-          const coverRes = await artistService.uploadCoverFile(artistId, files.cover.uri);
+          console.log('📤 Uploading cover file separately...');
+          const coverRes = await artistService.uploadCoverFile(artistId, files.cover);
           finalSongData.cover_url = coverRes.data.url;
         }
       } catch (error) {
@@ -198,7 +205,8 @@ export const artistService = {
       try {
         if (files.audio) {
           console.log('📤 [updateSong] Uploading new audio file...');
-          const audioRes = await artistService.uploadSongFile(artistId, files.audio.uri);
+          console.log('📤 [updateSong] Uploading new audio file...');
+          const audioRes = await artistService.uploadSongFile(artistId, files.audio);
           finalSongData.file_url = audioRes.data.url;
           if (audioRes.data.duration) {
             finalSongData.duration = Math.round(audioRes.data.duration);
@@ -207,7 +215,8 @@ export const artistService = {
 
         if (files.cover) {
           console.log('📤 [updateSong] Uploading new cover file...');
-          const coverRes = await artistService.uploadCoverFile(artistId, files.cover.uri);
+          console.log('📤 [updateSong] Uploading new cover file...');
+          const coverRes = await artistService.uploadCoverFile(artistId, files.cover);
           finalSongData.cover_url = coverRes.data.url;
         }
       } catch (error) {

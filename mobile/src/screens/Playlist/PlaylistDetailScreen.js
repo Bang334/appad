@@ -11,12 +11,13 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
+import DraggableFlatList, { ScaleDecorator, OpacityDecorator, ShadowDecorator } from 'react-native-draggable-flatlist';
 import { playlistService } from '../../services/playlistService';
 import { songService } from '../../services/songService';
 import { premiumService } from '../../services/premiumService';
 import { usePlayer } from '../../context/PlayerContext';
 import { COLORS, SIZES } from '../../config/theme';
+import { GlobalStyles } from '../../config/styles';
 import MiniPlayer from '../../components/Player/MiniPlayer';
 import BottomSheet from '../../components/Common/BottomSheet';
 import PremiumBadge from '../../components/Common/PremiumBadge';
@@ -281,91 +282,108 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
     
     return (
       <ScaleDecorator>
-        <View style={styles.songItem}>
-          <TouchableOpacity
-            style={styles.dragHandle}
-            onLongPress={drag}
-            disabled={isActive}
-          >
-            <Ionicons 
-              name="reorder-three-outline" 
-              size={24} 
-              color={COLORS.textSecondary} 
-            />
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={styles.songContent}
-            onPress={() => handlePlaySong(item, index, { navigateToFullPlayer: true })}
-            onLongPress={() => handleSongLongPress(item)}
-            activeOpacity={0.85}
-            disabled={isActive}
-            delayLongPress={500}
-          >
-            <LinearGradient
-              colors={gradientColors}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={[styles.songCard, (isCurrentSong || isActive) && styles.songCardActive]}
-            >
-              <Image
-                source={{ uri: item.cover_url || 'https://via.placeholder.com/60' }}
-                style={styles.songImage}
-              />
-              <View style={styles.songInfo}>
-                <View style={styles.songTitleRow}>
-                  <Text style={styles.songTitle} numberOfLines={1}>
-                    {item.title}
-                  </Text>
-                  {item.is_premium === 1 && <PremiumBadge small />}
-                </View>
-                <Text style={styles.songArtist} numberOfLines={1}>
-                  {item.artist_name || 'Unknown Artist'}
-                  {item.album_title ? ` • ${item.album_title}` : ''}
-                </Text>
-                <View style={styles.songMeta}>
-                  <Ionicons name="headset" size={12} color="#94A3B8" />
-                  <Text style={styles.songMetaText}>{formatListenCount(item.listen_count)}</Text>
-                  {item.average_rating != null && (
-                    <>
-                      <Text style={styles.metaSeparator}>•</Text>
-                      <Ionicons name="star" size={12} color={COLORS.warning} />
-                      <Text style={styles.songMetaText}>{Number(item.average_rating).toFixed(1)}</Text>
-                    </>
-                  )}
-                  {item.duration > 0 && (
-                    <>
-                      <Text style={styles.metaSeparator}>•</Text>
-                      <Ionicons name="time-outline" size={12} color="#94A3B8" />
-                      <Text style={styles.songMetaText}>{formatDuration(item.duration)}</Text>
-                    </>
-                  )}
-                </View>
-                {showPrice && (
-                  <View style={styles.priceRow}>
-                    <Ionicons name="cash-outline" size={12} color={COLORS.warning} />
-                    <Text style={styles.songPriceText}>
-                      {Number(item.price).toLocaleString('vi-VN')}đ
-                    </Text>
+        <OpacityDecorator>
+          <ShadowDecorator>
+            <View style={[GlobalStyles.songItemWrapper, { marginBottom: 12 }]}>
+                <LinearGradient
+                  colors={gradientColors}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[
+                      GlobalStyles.songItem, 
+                      isCurrentSong && GlobalStyles.songItemActive,
+                      isActive && { 
+                        borderColor: COLORS.primary, 
+                        borderWidth: 1,
+                        backgroundColor: 'rgba(255,255,255,0.1)'
+                      }
+                  ]}
+                >
+                  <TouchableOpacity
+                    style={GlobalStyles.songContent}
+                    onPress={() => handlePlaySong(item, index, { navigateToFullPlayer: true })}
+                    onLongPress={drag}
+                    activeOpacity={0.85}
+                    disabled={isActive}
+                  >
+                        <View style={GlobalStyles.coverContainer}>
+                            <Image
+                                source={{ uri: item.cover_url || 'https://via.placeholder.com/60' }}
+                                style={GlobalStyles.songImage}
+                            />
+                            {isCurrentSong && isPlaying && (
+                                <View style={GlobalStyles.playingIndicator}>
+                                <Ionicons name="volume-high" size={24} color="#FFF" />
+                                </View>
+                            )}
+                        </View>
+                        <View style={GlobalStyles.songInfo}>
+                            <View style={GlobalStyles.titleRow}>
+                            <Text style={GlobalStyles.songTitle} numberOfLines={1}>
+                                {item.title}
+                            </Text>
+                            {item.is_premium === 1 && <PremiumBadge size="small" style={GlobalStyles.premiumBadge} />}
+                            </View>
+                            <Text style={GlobalStyles.songArtist} numberOfLines={1}>
+                            {item.artist_name || 'Unknown Artist'}
+                            {item.album_title ? ` • ${item.album_title}` : ''}
+                            </Text>
+                            <View style={GlobalStyles.songMeta}>
+                            <Ionicons name="headset" size={12} color="#94A3B8" />
+                            <Text style={GlobalStyles.metaText}>{formatListenCount(item.listen_count)}</Text>
+                            {item.average_rating != null && (
+                                <>
+                                <Ionicons name="star" size={12} color={COLORS.warning} />
+                                <Text style={GlobalStyles.metaText}>{Number(item.average_rating).toFixed(1)}</Text>
+                                </>
+                            )}
+                            {item.duration > 0 && (
+                                <>
+                                <Ionicons name="time-outline" size={12} color="#94A3B8" />
+                                <Text style={GlobalStyles.metaText}>{formatDuration(item.duration)}</Text>
+                                </>
+                            )}
+                            </View>
+                            {showPrice && (
+                            <View style={GlobalStyles.priceRow}>
+                                <Ionicons name="cash-outline" size={12} color={COLORS.warning} />
+                                <Text style={GlobalStyles.priceText}>
+                                {Number(item.price).toLocaleString('vi-VN')}đ
+                                </Text>
+                            </View>
+                            )}
+                        </View>
+                  </TouchableOpacity>
+
+                  <View style={GlobalStyles.cardActions}>
+                      <TouchableOpacity
+                        style={GlobalStyles.playButton}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handlePlaySong(item, index, { navigateToFullPlayer: false });
+                        }}
+                      >
+                        <Ionicons
+                          name={isCurrentSong && isPlaying ? 'pause-circle' : 'play-circle'}
+                          size={36}
+                          color={COLORS.primary}
+                        />
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[GlobalStyles.addButton, { padding: 4, marginRight: 0 }]}
+                        onPress={(e) => {
+                            e.stopPropagation();
+                            handleSongLongPress(item);
+                        }}
+                      >
+                         <Ionicons name="ellipsis-vertical" size={24} color={COLORS.textSecondary} />
+                      </TouchableOpacity>
                   </View>
-                )}
-              </View>
-              <TouchableOpacity
-                style={styles.quickPlayButton}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  handlePlaySong(item, index, { navigateToFullPlayer: false });
-                }}
-              >
-                <Ionicons
-                  name={isCurrentSong && isPlaying ? 'pause-circle' : 'play-circle'}
-                  size={30}
-                  color={COLORS.primary}
-                />
-              </TouchableOpacity>
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
+                </LinearGradient>
+            </View>
+          </ShadowDecorator>
+        </OpacityDecorator>
       </ScaleDecorator>
     );
   };

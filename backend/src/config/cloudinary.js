@@ -15,7 +15,7 @@ const songStorage = new CloudinaryStorage({
     return {
       folder: 'music-app/songs',
       resource_type: 'video', // Use 'video' for audio files
-      allowed_formats: ['mp3', 'wav', 'ogg', 'm4a', 'aac'],
+      allowed_formats: ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'mp4'],
       public_id: `song-${Date.now()}`,
     };
   },

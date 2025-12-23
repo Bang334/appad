@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useRef, useEffect, useCallback } from 'react';
-import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
+import { Audio } from 'expo-av';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { songService } from '../services/songService';
@@ -43,7 +43,6 @@ export const PlayerProvider = ({ children }) => {
   
   // Player ref instead of hook
   const playerRef = useRef(null);
-  const statusSubscriptionRef = useRef(null);
   
   // Refs
   const isRepeatRef = useRef(false);
@@ -59,6 +58,9 @@ export const PlayerProvider = ({ children }) => {
   const playbackRequestIdRef = useRef(0); // Track playback requests to prevent race conditions
   const currentSongRef = useRef(null); // Ref to track current song (won't be lost on state updates)
   const lastDidFinishRef = useRef(false);
+  const isSeekingRef = useRef(false); // Prevent false finish detection during seek
+  const lastSeekedPositionRef = useRef(null); // Track last seeked position to validate updates
+  const lastUpdatedPositionRef = useRef(0); // Track last updated position to avoid unnecessary updates
 
   useEffect(() => {
     playlistRef.current = playlist;
@@ -76,10 +78,10 @@ export const PlayerProvider = ({ children }) => {
   useEffect(() => {
     const configureAudio = async () => {
       try {
-        await setAudioModeAsync({
-          playsInSilentMode: true,
-          shouldPlayInBackground: true,
-          shouldRouteThroughEarpiece: false,
+        await Audio.setAudioModeAsync({
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: true,
+          shouldDuckAndroid: true,
         });
       } catch (error) {
         console.error('Error configuring audio:', error);
@@ -90,10 +92,12 @@ export const PlayerProvider = ({ children }) => {
 
     // Cleanup on unmount
     return () => {
-      if (playerRef.current) {
-        playerRef.current.remove();
-        playerRef.current = null;
-      }
+      console.log('⚠️ [PlayerProvider] UNMOUNT - skip cleanup to keep player alive');
+      // INTENTIONAL: Do not remove player here to avoid random stop when navigating
+      // if (playerRef.current) {
+      //   playerRef.current.remove();
+      //   playerRef.current = null;
+      // }
     };
   }, []);
 
@@ -169,29 +173,29 @@ export const PlayerProvider = ({ children }) => {
     const listenPercentage = songDurationSeconds > 0 ? finalDurationSeconds / songDurationSeconds : 0;
     const isCompleted = listenPercentage >= 0.9;
     
-    if (isRepeatRef.current) {
-      // Repeat current song
-      if (finishedSong && finalDurationSeconds > 0) {
-        songService.playSong(finishedSong.song_id, finalDurationSeconds, isCompleted)
-          .then(result => {
-            console.log('🎵 [AUTO-FINISH] History recorded for repeated song:', result);
-          })
-          .catch(err => {
-            console.error('❌ [AUTO-FINISH] Error recording history for repeated song:', err);
-          });
-      }
-      
-      // Reset and replay
-      if (playerRef.current) {
-        try {
-          playStartTimeRef.current = Date.now();
-          accumulatedDurationRef.current = 0;
-          playerRef.current.seekTo(0);
-          playerRef.current.play();
-        } catch (error) {
-          console.error('Error repeating song:', error);
+      if (isRepeatRef.current) {
+        // Repeat current song
+        if (finishedSong && finalDurationSeconds > 0) {
+          songService.playSong(finishedSong.song_id, finalDurationSeconds, isCompleted)
+            .then(result => {
+              console.log('🎵 [AUTO-FINISH] History recorded for repeated song:', result);
+            })
+            .catch(err => {
+              console.error('❌ [AUTO-FINISH] Error recording history for repeated song:', err);
+            });
         }
-      }
+        
+        // Reset and replay
+        if (playerRef.current) {
+          try {
+            playStartTimeRef.current = Date.now();
+            accumulatedDurationRef.current = 0;
+            await playerRef.current.setPositionAsync(0);
+            await playerRef.current.playAsync();
+          } catch (error) {
+            console.error('Error repeating song:', error);
+          }
+        }
     } else {
       // Record history for finished song BEFORE calling playNext
       if (finishedSong && finalDurationSeconds > 0) {
@@ -210,42 +214,100 @@ export const PlayerProvider = ({ children }) => {
     }
   }, [duration]);
 
-  const setupPlayerStatusListener = useCallback((player) => {
-    // Remove existing subscription
-    if (statusSubscriptionRef.current) {
-      statusSubscriptionRef.current.remove();
-      statusSubscriptionRef.current = null;
-    }
-
-    // Listen to player status changes
-    const subscription = player.addListener('playbackStatusUpdate', (status) => {
-      if (status) {
-        // Update position and duration (expo-audio uses seconds)
-        if (status.currentTime !== undefined) {
-          setPosition(Math.floor(status.currentTime * 1000)); // Convert to ms
+  const setupPlayerStatusListener = useCallback((sound) => {
+    // Set playback status update callback
+    sound.setOnPlaybackStatusUpdate((status) => {
+      if (!status || !status.isLoaded) {
+        return;
+      }
+      
+      // Skip processing if currently seeking to avoid false finish detection
+      if (isSeekingRef.current) {
+        return;
+      }
+      
+      // Update position (expo-av uses milliseconds)
+      if (status.positionMillis !== undefined) {
+        const newPosition = status.positionMillis;
+        
+        if (isSeekingRef.current) {
+          return;
         }
-        if (status.duration !== undefined && status.duration > 0) {
-          setDuration(Math.floor(status.duration * 1000)); // Convert to ms
+        
+        // Only update if position changed significantly (more than 100ms) to avoid unnecessary updates
+        const positionDiff = Math.abs(newPosition - lastUpdatedPositionRef.current);
+        if (positionDiff < 100 && lastUpdatedPositionRef.current > 0) {
+          return; // Skip if change is too small
         }
         
-        // Update playing state
-        setIsPlaying(status.playing || false);
+        // After seeking, validate position updates to prevent stale data
+        if (lastSeekedPositionRef.current !== null) {
+          const seekedPos = lastSeekedPositionRef.current;
+          const diff = Math.abs(newPosition - seekedPos);
+          
+          // If position is way behind seeked position (more than 5 seconds), it's stale data
+          // Keep position at seeked value and reject
+          if (newPosition < seekedPos - 5000) {
+            setPosition(seekedPos); // Force position to stay at seeked value
+            lastUpdatedPositionRef.current = seekedPos;
+            return;
+          }
+          
+          // If position is close enough (within 5 seconds), accept it and clear tracking
+          if (diff <= 5000) {
+            setPosition(newPosition);
+            lastUpdatedPositionRef.current = newPosition;
+            lastSeekedPositionRef.current = null; // Clear tracking once we get a valid update
+            return;
+          }
+          
+          // If position is ahead of seeked position, it might be valid (player continued playing)
+          // But if it's way ahead, keep at seeked position
+          if (newPosition > seekedPos + 5000) {
+            setPosition(seekedPos);
+            lastUpdatedPositionRef.current = seekedPos;
+            return;
+          }
+        }
         
-        // Handle playback finished - check if current time is at the end
-        const isAtEnd = status.duration > 0 && 
-                       status.currentTime >= status.duration - 0.5 && 
-                       !status.playing;
-        
+        // Normal position update when not seeking
+        setPosition(newPosition);
+        lastUpdatedPositionRef.current = newPosition;
+      }
+      
+      // Get duration from song model (stored in seconds in database)
+      const song = currentSongRef.current;
+      if (song?.duration) {
+        // Duration from database is in seconds, convert to milliseconds
+        const songDurationMs = song.duration * 1000;
+        setDuration(songDurationMs);
+      }
+      
+      // Update playing state
+      setIsPlaying(status.isPlaying || false);
+      
+      // Get song duration for finish detection (duration is in seconds in database)
+      const songDurationRaw = song?.duration || 0;
+      const songDurationMs = songDurationRaw * 1000; // Convert seconds to ms
+      const songDurationSeconds = songDurationMs / 1000;
+      
+      // Handle playback finished - use didJustFinish or check if at end
+      if (status.didJustFinish && !lastDidFinishRef.current) {
+        lastDidFinishRef.current = true;
+        handlePlaybackFinished();
+      } else if (status.isPlaying) {
+        lastDidFinishRef.current = false;
+      } else {
+        // Also check if at end using position and duration
+        const isAtEnd = songDurationSeconds > 0 && 
+                       status.positionMillis >= songDurationMs - 500 && 
+                       !status.isPlaying;
         if (isAtEnd && !lastDidFinishRef.current) {
           lastDidFinishRef.current = true;
           handlePlaybackFinished();
-        } else if (status.playing) {
-          lastDidFinishRef.current = false;
         }
       }
     });
-
-    statusSubscriptionRef.current = subscription;
   }, [handlePlaybackFinished]);
 
   const checkSongAccess = async (song) => {
@@ -275,7 +337,10 @@ export const PlayerProvider = ({ children }) => {
     if (!playerRef.current) return;
 
     try {
-      if (playerRef.current.playing) {
+      const status = await playerRef.current.getStatusAsync();
+      if (!status.isLoaded) return;
+      
+      if (status.isPlaying) {
         // Pausing - accumulate current play duration
         if (playStartTimeRef.current) {
           const playDuration = Date.now() - playStartTimeRef.current;
@@ -283,13 +348,13 @@ export const PlayerProvider = ({ children }) => {
 
           playStartTimeRef.current = null;
         }
-        playerRef.current.pause();
+        await playerRef.current.pauseAsync();
         setIsPlaying(false);
       } else {
         // Resuming - start new play session
         playStartTimeRef.current = Date.now();
 
-        playerRef.current.play();
+        await playerRef.current.playAsync();
         setIsPlaying(true);
       }
     } catch (error) {
@@ -312,8 +377,11 @@ export const PlayerProvider = ({ children }) => {
       // Removed setCurrentSong(null) to preserve state for history recording in playSongInternal
       
       if (playerRef.current) {
-        playerRef.current.pause();
-        // playerRef.current.seekTo(0); 
+        try {
+          await playerRef.current.pauseAsync();
+        } catch (e) {
+          console.error('Error pausing in stopCurrentSong:', e);
+        }
       }
     } catch (error) {
       console.error('Error stopping current song:', error);
@@ -393,18 +461,18 @@ export const PlayerProvider = ({ children }) => {
       playStartTimeRef.current = null;
       accumulatedDurationRef.current = 0;
       lastDidFinishRef.current = false;
+      lastUpdatedPositionRef.current = 0;
 
       // 4. Process old song cleanup and recording in BACKGROUND
       (async () => {
         try {
           // Release old player
           if (oldPlayer) {
-            if (statusSubscriptionRef.current) {
-              statusSubscriptionRef.current.remove();
-              statusSubscriptionRef.current = null;
+            try {
+              await oldPlayer.unloadAsync();
+            } catch (e) {
+              console.error('Error unloading old player:', e);
             }
-            if (typeof oldPlayer.pause === 'function') oldPlayer.pause();
-            oldPlayer.remove();
           }
           
           // Record history if we had a song and it's different
@@ -493,6 +561,12 @@ export const PlayerProvider = ({ children }) => {
       setCurrentSong(song);
       setIsPlaying(false); // Set to false first, will be set to true after sound loads
       
+      // Set duration from song model (stored in seconds in database)
+      if (song.duration) {
+        const songDurationMs = song.duration * 1000; // Convert seconds to milliseconds
+        setDuration(songDurationMs);
+      }
+      
       // Create history record immediately (with 0 duration)
       // This ensures the song appears in history even if user listens for a short time
       songService.playSong(song.song_id, 0, false).catch(err => console.error('Error creating history record:', err));
@@ -503,22 +577,44 @@ export const PlayerProvider = ({ children }) => {
       }
 
       // Create new player with the song source
-      const newPlayer = createAudioPlayer({ uri: song.file_url }, {
-        updateInterval: 1000, // Update every second (1000ms)
-      });
+      console.log('🎵 [playSongInternal] Creating new player for:', song.title);
       
-      playerRef.current = newPlayer;
+      // 6. Load Sound (expo-av)
+      console.log('🎵 [expo-av] Loading:', song.title);
       
-      // Setup status listener
-      setupPlayerStatusListener(newPlayer);
-      
-      // Wait a bit for the player to initialize, then play
-      setTimeout(() => {
-        if (requestId === playbackRequestIdRef.current && playerRef.current) {
-          playerRef.current.play();
-          setIsPlaying(true);
+      let uri = song.file_url;
+      // AUTO-FIX: Convert AAC to MP3 via Cloudinary for better seeking on Android
+      // Android MediaPlayer struggles with seeking streamed AAC files.
+      // Cloudinary can transcode on-the-fly by simply changing the extension.
+      if (typeof uri === 'string' && uri.includes('cloudinary.com') && uri.toLowerCase().endsWith('.aac')) {
+         console.log('🎵 [fix-aac] Detected AAC on Cloudinary. Requesting MP3 version for seek stability.');
+         uri = uri.replace(/\.aac$/i, '.mp3');
+      }
+
+      // Create sound with progress update interval
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri: uri },
+        { 
+          shouldPlay: false,
+          progressUpdateIntervalMillis: 1000, // Update every second
         }
-      }, 100);
+      );
+      
+      playerRef.current = newSound;
+      console.log('🎵 [playSongInternal] playerRef.current SET:', !!playerRef.current);
+      
+      // Setup status listener AFTER creating the sound
+      setupPlayerStatusListener(newSound);
+      
+      // Check if a new request has started while we were loading
+      if (requestId !== playbackRequestIdRef.current) {
+        await newSound.unloadAsync();
+        return;
+      }
+      
+      // Play the sound
+      await newSound.playAsync();
+      setIsPlaying(true);
 
       if (songList) {
         // Filter out premium songs user doesn't have access to (async, but we'll do it in background)
@@ -649,26 +745,104 @@ export const PlayerProvider = ({ children }) => {
   };
 
   const seekTo = async (value) => {
-    if (!playerRef.current) return;
+    console.log('🎯 [seekTo] ===== START SEEK =====');
+    console.log('🎯 [seekTo] Input value:', value, 'ms');
+    console.log('🎯 [seekTo] Current position state:', position, 'ms');
+    console.log('🎯 [seekTo] Current isPlaying:', isPlaying);
+    
+    if (!playerRef.current) {
+      console.log('❌ [seekTo] No player ref, returning');
+      return;
+    }
 
     try {
-      // expo-audio seekTo uses seconds
-      playerRef.current.seekTo(value / 1000);
-      setPosition(value);
+      // Set seeking flag to prevent position updates and false finish detection
+      isSeekingRef.current = true;
+      console.log('🎯 [seekTo] Seeking flag set to true');
+      
+      // Get duration from database (currentSong.duration)
+      const songDuration = currentSongRef.current?.duration || 0;
+      console.log('🎯 [seekTo] Song duration from DB:', songDuration);
+      
+      // Convert to milliseconds if stored in seconds (duration < 10000 means it's in seconds)
+      const durationMs = songDuration > 10000 ? songDuration : songDuration * 1000;
+      const durationSeconds = durationMs / 1000;
+      console.log('🎯 [seekTo] Duration in ms:', durationMs, 'Duration in seconds:', durationSeconds);
+      
+      // expo-av setPositionAsync uses MILLISECONDS, slider also uses MILLISECONDS
+      const valueMs = Math.floor(value);
+      console.log('🎯 [seekTo] Value in ms:', valueMs);
+      
+      // Validate seek position
+      if (durationSeconds <= 0) {
+        console.log('❌ [seekTo] No duration in database, cannot seek');
+        isSeekingRef.current = false;
+        return;
+      }
+      
+      // Clamp seek position to valid range (in milliseconds)
+      const clampedValueMs = Math.max(0, Math.min(valueMs, durationMs - 500));
+      console.log('🎯 [seekTo] Clamped value (ms):', clampedValueMs);
+      
+      // Store seeked position for validation
+      lastSeekedPositionRef.current = clampedValueMs;
+      
+      // Get current playing state
+      const status = await playerRef.current.getStatusAsync();
+      const wasPlaying = status.isLoaded && status.isPlaying;
+      console.log('🎯 [seekTo] Was playing before seek:', wasPlaying);
+      
+      // Pause before seeking to prevent stale position updates
+      if (wasPlaying) {
+        console.log('🎯 [seekTo] Pausing player...');
+        await playerRef.current.pauseAsync();
+        setIsPlaying(false);
+        console.log('🎯 [seekTo] Player paused');
+      }
+      
+      // Seek to position (expo-av uses milliseconds)
+      console.log('🎯 [seekTo] Calling playerRef.current.setPositionAsync(', clampedValueMs, 'ms)');
+      await playerRef.current.setPositionAsync(clampedValueMs);
+      console.log('🎯 [seekTo] Seek command completed');
+      
+      // Update position immediately
+      console.log('🎯 [seekTo] Setting position state to:', clampedValueMs, 'ms');
+      setPosition(clampedValueMs);
+      
+      // Resume playback if it was playing before
+      if (wasPlaying) {
+        console.log('🎯 [seekTo] Resuming playback...');
+        await playerRef.current.playAsync();
+        setIsPlaying(true);
+        console.log('🎯 [seekTo] Playback resumed');
+      }
+      
+      // Reset seeking flag after a short delay to allow player to stabilize
+      // Keep lastSeekedPositionRef for validation - it will be cleared when we get a valid update
+      setTimeout(() => {
+        console.log('🎯 [seekTo] Resetting seeking flag after 300ms');
+        isSeekingRef.current = false;
+        console.log('🎯 [seekTo] ===== END SEEK =====');
+      }, 300);
     } catch (error) {
-      console.error('Error seeking:', error);
+      console.error('❌ [seekTo] Error seeking:', error);
+      console.error('❌ [seekTo] Error stack:', error.stack);
+      isSeekingRef.current = false;
     }
   };
 
   // stopPlayer Function - FIXED with REF usage
   const stopPlayer = async () => {
     try {
-      // 1. Pause immediately if playing
+      // 1. Pause and unload player immediately
       const oldPlayer = playerRef.current;
       if (oldPlayer) {
         try {
-          if (typeof oldPlayer.pause === 'function') oldPlayer.pause();
-        } catch (e) {}
+          await oldPlayer.pauseAsync();
+          await oldPlayer.unloadAsync();
+        } catch (e) {
+          console.error('Error stopping player:', e);
+        }
       }
 
       // 2. Calculate final duration
@@ -710,16 +884,10 @@ export const PlayerProvider = ({ children }) => {
       playStartTimeRef.current = null;
       accumulatedDurationRef.current = 0;
       lastRecordedSongRef.current = null;
+      console.log('⚠️ [stopPlayer] Setting playerRef.current = null');
       playerRef.current = null;
       
-      // 5. Cleanup player resources
-      if (oldPlayer) {
-        if (statusSubscriptionRef.current) {
-          statusSubscriptionRef.current.remove();
-          statusSubscriptionRef.current = null;
-        }
-        oldPlayer.remove();
-      }
+      // Player already unloaded above, no additional cleanup needed
       
       // Remove flags
       AsyncStorage.setItem('isPlayingAlbum', '0').catch(() => {});
@@ -836,6 +1004,25 @@ export const PlayerProvider = ({ children }) => {
     duration,
   }), [position, duration]);
 
+  // Update playlist with new order (e.g. from drag and drop)
+  const updatePlaylist = (newPlaylist) => {
+    if (!newPlaylist || !Array.isArray(newPlaylist)) return;
+    
+    // Update playlist state and refs
+    setPlaylist(newPlaylist);
+    originalPlaylistRef.current = [...newPlaylist];
+    playlistRef.current = newPlaylist;
+    
+    // Update current index to match new position of current song
+    if (currentSongRef.current) {
+      const newIndex = newPlaylist.findIndex(s => s.song_id === currentSongRef.current.song_id);
+      if (newIndex >= 0) {
+        setCurrentIndex(newIndex);
+        currentIndexRef.current = newIndex;
+      }
+    }
+  };
+
   const playerActions = React.useMemo(() => ({
     playSong,
     togglePlayPause,
@@ -847,6 +1034,7 @@ export const PlayerProvider = ({ children }) => {
     stopPlayer,
     refreshCurrentSong,
     moveSongInPlaylist,
+    updatePlaylist,
     setShowPremiumModal,
     setShowPurchaseModal,
   }), []); // Actions should be stable

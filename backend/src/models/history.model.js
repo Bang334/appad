@@ -367,6 +367,36 @@ class HistoryModel {
     
     return this.getTotalStreamsByPeriod(startDate, endDate);
   }
+
+  // Get frequent songs (Nhạc tủ) - most listened by user in last 30 days
+  static async getFrequentSongs(userId, limit = 20) {
+    limit = parseInt(limit) || 20;
+    
+    // Get date 30 days ago
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const dateStr = thirtyDaysAgo.toISOString().split('T')[0];
+
+    // Use db.query instead of db.execute for better compatibility with LIMIT parameters
+    const [rows] = await db.query(
+      `SELECT s.*, 
+              a.name as artist_name, 
+              al.title as album_title,
+              SUM(lh.count) as my_listen_count
+       FROM listening_history lh
+       JOIN songs s ON lh.song_id = s.song_id
+       LEFT JOIN artists a ON s.artist_id = a.artist_id
+       LEFT JOIN albums al ON s.album_id = al.album_id
+       WHERE lh.user_id = ? 
+         AND lh.day >= ?
+         AND s.status = 1
+       GROUP BY lh.song_id
+       ORDER BY my_listen_count DESC
+       LIMIT ?`,
+      [userId, dateStr, limit]
+    );
+    return rows;
+  }
 }
 
 module.exports = HistoryModel;

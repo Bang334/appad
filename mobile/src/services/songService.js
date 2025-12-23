@@ -25,6 +25,18 @@ export const songService = {
     return response.data;
   },
 
+  // Get frequent songs (Nhạc tủ)
+  getFrequentSongs: async (limit = 20) => {
+    const response = await api.get(`/songs/frequent?limit=${limit}`);
+    return response.data;
+  },
+
+  // Get recommended songs (Gợi ý)
+  getRecommendedSongs: async (limit = 20) => {
+    const response = await api.get(`/songs/recommendations?limit=${limit}`);
+    return response.data;
+  },
+
   // Get songs by genre
   getSongsByGenre: async (genreId) => {
     const response = await api.get(`/songs/genre/${genreId}`);

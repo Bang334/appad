@@ -360,6 +360,215 @@ class SongModel {
     );
     return rows;
   }
+
+  // Get recommendations for user with Weighted Scoring and Detailed Logging
+  static async getRecommendations(userId, limit = 20) {
+    limit = parseInt(limit) || 20;
+
+    console.log(`\n🔍 [RECOMMENDATION] Starting calculation for User ${userId}...`);
+
+    // 1. Calculate Artist Scores with Breakdown
+    const [artistAnalysis] = await db.query(
+      `SELECT 
+        artist_id, 
+        SUM(score) as total_score,
+        SUM(CASE WHEN source = 'membership' THEN score ELSE 0 END) as membership_score,
+        SUM(CASE WHEN source = 'follow' THEN score ELSE 0 END) as follow_score,
+        SUM(CASE WHEN source = 'purchase' THEN score ELSE 0 END) as purchase_score,
+        SUM(CASE WHEN source = 'favorite' THEN score ELSE 0 END) as favorite_score,
+        SUM(CASE WHEN source = 'listen' THEN score ELSE 0 END) as listen_score
+      FROM (
+        -- Membership
+        SELECT artist_id, 50 as score, 'membership' as source FROM artist_memberships WHERE user_id = ? AND status = 'active'
+        UNION ALL
+        -- Follows
+        SELECT artist_id, 20 as score, 'follow' as source FROM follows WHERE user_id = ?
+        UNION ALL
+        -- Purchases
+        SELECT s.artist_id, COUNT(*) * 10 as score, 'purchase' as source
+        FROM purchased_songs ps 
+        JOIN songs s ON ps.song_id = s.song_id 
+        WHERE ps.user_id = ? AND s.artist_id IS NOT NULL 
+        GROUP BY s.artist_id
+        UNION ALL
+        -- Favorites
+        SELECT s.artist_id, COUNT(*) * 5 as score, 'favorite' as source
+        FROM favorites f 
+        JOIN songs s ON f.song_id = s.song_id 
+        WHERE f.user_id = ? AND s.artist_id IS NOT NULL 
+        GROUP BY s.artist_id
+        UNION ALL
+        -- Listening History
+        SELECT artist_id, SUM(count) * 1 as score, 'listen' as source
+        FROM listening_history 
+        WHERE user_id = ? AND artist_id IS NOT NULL 
+        GROUP BY artist_id
+      ) as scores 
+      GROUP BY artist_id 
+      ORDER BY total_score DESC 
+      LIMIT 30`,
+      [userId, userId, userId, userId, userId]
+    );
+
+    // 2. Calculate Genre Scores with Breakdown
+    const [genreAnalysis] = await db.query(
+      `SELECT 
+        genre_id, 
+        SUM(score) as total_score,
+        SUM(CASE WHEN source = 'purchase' THEN score ELSE 0 END) as purchase_score,
+        SUM(CASE WHEN source = 'favorite' THEN score ELSE 0 END) as favorite_score,
+        SUM(CASE WHEN source = 'listen' THEN score ELSE 0 END) as listen_score
+      FROM (
+        -- Purchases
+        SELECT s.genre_id, COUNT(*) * 5 as score, 'purchase' as source
+        FROM purchased_songs ps 
+        JOIN songs s ON ps.song_id = s.song_id 
+        WHERE ps.user_id = ? AND s.genre_id IS NOT NULL 
+        GROUP BY s.genre_id
+        UNION ALL
+        -- Favorites
+        SELECT s.genre_id, COUNT(*) * 3 as score, 'favorite' as source
+        FROM favorites f 
+        JOIN songs s ON f.song_id = s.song_id 
+        WHERE f.user_id = ? AND s.genre_id IS NOT NULL 
+        GROUP BY s.genre_id
+        UNION ALL
+        -- Listening History
+        SELECT s.genre_id, SUM(lh.count) * 1 as score, 'listen' as source
+        FROM listening_history lh
+        JOIN songs s ON lh.song_id = s.song_id
+        WHERE lh.user_id = ? AND s.genre_id IS NOT NULL 
+        GROUP BY s.genre_id
+      ) as scores 
+      GROUP BY genre_id 
+      ORDER BY total_score DESC 
+      LIMIT 10`,
+      [userId, userId, userId]
+    );
+
+    // Create Maps for O(1) Lookup and Detailed Logging
+    const artistScoreMap = new Map();
+    const artistDetailsMap = new Map();
+    const topArtistIds = [];
+    
+    artistAnalysis.forEach(row => {
+      artistScoreMap.set(row.artist_id, parseFloat(row.total_score));
+      artistDetailsMap.set(row.artist_id, row);
+      topArtistIds.push(row.artist_id);
+    });
+
+    const genreScoreMap = new Map();
+    const genreDetailsMap = new Map();
+    const topGenreIds = [];
+    
+    genreAnalysis.forEach(row => {
+      genreScoreMap.set(row.genre_id, parseFloat(row.total_score));
+      genreDetailsMap.set(row.genre_id, row);
+      topGenreIds.push(row.genre_id);
+    });
+
+    console.log(`📊 Found ${topArtistIds.length} interested artists and ${topGenreIds.length} interested genres.`);
+
+    // If no interests found, return trending
+    if (topArtistIds.length === 0 && topGenreIds.length === 0) {
+      console.log('⚠️ No interests found. Returning Trending songs.');
+      return this.getTrending(limit);
+    }
+
+    // 3. Query Candidates
+    let conditions = [];
+    if (topArtistIds.length > 0) conditions.push(`s.artist_id IN (${topArtistIds.join(',')})`);
+    if (topGenreIds.length > 0) conditions.push(`s.genre_id IN (${topGenreIds.join(',')})`);
+    
+    if (conditions.length === 0) return this.getTrending(limit);
+
+    const candidateLimit = 100;
+    const [candidates] = await db.query(
+      `SELECT s.*, 
+              a.name as artist_name, 
+              al.title as album_title, 
+              g.name as genre_name
+       FROM songs s
+       LEFT JOIN artists a ON s.artist_id = a.artist_id
+       LEFT JOIN albums al ON s.album_id = al.album_id
+       LEFT JOIN genres g ON s.genre_id = g.genre_id
+       WHERE s.status = 1 
+         AND (${conditions.join(' OR ')})
+         AND NOT EXISTS (
+           SELECT 1 FROM listening_history lh 
+           WHERE lh.song_id = s.song_id AND lh.user_id = ?
+         )
+       LIMIT ?`,
+      [userId, candidateLimit]
+    );
+
+    console.log(`🧐 Scoring ${candidates.length} candidate songs...`);
+
+    // 4. Score & Rank Candidates
+    const scoredCandidates = candidates.map(song => {
+      let breakdownLog = [];
+      let score = 0;
+      
+      // Personalization Score: Artist
+      if (song.artist_id) {
+        const aScore = artistScoreMap.get(song.artist_id) || 0;
+        if (aScore > 0) {
+          score += aScore;
+          const details = artistDetailsMap.get(song.artist_id);
+          breakdownLog.push(`Artist (${song.artist_name}): +${aScore} [Mem:${details.membership_score}, Fol:${details.follow_score}, Buy:${details.purchase_score}, Fav:${details.favorite_score}, Lis:${details.listen_score}]`);
+        }
+      }
+
+      // Personalization Score: Genre
+      if (song.genre_id) {
+        const gScore = genreScoreMap.get(song.genre_id) || 0;
+        if (gScore > 0) {
+          score += gScore;
+          const details = genreDetailsMap.get(song.genre_id);
+          breakdownLog.push(`Genre (${song.genre_name}): +${gScore} [Buy:${details.purchase_score}, Fav:${details.favorite_score}, Lis:${details.listen_score}]`);
+        }
+      }
+      
+      // Popularity Boost
+      if (song.listen_count > 0) {
+        const popScore = Math.log10(song.listen_count) * 2;
+        score += popScore;
+        breakdownLog.push(`Popularity: +${popScore.toFixed(2)}`);
+      }
+      
+      // Freshness Boost
+      if (song.release_date) {
+        const daysSinceRelease = (new Date() - new Date(song.release_date)) / (1000 * 60 * 60 * 24);
+        if (daysSinceRelease < 30) {
+          score += 10;
+          breakdownLog.push(`Freshness (<30d): +10`);
+        }
+      }
+
+      // Detailed Log for top candidates
+      // console.log(`🎵 Song: "${song.title}" - Total: ${score.toFixed(2)} | ${breakdownLog.join(', ')}`);
+
+      return { ...song, final_score: score, ranking_log: breakdownLog.join(' | ') };
+    });
+
+    // Sort by final_score DESC
+    scoredCandidates.sort((a, b) => b.final_score - a.final_score);
+
+    // Log the top 5 for debugging clarity
+    console.log(`🏆 TOP 5 RECOMMENDATIONS for User ${userId}:`);
+    scoredCandidates.slice(0, 5).forEach((s, i) => {
+      console.log(`  #${i+1} [${s.final_score.toFixed(1)}] ${s.title} (${s.artist_name}) -> ${s.ranking_log}`);
+    });
+
+    if (scoredCandidates.length < limit) {
+      const trending = await this.getTrending(limit - scoredCandidates.length);
+      const existingIds = new Set(scoredCandidates.map(s => s.song_id));
+      const newTrending = trending.filter(t => !existingIds.has(t.song_id));
+      return [...scoredCandidates, ...newTrending];
+    }
+
+    return scoredCandidates.slice(0, limit);
+  }
 }
 
 

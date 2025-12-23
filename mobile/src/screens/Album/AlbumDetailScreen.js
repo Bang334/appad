@@ -10,11 +10,13 @@ import {
   Modal,
   Alert,
   TextInput,
+  InteractionManager,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { COLORS, SIZES } from '../../config/theme';
+import { COLORS, SIZES, SHADOWS } from '../../config/theme';
+import { GlobalStyles } from '../../config/styles';
 import { songService } from '../../services/songService';
 import { albumService } from '../../services/albumService';
 import { premiumService } from '../../services/premiumService';
@@ -24,19 +26,20 @@ import AddToPlaylistModal from '../../components/Playlist/AddToPlaylistModal';
 import AlbumPurchaseModal from '../../components/Common/AlbumPurchaseModal';
 import PremiumBadge from '../../components/Common/PremiumBadge';
 import AccessBadge from '../../components/Common/AccessBadge';
+import DraggableFlatList, { ScaleDecorator, OpacityDecorator, ShadowDecorator } from 'react-native-draggable-flatlist';
 
+import { useIsFocused } from '@react-navigation/native';
 import { API_BASE_URL } from '../../config/api';
 
 const AlbumDetailScreen = ({ route, navigation }) => {
   const { albumId } = route.params;
+  const isFocused = useIsFocused();
   const { playSong, currentSong, isPlaying, togglePlayPause, playlist, currentIndex, moveSongInPlaylist } = usePlayer();
   
   const [album, setAlbum] = useState(null);
   const [songs, setSongs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showMenu, setShowMenu] = useState(false);
   const [selectedSong, setSelectedSong] = useState(null);
-  const [selectedIndex, setSelectedIndex] = useState(-1);
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
   
   // Premium states
@@ -115,9 +118,12 @@ const AlbumDetailScreen = ({ route, navigation }) => {
     if (currentSong?.song_id === song.song_id) {
       togglePlayPause();
     } else {
-      // Play new song and navigate to FullPlayer
-      playSong(song, songs, index);
+      // Navigate first
       navigation.navigate('FullPlayer');
+      // Play after interactions
+      InteractionManager.runAfterInteractions(() => {
+        playSong(song, songs, index);
+      });
     }
   };
 
@@ -139,10 +145,12 @@ const AlbumDetailScreen = ({ route, navigation }) => {
 
     // Play song if different from current
     if (currentSong?.song_id !== song.song_id) {
-      await playSong(song, songs, index);
-      // Save flag to localStorage that we're playing from album
-      await AsyncStorage.setItem('isPlayingAlbum', '1');
-      await AsyncStorage.setItem('currentAlbumId', albumId.toString());
+      InteractionManager.runAfterInteractions(async () => {
+        await playSong(song, songs, index);
+        // Save flag to localStorage that we're playing from album
+        await AsyncStorage.setItem('isPlayingAlbum', '1');
+        await AsyncStorage.setItem('currentAlbumId', albumId.toString());
+      });
     }
   };
 
@@ -166,31 +174,18 @@ const AlbumDetailScreen = ({ route, navigation }) => {
       }
 
       navigation.navigate('FullPlayer');
-      await playSong(songs[0], songs, 0);
-      // Save flag to localStorage that we're playing from album
-      await AsyncStorage.setItem('isPlayingAlbum', '1');
-      await AsyncStorage.setItem('currentAlbumId', albumId.toString());
+      InteractionManager.runAfterInteractions(async () => {
+        await playSong(songs[0], songs, 0);
+        // Save flag to localStorage that we're playing from album
+        await AsyncStorage.setItem('isPlayingAlbum', '1');
+        await AsyncStorage.setItem('currentAlbumId', albumId.toString());
+      });
     }
   };
 
-  const openMenu = (song, index) => {
-    setSelectedSong(song);
-    setSelectedIndex(index);
-    setShowMenu(true);
-  };
-
-  const closeMenu = () => {
-    setShowMenu(false);
-    setSelectedSong(null);
-    setSelectedIndex(-1);
-  };
 
   // Đã loại bỏ các chức năng chuyển bài hát lên đầu / chuyển đến vị trí trong playlist.
 
-  const handleAddToPlaylist = () => {
-    setShowPlaylistModal(true);
-    closeMenu();
-  };
 
   const formatDuration = (seconds) => {
     const mins = Math.floor(seconds / 60);
@@ -219,29 +214,142 @@ const AlbumDetailScreen = ({ route, navigation }) => {
     return count.toString();
   };
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Đang tải...</Text>
-      </View>
-    );
-  }
+  const handleUpdateSongs = (newData) => {
+    setSongs(newData);
+    // If the currently playing song is from this album, update the player's playlist
+    // Note: this depends on how usePlayer handles playlist updates
+  };
 
-  if (!album) {
-    return (
-      <View style={styles.emptyContainer}>
-        <Text style={styles.emptyText}>Không tìm thấy album</Text>
-      </View>
-    );
-  }
+  const renderSongItem = ({ item, drag, isActive, getIndex }) => {
+    const song = item;
+    const index = getIndex();
+    const isCurrentSong = currentSong?.song_id === song.song_id;
+    const isSongPurchased = purchasedSongIds.has(song.song_id);
+    const gradientColors = isCurrentSong ? ['#2B124C', '#08040F'] : ['#161616', '#050505'];
+    const showPrice = song.is_premium === 1 && !hasSongAccess(song) && Number(song.price) > 0;
 
-  return (
-    <View style={styles.container}>
-      <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-      >
+    return (
+      <ScaleDecorator>
+        <OpacityDecorator>
+          <ShadowDecorator>
+            <View style={[GlobalStyles.songItemWrapper, { paddingHorizontal: SIZES.padding }]}>
+              <LinearGradient
+                colors={gradientColors}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={[
+                    GlobalStyles.songItem, 
+                    isCurrentSong && GlobalStyles.songItemActive,
+                    isActive && { 
+                        borderColor: COLORS.primary, 
+                        borderWidth: 1,
+                        backgroundColor: 'rgba(255,255,255,0.1)'
+                    }
+                ]}
+              >
+                <TouchableOpacity
+                  style={GlobalStyles.songContent}
+                  onPress={() => handleSongPress(song, index)}
+                  onLongPress={drag}
+                  disabled={isActive}
+                  activeOpacity={0.8}
+                >
+                  <View style={GlobalStyles.coverContainer}>
+                    <Image
+                      source={{ uri: song.cover_url || 'https://via.placeholder.com/60' }}
+                      style={GlobalStyles.songImage}
+                    />
+                    {isCurrentSong && isPlaying && (
+                      <View style={GlobalStyles.playingIndicator}>
+                        <Ionicons name="volume-high" size={24} color="#FFF" />
+                      </View>
+                    )}
+                    {!isCurrentSong && (
+                      <View style={styles.songNumberOverlay}>
+                        <Text style={styles.songNumberText}>{index + 1}</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <View style={GlobalStyles.songInfo}>
+                    <View style={GlobalStyles.titleRow}>
+                      <Text style={GlobalStyles.songTitle} numberOfLines={1}>
+                        {song.title}
+                      </Text>
+                      <View style={{flexDirection: 'row', alignItems: 'center', gap: 4, position: 'relative', top: -10}}>
+                        {song.is_premium === 1 && <PremiumBadge small />}
+                        {song.is_premium === 1 && (isPurchased || isSongPurchased) && (
+                          <AccessBadge accessType="purchased" size={16} />
+                        )}
+                      </View>
+                    </View>
+
+                    <Text style={GlobalStyles.songArtist} numberOfLines={1}>
+                      {album.artist_name || song.artist_name}
+                    </Text>
+
+                    <View style={[GlobalStyles.songMeta, { minWidth: 200 }]}>
+                      <Ionicons name="headset" size={12} color="#94A3B8" />
+                      <Text style={GlobalStyles.metaText}>{formatListenCount(song.listen_count)}</Text>
+                      {song.average_rating != null && (
+                        <>
+                          <Ionicons name="star" size={12} color={COLORS.warning} />
+                          <Text style={GlobalStyles.metaText}>
+                            {Number(song.average_rating).toFixed(1)}
+                          </Text>
+                        </>
+                      )}
+                      {song.duration > 0 && (
+                        <>
+                          <Ionicons name="time-outline" size={12} color="#94A3B8" />
+                          <Text style={GlobalStyles.metaText}>{formatDuration(song.duration)}</Text>
+                        </>
+                      )}
+                    </View>
+
+                    {showPrice && (
+                      <View style={GlobalStyles.priceRow}>
+                        <Ionicons name="cash-outline" size={12} color={COLORS.warning} />
+                        <Text style={GlobalStyles.priceText}>
+                          {parseFloat(song.price).toLocaleString('vi-VN')}đ
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </TouchableOpacity>
+
+                <View style={GlobalStyles.cardActions}>
+                  <TouchableOpacity
+                    style={GlobalStyles.playButton}
+                    onPress={() => handlePlaySong(song, index)}
+                  >
+                    <Ionicons
+                      name={isCurrentSong && isPlaying ? 'pause-circle' : 'play-circle'}
+                      size={36}
+                      color={COLORS.primary}
+                    />
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={GlobalStyles.addButton}
+                    onPress={() => {
+                        setSelectedSong(song);
+                        setShowPlaylistModal(true);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="add-circle-outline" size={24} color="#E2E8F0" />
+                  </TouchableOpacity>
+                </View>
+              </LinearGradient>
+            </View>
+          </ShadowDecorator>
+        </OpacityDecorator>
+      </ScaleDecorator>
+    );
+  };
+
+  const renderHeader = () => (
+    <>
       {/* Header with Album Cover */}
       <View style={styles.headerContainer}>
         <LinearGradient
@@ -338,167 +446,48 @@ const AlbumDetailScreen = ({ route, navigation }) => {
         </LinearGradient>
       </TouchableOpacity>
 
-      {/* Songs List */}
-      <View style={styles.songsSection}>
-        {songs.map((song, index) => {
-          const isCurrentSong = currentSong?.song_id === song.song_id;
-          const isSongPurchased = purchasedSongIds.has(song.song_id);
-          const gradientColors = isCurrentSong ? ['#2B124C', '#08040F'] : ['#161616', '#050505'];
-          const showPrice = song.is_premium === 1 && !hasSongAccess(song) && Number(song.price) > 0;
+      <View style={{ height: 24 }} />
+    </>
+  );
 
-          return (
-            <View key={song.song_id} style={styles.songItemWrapper}>
-              <LinearGradient
-                colors={gradientColors}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={[styles.songItem, isCurrentSong && styles.songItemActive]}
-              >
-                <TouchableOpacity
-                  style={styles.songContent}
-                  onPress={() => handleSongPress(song, index)}
-                  activeOpacity={0.85}
-                >
-                  <View style={styles.coverContainer}>
-                    <Image
-                      source={{ uri: song.cover_url || 'https://via.placeholder.com/60' }}
-                      style={styles.songCover}
-                    />
-                    {isCurrentSong && isPlaying && (
-                      <View style={styles.playingIndicator}>
-                        <Ionicons name="volume-high" size={20} color="#FFF" />
-                      </View>
-                    )}
-                    {!isCurrentSong && (
-                      <View style={styles.songNumberOverlay}>
-                        <Text style={styles.songNumberText}>{index + 1}</Text>
-                      </View>
-                    )}
-                  </View>
+  if (loading) {
+    return (
+      <View style={GlobalStyles.loadingContainer}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={GlobalStyles.loadingText}>Đang tải...</Text>
+      </View>
+    );
+  }
 
-                  <View style={styles.songInfo}>
-                    <View style={styles.songTitleRow}>
-                      <Text style={styles.songTitle} numberOfLines={1}>
-                        {song.title}
-                      </Text>
-                      {song.is_premium === 1 && <PremiumBadge small />}
-                      {song.is_premium === 1 && isSongPurchased && (
-                        <AccessBadge accessType="purchased" size={16} />
-                      )}
-                    </View>
+  if (!album) {
+    return (
+      <View style={styles.emptyContainer}>
+        <Text style={styles.emptyText}>Không tìm thấy album</Text>
+      </View>
+    );
+  }
 
-                    <Text style={styles.songArtist} numberOfLines={1}>
-                      {album.artist_name || song.artist_name}
-                    </Text>
-
-                    <View style={styles.songMeta}>
-                      <Ionicons name="headset" size={12} color="#94A3B8" />
-                      <Text style={styles.metaText}>{formatListenCount(song.listen_count)}</Text>
-                      {song.average_rating != null && (
-                        <>
-                          <Text style={styles.metaSeparator}>•</Text>
-                          <Ionicons name="star" size={12} color={COLORS.warning} />
-                          <Text style={styles.metaText}>
-                            {Number(song.average_rating).toFixed(1)}
-                          </Text>
-                        </>
-                      )}
-                      {song.duration > 0 && (
-                        <>
-                          <Text style={styles.metaSeparator}>•</Text>
-                          <Ionicons name="time-outline" size={12} color="#94A3B8" />
-                          <Text style={styles.metaText}>{formatDuration(song.duration)}</Text>
-                        </>
-                      )}
-                    </View>
-
-                    {showPrice && (
-                      <View style={styles.priceRow}>
-                        <Ionicons name="cash-outline" size={12} color={COLORS.warning} />
-                        <Text style={styles.songPriceText}>
-                          {parseFloat(song.price).toLocaleString('vi-VN')}đ
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                </TouchableOpacity>
-
-                <View style={styles.songActions}>
-                  <TouchableOpacity
-                    style={styles.playButton}
-                    onPress={() => handlePlaySong(song, index)}
-                  >
-                    <Ionicons
-                      name={isCurrentSong && isPlaying ? 'pause-circle' : 'play-circle'}
-                      size={34}
-                      color={COLORS.primary}
-                    />
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={styles.songMoreButton}
-                    onPress={() => openMenu(song, index)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="ellipsis-vertical" size={20} color={COLORS.textSecondary} />
-                  </TouchableOpacity>
-                </View>
-              </LinearGradient>
-            </View>
-          );
-        })}
-
-        {songs.length === 0 && (
+  return (
+    <View style={styles.container}>
+      <DraggableFlatList
+        data={songs}
+        renderItem={renderSongItem}
+        keyExtractor={(item) => `album-song-${item.song_id}`}
+        onDragEnd={({ data }) => handleUpdateSongs(data)}
+        ListHeaderComponent={renderHeader}
+        ListEmptyComponent={
           <View style={styles.emptySection}>
             <Ionicons name="musical-notes-outline" size={48} color={COLORS.textSecondary} />
             <Text style={styles.emptyText}>Chưa có bài hát nào</Text>
           </View>
-        )}
-      </View>
-      </ScrollView>
-      <MiniPlayer bottomOffset={0} />
-
-      {/* Song Menu Modal */}
-      <Modal
-        visible={showMenu}
-        transparent
-        animationType="fade"
-        onRequestClose={closeMenu}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={closeMenu}
-        >
-          <View style={styles.menuContainer}>
-            <Text style={styles.menuTitle} numberOfLines={1}>
-              {selectedSong?.title}
-            </Text>
-            
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={handleAddToPlaylist}
-            >
-              <Ionicons name="add-circle" size={24} color={COLORS.primary} />
-              <Text style={styles.menuItemText}>Thêm vào playlist</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[styles.menuItem, styles.menuItemCancel]}
-              onPress={closeMenu}
-            >
-              <Text style={styles.menuItemCancelText}>Hủy</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
-
-      {/* Add to Playlist Modal */}
-      <AddToPlaylistModal
-        visible={showPlaylistModal}
-        onClose={() => setShowPlaylistModal(false)}
-        song={selectedSong}
+        }
+        contentContainerStyle={styles.scrollContent}
       />
+      
+      {isFocused && <MiniPlayer bottomOffset={0} />}
+
+
+
       <AddToPlaylistModal
         visible={showPlaylistModal}
         onClose={() => setShowPlaylistModal(false)}
@@ -523,9 +512,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
-  },
-  scrollView: {
-    flex: 1,
   },
   scrollContent: {
     paddingBottom: 100, // Space for MiniPlayer
@@ -628,58 +614,6 @@ const styles = StyleSheet.create({
     fontSize: SIZES.lg,
     fontWeight: '700',
   },
-  songsSection: {
-    marginTop: 24,
-    paddingHorizontal: SIZES.padding,
-    gap: 10,
-  },
-  songItemWrapper: {
-    borderRadius: SIZES.borderRadius,
-  },
-  songItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: SIZES.borderRadius,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 6,
-    gap: 12,
-  },
-  songItemActive: {
-    borderColor: COLORS.primary,
-  },
-  songContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  coverContainer: {
-    position: 'relative',
-    marginRight: 12,
-  },
-  songCover: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-    backgroundColor: COLORS.background,
-  },
-  playingIndicator: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   songNumberOverlay: {
     position: 'absolute',
     top: 0,
@@ -695,174 +629,6 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: SIZES.md,
     fontWeight: '700',
-  },
-  songInfo: {
-    flex: 1,
-  },
-  songTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
-  },
-  songTitle: {
-    color: COLORS.text,
-    fontSize: SIZES.md,
-    fontWeight: '600',
-    flex: 1,
-  },
-  songArtist: {
-    color: COLORS.textSecondary,
-    fontSize: SIZES.sm,
-    marginBottom: 4,
-  },
-  songMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
-  },
-  metaText: {
-    color: '#CBD5F5',
-    fontSize: SIZES.xs,
-    fontWeight: '600',
-  },
-  metaSeparator: {
-    color: '#94A3B8',
-    fontSize: SIZES.xs,
-  },
-  songPriceText: {
-    color: COLORS.warning,
-    fontSize: SIZES.xs,
-    fontWeight: '600',
-  },
-  priceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-  },
-  songActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  playButton: {
-    padding: 4,
-  },
-  songMoreButton: {
-    padding: 6,
-  },
-  emptySection: {
-    paddingVertical: 40,
-    alignItems: 'center',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  menuContainer: {
-    backgroundColor: COLORS.surface,
-    borderRadius: SIZES.borderRadius,
-    padding: 20,
-    width: '80%',
-    maxWidth: 400,
-  },
-  menuTitle: {
-    fontSize: SIZES.lg,
-    fontWeight: '700',
-    color: COLORS.text,
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    borderRadius: SIZES.borderRadius,
-    marginBottom: 8,
-    gap: 12,
-  },
-  menuItemText: {
-    fontSize: SIZES.md,
-    color: COLORS.text,
-    fontWeight: '500',
-  },
-  menuItemCancel: {
-    marginTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    paddingTop: 16,
-    justifyContent: 'center',
-  },
-  menuItemCancelText: {
-    fontSize: SIZES.md,
-    color: COLORS.error,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  moveModalContainer: {
-    backgroundColor: COLORS.surface,
-    borderRadius: SIZES.borderRadius,
-    padding: 24,
-    width: '80%',
-    maxWidth: 400,
-  },
-  moveModalTitle: {
-    fontSize: SIZES.xl,
-    fontWeight: '700',
-    color: COLORS.text,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  moveModalSubtitle: {
-    fontSize: SIZES.sm,
-    color: COLORS.textSecondary,
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  moveInput: {
-    backgroundColor: COLORS.background,
-    borderRadius: SIZES.borderRadius,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: SIZES.lg,
-    color: COLORS.text,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  moveModalButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  moveModalButton: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: SIZES.borderRadius,
-    alignItems: 'center',
-  },
-  moveModalButtonCancel: {
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  moveModalButtonCancelText: {
-    fontSize: SIZES.md,
-    color: COLORS.text,
-    fontWeight: '600',
-  },
-  moveModalButtonConfirm: {
-    backgroundColor: COLORS.primary,
-  },
-  moveModalButtonConfirmText: {
-    fontSize: SIZES.md,
-    color: COLORS.white,
-    fontWeight: '600',
   },
   premiumContainer: {
     marginTop: 16,

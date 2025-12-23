@@ -27,6 +27,7 @@ import AccessBadge from '../../components/Common/AccessBadge';
 import PremiumAccessModal from '../../components/Common/PremiumAccessModal';
 // MiniPlayer removed - rendered in TabNavigator
 import SuccessModal from '../../components/Common/SuccessModal';
+import AddToPlaylistModal from '../../components/Playlist/AddToPlaylistModal';
 import { API_BASE_URL } from '../../config/api';
 
 const LibraryScreen = ({ navigation }) => {
@@ -53,6 +54,8 @@ const LibraryScreen = ({ navigation }) => {
   const [selectedSongList, setSelectedSongList] = useState([]);
   const [followedArtists, setFollowedArtists] = useState([]);
   const [filteredFollowedArtists, setFilteredFollowedArtists] = useState([]);
+  const [showAddToPlaylistModal, setShowAddToPlaylistModal] = useState(false);
+  const [playlistSong, setPlaylistSong] = useState(null);
   
   // History Pagination
   const [historyOffset, setHistoryOffset] = useState(0);
@@ -287,6 +290,11 @@ const LibraryScreen = ({ navigation }) => {
       navigation.navigate('FullPlayer');
       playSong(list[0], list, 0);
     }
+  };
+
+  const handleAddToPlaylist = (song) => {
+    setPlaylistSong(song);
+    setShowAddToPlaylistModal(true);
   };
 
   const hasSongAccess = (song) => {
@@ -663,6 +671,12 @@ const LibraryScreen = ({ navigation }) => {
                 color={COLORS.primary}
               />
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => handleAddToPlaylist(song)}
+            >
+              <Ionicons name="add-circle-outline" size={24} color="#E2E8F0" />
+            </TouchableOpacity>
           </View>
         </LinearGradient>
       </View>
@@ -805,10 +819,10 @@ const LibraryScreen = ({ navigation }) => {
 
             <View style={styles.songInfo}>
               <View style={styles.songTitleRow}>
-                <Text style={styles.songTitle} numberOfLines={1}>
+                <Text style={[styles.songTitle,{minWidth: 150}]} numberOfLines={1}>
                   {item.title}
                 </Text>
-                <View style={{display: 'flex', flexDirection: 'row', position: 'relative', top: -10, right:-35}}>
+                <View style={{display: 'flex', flexDirection: 'row', position: 'relative', top: -10, right: 15}}>
                   {item.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
                   {item.is_premium === 1 && songAccessTypes[item.song_id] && (
                     <AccessBadge accessType={songAccessTypes[item.song_id]} size={16} />
@@ -867,6 +881,12 @@ const LibraryScreen = ({ navigation }) => {
                 size={32}
                 color={COLORS.primary}
               />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => handleAddToPlaylist(item)}
+            >
+              <Ionicons name="add-circle-outline" size={24} color="#E2E8F0" />
             </TouchableOpacity>
           </View>
         </LinearGradient>
@@ -980,6 +1000,12 @@ const LibraryScreen = ({ navigation }) => {
                 size={32}
                 color={COLORS.primary}
               />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => handleAddToPlaylist(item)}
+            >
+              <Ionicons name="add-circle-outline" size={24} color="#E2E8F0" />
             </TouchableOpacity>
           </View>
         </LinearGradient>
@@ -1879,6 +1905,12 @@ const LibraryScreen = ({ navigation }) => {
         icon={alertConfig.icon}
         onClose={handleAlertClose}
       />
+
+      <AddToPlaylistModal
+        visible={showAddToPlaylistModal}
+        onClose={() => setShowAddToPlaylistModal(false)}
+        song={playlistSong}
+      />
       
       {/* MiniPlayer removed - rendered in TabNavigator */}
     </View>
@@ -2094,6 +2126,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  addButton: {
+    padding: 4,
+    marginLeft: 4,
+  },
   songInfo: {
     flex: 1,
   },
@@ -2101,12 +2137,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 4,
+    justifyContent: 'space-between',
   },
   songTitle: {
     color: COLORS.text,
     fontSize: SIZES.md,
     fontWeight: '600',
     flex: 1,
+    minWidth: 120,
   },
   premiumBadge: {
     marginLeft: 6,

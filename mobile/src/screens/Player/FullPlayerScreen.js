@@ -38,7 +38,10 @@ const FullPlayerScreen = ({ navigation, route }) => {
   const [showAddToPlaylist, setShowAddToPlaylist] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [nextSongs, setNextSongs] = useState([]);
+  const [relatedSongs, setRelatedSongs] = useState([]);
+  const [activeQueueTab, setActiveQueueTab] = useState('queue'); // 'queue' or 'related'
   const [loadingNextSongs, setLoadingNextSongs] = useState(false);
+  const [loadingRelatedSongs, setLoadingRelatedSongs] = useState(false);
   const [loadingFavorite, setLoadingFavorite] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
@@ -72,6 +75,7 @@ const FullPlayerScreen = ({ navigation, route }) => {
     // Debounce to prevent double loading when song and playlist update sequentially
     const timer = setTimeout(() => {
       loadNextSongs();
+      loadRelatedSongs();
     }, 100);
 
     return () => clearTimeout(timer);
@@ -85,83 +89,113 @@ const FullPlayerScreen = ({ navigation, route }) => {
   const loadNextSongs = async () => {
     const requestId = Date.now();
     nextSongsRequestIdRef.current = requestId;
-    setLoadingNextSongs(true);
+      setLoadingNextSongs(true);
     setNextSongs([]); // ensure stale list cleared immediately
+    
     try {
-      // Check if playing from playlist
-      const isPlayingPlaylistFlag = await AsyncStorage.getItem('isPlayingPlaylist');
-      const currentPlaylistId = await AsyncStorage.getItem('currentPlaylistId');
-      
-      if (isPlayingPlaylistFlag === '1' && currentPlaylistId && playlist.length > 0) {
-        setIsPlayingPlaylist(true);
-        setIsPlayingAlbum(false);
-        // Load next songs from current playlist
-        const nextSongsFromPlaylist = playlist.slice(currentIndex + 1, currentIndex + 6);
-        if (nextSongsRequestIdRef.current === requestId) {
-          setNextSongs(nextSongsFromPlaylist);
-        }
-      } else {
-        setIsPlayingPlaylist(false);
-        // Check if playing from album
-        const isPlayingAlbumFlag = await AsyncStorage.getItem('isPlayingAlbum');
-        const currentAlbumId = await AsyncStorage.getItem('currentAlbumId');
+      let finalSongs = [];
+      const needCount = 5;
+
+      // 1. Get from Queue/Playlist
+      if (playlist && playlist.length > 0) {
+        const currentIdx = playlist.findIndex(s => s.song_id === currentSong.song_id);
         
-        if (isPlayingAlbumFlag === '1' && currentAlbumId && currentSong?.album_id) {
-          setIsPlayingAlbum(true);
-          // Load next songs from the same album
-          const response = await songService.getSongsByAlbum(currentAlbumId);
-          const albumSongs = response.data || [];
+        if (currentIdx !== -1 && currentIdx < playlist.length - 1) {
+          // Get remaining songs in queue
+          const queueNext = playlist.slice(currentIdx + 1, currentIdx + 1 + needCount);
+          finalSongs = [...queueNext];
           
-          // Find current song index in album
-          const currentSongIndex = albumSongs.findIndex(s => s.song_id === currentSong.song_id);
-          
-          if (currentSongIndex >= 0) {
-            // Get next songs from album (excluding current song)
-            const nextSongsFromAlbum = albumSongs
-              .slice(currentSongIndex + 1, currentSongIndex + 6)
-              .filter(song => song.song_id !== currentSong?.song_id);
-            if (nextSongsRequestIdRef.current === requestId) {
-              setNextSongs(nextSongsFromAlbum);
-            }
-          } else {
-            setIsPlayingAlbum(false);
-            // Fallback to trending if current song not found in album
-            const response = await songService.getTrendingSongs(6);
-            const filteredSongs = response.data?.filter(song => song.song_id !== currentSong?.song_id) || [];
-            if (nextSongsRequestIdRef.current === requestId) {
-              setNextSongs(filteredSongs.slice(0, 5));
-            }
-          }
-        } else {
-          setIsPlayingAlbum(false);
-          if (currentPlaylist && playlist.length > 0) {
-            // Load next songs from current playlist
-            const nextSongsFromPlaylist = playlist.slice(currentIndex + 1, currentIndex + 4);
-            if (nextSongsRequestIdRef.current === requestId) {
-              setNextSongs(nextSongsFromPlaylist);
-            }
-          } else {
-            // Load trending songs as "You might also like"
-            const response = await songService.getTrendingSongs(6);
-            // Filter out current song
-            const filteredSongs = response.data?.filter(song => song.song_id !== currentSong?.song_id) || [];
-            if (nextSongsRequestIdRef.current === requestId) {
-              setNextSongs(filteredSongs.slice(0, 5));
-            }
+          if (finalSongs.length > 0) {
+             setIsPlayingPlaylist(true); 
           }
         }
       }
+
+      // 2. Fill with Recommendation if needed (< 5 songs)
+      if (finalSongs.length < needCount) {
+         // Avoid duplicates
+         const existingIds = new Set(finalSongs.map(s => s.song_id));
+         existingIds.add(currentSong.song_id);
+
+         const res = await songService.getTrendingSongs(10); // Fetch more to filter
+         const trending = res.data || [];
+         
+         for (const s of trending) {
+            if (finalSongs.length >= needCount) break;
+            if (!existingIds.has(s.song_id)) {
+               finalSongs.push({...s, isRecommendation: true}); // Mark as recommendation
+               existingIds.add(s.song_id);
+            }
+         }
+      }
+
+      if (nextSongsRequestIdRef.current === requestId) {
+         setNextSongs(finalSongs);
+      }
+
     } catch (error) {
       console.error('Error loading next songs:', error);
       if (nextSongsRequestIdRef.current === requestId) {
         setNextSongs([]);
       }
-      setIsPlayingAlbum(false);
-      setIsPlayingPlaylist(false);
     } finally {
       if (nextSongsRequestIdRef.current === requestId) {
         setLoadingNextSongs(false);
       }
+    }
+  };
+
+  const loadRelatedSongs = async () => {
+    if (!currentSong) return;
+    setLoadingRelatedSongs(true);
+    setRelatedSongs([]);
+    
+    try {
+      let songs = [];
+      // 1. Try by Genre
+      if (currentSong.genre_id) {
+        const res = await songService.getSongsByGenre(currentSong.genre_id);
+        if (res.data && res.data.length > 0) {
+          songs = res.data;
+        }
+      }
+      
+      // 2. If genre songs are few, add Artist songs
+      if (songs.length < 5 && currentSong.artist_id) {
+        const res = await songService.getSongsByArtist(currentSong.artist_id);
+        if (res.data && res.data.length > 0) {
+           // Merge and deduplicate
+           const existingIds = new Set(songs.map(s => s.song_id));
+           const artistSongs = res.data.filter(s => !existingIds.has(s.song_id));
+           songs = [...songs, ...artistSongs];
+        }
+      }
+
+      // 3. Fallback/Fill to ensure 5 songs
+      if (songs.length < 5) {
+        const fillCount = 5 - songs.length;
+        const res = await songService.getRecommendedSongs(10); // Fetch more to filter safely
+        const recSongs = res.data || [];
+        
+        // Merge and deduplicate
+        const existingIds = new Set(songs.map(s => s.song_id));
+        existingIds.add(currentSong.song_id);
+        
+        for (const s of recSongs) {
+           if (songs.length >= 5) break; 
+           if (!existingIds.has(s.song_id)) {
+              songs.push(s);
+              existingIds.add(s.song_id);
+           }
+        }
+      }
+
+      // Final slice just in case
+      setRelatedSongs(songs.slice(0, 5));
+    } catch (error) {
+      console.error('Error loading related songs:', error);
+    } finally {
+      setLoadingRelatedSongs(false);
     }
   };
 
@@ -331,8 +365,18 @@ WHERE song_id = ${currentSong.song_id};`;
             <Slider
               style={styles.slider}
               minimumValue={0}
-              maximumValue={duration || 100}
+              maximumValue={(duration > 0 ? duration : (currentSong?.duration > 10000 ? currentSong.duration : (currentSong?.duration * 1000 || 0))) || 100}
+              // Use position if not being dragged, otherwise rely on internal slider logic or update via local state if strictly controlled
+              // But standard Slider handles internal thumb well if value updates are paused.
+              // Better approach:
               value={position}
+              onValueChange={(val) => {
+                 // Optional: Set a flag to stop position updates? 
+                 // For now, simpler usage:
+                 // The Context 'position' updates every second.
+                 // While dragging, the user might fight play updates. 
+                 // But since 'seekTo' effectively commits, we just need onSlidingComplete.
+              }}
               onSlidingComplete={seekTo}
               minimumTrackTintColor={COLORS.primary}
               maximumTrackTintColor={COLORS.player.progressBackground}
@@ -340,7 +384,9 @@ WHERE song_id = ${currentSong.song_id};`;
             />
             <View style={styles.timeContainer}>
               <Text style={styles.timeText}>{formatTime(position)}</Text>
-              <Text style={styles.timeText}>{formatTime(duration)}</Text>
+              <Text style={styles.timeText}>
+                {formatTime(duration > 0 ? duration : (currentSong?.duration > 10000 ? currentSong.duration : (currentSong?.duration * 1000 || 0)))}
+              </Text>
             </View>
           </View>
 
@@ -479,37 +525,77 @@ WHERE song_id = ${currentSong.song_id};`;
             />
           )}
 
-          {/* Up Next / Playlist */}
+          {/* Up Next / Playlist & Related Tabs */}
           <View style={styles.upNextContainer}>
-            <Text style={styles.upNextTitle}>
-              {currentPlaylist || isPlayingAlbum || isPlayingPlaylist ? 'Tiếp theo' : 'Có thể bạn cũng thích'}
-            </Text>
-            {loadingNextSongs ? (
+            <View style={styles.tabContainer}>
+              <TouchableOpacity 
+                style={styles.tabButtonWrapper}
+                onPress={() => setActiveQueueTab('queue')}
+                activeOpacity={0.8}
+              >
+                {activeQueueTab === 'queue' ? (
+                  <LinearGradient
+                    colors={[COLORS.primary, '#9F1239']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.tabButtonActiveGradient}
+                  >
+                    <Text style={styles.tabTextActive}>Tiếp theo</Text>
+                  </LinearGradient>
+                ) : (
+                  <View style={styles.tabButton}>
+                    <Text style={styles.tabText}>Tiếp theo</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.tabButtonWrapper}
+                onPress={() => setActiveQueueTab('related')}
+                activeOpacity={0.8}
+              >
+                {activeQueueTab === 'related' ? (
+                  <LinearGradient
+                    colors={[COLORS.primary, '#9F1239']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.tabButtonActiveGradient}
+                  >
+                    <Text style={styles.tabTextActive}>Gợi ý</Text>
+                  </LinearGradient>
+                ) : (
+                  <View style={styles.tabButton}>
+                    <Text style={styles.tabText}>Gợi ý</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* List Content */}
+            {(activeQueueTab === 'queue' ? loadingNextSongs : loadingRelatedSongs) ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color={COLORS.primary} />
                 <Text style={styles.loadingText}>Đang tải...</Text>
               </View>
-            ) : nextSongs.length > 0 ? (
-              nextSongs.map((song) => {
-                const isFromRecommendations = !currentPlaylist && !isPlayingAlbum && !isPlayingPlaylist;
+            ) : (activeQueueTab === 'queue' ? nextSongs : relatedSongs).length > 0 ? (
+              (activeQueueTab === 'queue' ? nextSongs : relatedSongs).map((song) => {
+                const isFromRecommendations = activeQueueTab === 'related';
                 const isAlbumSuggestion = !!song.album_id;
-                const gradientColors = isAlbumSuggestion
+                const gradientColors = isAlbumSuggestion && !isFromRecommendations
                   ? ['#2B124C', '#06030E']
                   : ['#141414', '#050505'];
 
                 const handlePress = () => {
-                  // Prevent reloading if clicking on current song
-                  if (currentSong?.song_id === song.song_id) {
-                    return;
-                  }
+                  if (currentSong?.song_id === song.song_id) return;
 
-                  if (currentPlaylist && playlist.length > 0) {
+                  if (activeQueueTab === 'queue' && currentPlaylist && playlist.length > 0) {
                     const newIndex = playlist.findIndex(s => s.song_id === song.song_id);
                     if (newIndex !== -1) {
                       playSong(song, playlist, newIndex, currentPlaylist);
                       return;
                     }
                   }
+                  // For related songs, plain play
                   playSong(song);
                 };
 
@@ -526,8 +612,7 @@ WHERE song_id = ${currentSong.song_id};`;
                       end={{ x: 1, y: 1 }}
                       style={[
                         styles.nextSongItem,
-                        isFromRecommendations && styles.recommendationCard,
-                        isAlbumSuggestion && styles.albumSuggestionCard,
+                        activeQueueTab === 'related' && styles.recommendationCard,
                       ]}
                     >
                       <Image
@@ -566,7 +651,11 @@ WHERE song_id = ${currentSong.song_id};`;
               })
             ) : (
               <View style={styles.emptyNextContainer}>
-                <Text style={styles.emptyNextText}>Không có bài hát nào</Text>
+                <Text style={styles.emptyNextText}>
+                  {activeQueueTab === 'queue' 
+                    ? 'Đã hết bài hát trong danh sách' 
+                    : 'Không có gợi ý nào phù hợp'}
+                </Text>
               </View>
             )}
           </View>
@@ -843,8 +932,51 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   upNextContainer: {
-    marginHorizontal: SIZES.padding * 2,
-    marginTop: 32,
+    paddingHorizontal: SIZES.padding,
+    marginTop: 24,
+    paddingBottom: 40,
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: 30,
+    padding: 2,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    alignSelf: 'center',
+    width: '70%', // Compact width
+    maxWidth: 300,
+  },
+  tabButtonWrapper: {
+    flex: 1,
+  },
+  tabButton: {
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 24,
+  },
+  tabButtonActiveGradient: {
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 24,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  tabText: {
+    color: COLORS.textMuted,
+    fontSize: SIZES.sm,
+    fontWeight: '600',
+  },
+  tabTextActive: {
+    color: '#FFF',
+    fontSize: SIZES.sm,
+    fontWeight: '700',
   },
   upNextTitle: {
     color: COLORS.text,

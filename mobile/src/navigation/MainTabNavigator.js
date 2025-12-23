@@ -22,6 +22,7 @@ import AlbumDetailScreen from '../screens/Album/AlbumDetailScreen';
 import GenreDetailScreen from '../screens/Genre/GenreDetailScreen';
 import HistoryScreen from '../screens/History/HistoryScreen';
 
+
 // Profile Screens
 import EditProfileScreen from '../screens/Profile/EditProfileScreen';
 import ChangePasswordScreen from '../screens/Profile/ChangePasswordScreen';
@@ -599,6 +600,7 @@ const MainTabNavigator = () => {
             title: 'Quản lý nạp tiền',
           }}
         />
+
       </Stack.Navigator>
     </SafeAreaView>
   );

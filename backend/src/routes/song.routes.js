@@ -20,6 +20,11 @@ const createSongValidation = [
 router.get('/', SongController.getAll);
 router.get('/search', SongController.search);
 router.get('/trending', SongController.getTrending);
+
+// Protected Recommendation routes (Must be before /:id)
+router.get('/frequent', authenticateToken, SongController.getFrequent);
+router.get('/recommendations', authenticateToken, SongController.getRecommendations);
+
 router.get('/:id', SongController.getById);
 router.get('/genre/:genreId', SongController.getByGenre);
 router.get('/artist/:artistId', SongController.getByArtist);

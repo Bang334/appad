@@ -256,6 +256,46 @@ class SongController {
     }
   }
 
+  // Get frequent songs
+  static async getFrequent(req, res) {
+    try {
+      const { limit = 20 } = req.query;
+      const userId = req.user.user_id;
+      const songs = await HistoryModel.getFrequentSongs(userId, parseInt(limit));
+      
+      res.json({
+        success: true,
+        data: songs
+      });
+    } catch (error) {
+      console.error('Get frequent songs error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Server error'
+      });
+    }
+  }
+
+  // Get recommended songs
+  static async getRecommendations(req, res) {
+    try {
+      const { limit = 20 } = req.query;
+      const userId = req.user.user_id;
+      const songs = await SongModel.getRecommendations(userId, parseInt(limit));
+      
+      res.json({
+        success: true,
+        data: songs
+      });
+    } catch (error) {
+      console.error('Get recommendations error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Server error'
+      });
+    }
+  }
+
   // Create song (Admin only)
   static async create(req, res) {
     try {
