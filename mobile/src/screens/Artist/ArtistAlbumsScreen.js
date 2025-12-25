@@ -79,14 +79,14 @@ const ArtistAlbumsScreen = ({ route, navigation }) => {
   const renderAlbumItem = ({ item }) => (
     <TouchableOpacity
       style={styles.albumItem}
-      onPress={() => navigation.navigate('AlbumDetail', { albumId: item.album_id })}
+      onPress={() => navigation.navigate('ArtistEditAlbum', { artistId, album: item })}
     >
       <Image
         source={{ uri: item.cover_url || 'https://via.placeholder.com/120' }}
         style={styles.albumImage}
       />
       <View style={styles.albumInfo}>
-        <Text style={styles.albumTitle} numberOfLines={2}>
+        <Text style={styles.albumTitle} numberOfLines={1}>
           {item.title}
         </Text>
         {item.release_date && (
@@ -144,6 +144,7 @@ const ArtistAlbumsScreen = ({ route, navigation }) => {
         </View>
       ) : (
         <FlatList
+          key="list-view"
           data={albums}
           renderItem={renderAlbumItem}
           keyExtractor={(item) => item.album_id.toString()}
@@ -151,7 +152,6 @@ const ArtistAlbumsScreen = ({ route, navigation }) => {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
           contentContainerStyle={styles.listContent}
-          numColumns={2}
         />
       )}
     </View>
@@ -201,37 +201,41 @@ const styles = StyleSheet.create({
     padding: SIZES.padding,
   },
   albumItem: {
-    flex: 1,
-    margin: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: COLORS.card,
     borderRadius: 12,
-    overflow: 'hidden',
+    marginBottom: 12,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   albumImage: {
-    width: '100%',
-    aspectRatio: 1,
+    width: 60,
+    height: 60,
+    borderRadius: 8,
     backgroundColor: COLORS.surface,
   },
   albumInfo: {
-    padding: 12,
+    flex: 1,
+    marginLeft: 12,
+    justifyContent: 'center',
   },
   albumTitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
     color: COLORS.text,
     marginBottom: 4,
   },
   albumDate: {
-    fontSize: 12,
+    fontSize: 13,
     color: COLORS.textSecondary,
   },
   deleteButton: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    borderRadius: 20,
     padding: 8,
+    backgroundColor: 'rgba(255, 0, 0, 0.1)',
+    borderRadius: 8,
+    marginLeft: 8,
   },
   emptyContainer: {
     flex: 1,

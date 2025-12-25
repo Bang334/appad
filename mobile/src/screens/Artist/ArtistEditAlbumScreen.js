@@ -11,6 +11,8 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Modal,
+  FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -21,9 +23,10 @@ import { useAlert } from '../../context/AlertContext';
 const ArtistEditAlbumScreen = ({ route, navigation }) => {
   const { artistId, album } = route.params;
   const { showError, showSuccess } = useAlert();
-  const [loading, setLoading] = useState(false);
-  const [coverFile, setCoverFile] = useState(null); // { uri, type, name }
   
+  // Form State
+  const [loading, setLoading] = useState(false);
+  const [coverFile, setCoverFile] = useState(null);
   const [formData, setFormData] = useState({
     title: album?.title || '',
     artist_id: artistId,
@@ -32,6 +35,10 @@ const ArtistEditAlbumScreen = ({ route, navigation }) => {
     is_premium: album?.is_premium === 1,
     price: album?.price ? album.price.toString() : '0',
   });
+
+  // Song Management State
+  const [songs, setSongs] = useState([]);
+  const [showAddSongModal, setShowAddSongModal] = useState(false);
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({
@@ -86,15 +93,18 @@ const ArtistEditAlbumScreen = ({ route, navigation }) => {
     setLoading(true);
     try {
       const files = coverFile ? { cover: coverFile } : null;
+      
+      const payload = {
+        ...formData,
+        is_premium: formData.is_premium ? 1 : 0
+      };
 
       if (album) {
-        // Update existing album
-        await artistService.updateAlbum(artistId, album.album_id, formData, files);
+        await artistService.updateAlbum(artistId, album.album_id, payload, files);
         showSuccess('Thành công', 'Đã cập nhật album');
         setTimeout(() => navigation.goBack(), 1000);
       } else {
-        // Create new album
-        await artistService.createAlbum(artistId, formData, files);
+        await artistService.createAlbum(artistId, payload, files);
         showSuccess('Thành công', 'Đã tạo album mới');
         setTimeout(() => navigation.goBack(), 1000);
       }
@@ -104,6 +114,87 @@ const ArtistEditAlbumScreen = ({ route, navigation }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  React.useEffect(() => {
+    if (album) {
+      loadSongs();
+    }
+  }, [album]);
+
+  const loadSongs = async () => {
+    try {
+      const response = await artistService.getMySongs(artistId);
+      if (response.success) {
+        setSongs(response.data || []);
+      }
+    } catch (error) {
+      console.error('Error loading songs:', error);
+    }
+  };
+
+  const availableSongs = songs.filter(s => !s.album_id);
+  const albumSongs = songs.filter(s => album && s.album_id === album.album_id);
+
+  const handleAddSong = async (song) => {
+    try {
+      await artistService.updateSong(artistId, song.song_id, {
+        ...song,
+        album_id: album.album_id
+      });
+      showSuccess('Thành công', 'Đã thêm bài hát vào album');
+      loadSongs();
+      setShowAddSongModal(false);
+    } catch (error) {
+      console.error('Error adding song to album:', error);
+      showError('Lỗi', 'Không thể thêm bài hát');
+    }
+  };
+
+  const handleRemoveSong = async (song) => {
+    try {
+      await artistService.updateSong(artistId, song.song_id, {
+        ...song,
+        album_id: null
+      });
+      showSuccess('Thành công', 'Đã xóa bài hát khỏi album');
+      loadSongs();
+    } catch (error) {
+      console.error('Error removing song from album:', error);
+      showError('Lỗi', 'Không thể xóa bài hát');
+    }
+  };
+
+  const renderSongItem = (item, isAddMode = false) => (
+    <View key={item.song_id} style={styles.songItem}>
+      <Image
+        source={{ uri: item.cover_url || 'https://via.placeholder.com/60' }}
+        style={styles.songImage}
+      />
+      <View style={styles.songInfo}>
+        <Text style={styles.songTitle} numberOfLines={1}>{item.title}</Text>
+        <Text style={styles.songArtist} numberOfLines={1}>
+          {getDurationString(item.duration)} • {item.listen_count || 0} lượt nghe
+        </Text>
+      </View>
+      <TouchableOpacity
+        style={[styles.songActionButton, isAddMode ? styles.addButton : styles.removeButton]}
+        onPress={() => isAddMode ? handleAddSong(item) : handleRemoveSong(item)}
+      >
+        <Ionicons 
+          name={isAddMode ? "add" : "remove"} 
+          size={20} 
+          color={isAddMode ? COLORS.primary : COLORS.error} 
+        />
+      </TouchableOpacity>
+    </View>
+  );
+
+  const getDurationString = (seconds) => {
+    if (!seconds) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -208,6 +299,30 @@ const ArtistEditAlbumScreen = ({ route, navigation }) => {
             </View>
           )}
 
+          {/* Songs List Section (Only for existing albums) */}
+          {album && (
+            <View style={styles.inputSection}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>Danh sách bài hát ({albumSongs.length})</Text>
+                <TouchableOpacity 
+                  onPress={() => setShowAddSongModal(true)}
+                  style={styles.addSongButton}
+                >
+                  <Ionicons name="add-circle" size={20} color={COLORS.primary} />
+                  <Text style={styles.addSongButtonText}>Thêm bài hát</Text>
+                </TouchableOpacity>
+              </View>
+              
+              <View style={styles.songListContainer}>
+                {albumSongs.length === 0 ? (
+                  <Text style={styles.emptySongsText}>Chưa có bài hát nào trong album này</Text>
+                ) : (
+                  albumSongs.map(song => renderSongItem(song, false))
+                )}
+              </View>
+            </View>
+          )}
+
           {/* Action Buttons */}
           <View style={styles.actionsContainer}>
             <TouchableOpacity
@@ -227,6 +342,39 @@ const ArtistEditAlbumScreen = ({ route, navigation }) => {
           </View>
         </View>
       </ScrollView>
+
+      {/* Add Song Modal */}
+      <Modal
+        visible={showAddSongModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowAddSongModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Thêm bài hát vào album</Text>
+              <TouchableOpacity onPress={() => setShowAddSongModal(false)}>
+                <Ionicons name="close" size={24} color={COLORS.text} />
+              </TouchableOpacity>
+            </View>
+            
+            {availableSongs.length === 0 ? (
+              <View style={styles.emptyModalContainer}>
+                <Text style={styles.emptyModalText}>Không có bài hát nào trống</Text>
+                <Text style={styles.emptyModalSubText}>Hãy tải lên thêm bài hát mới</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={availableSongs}
+                renderItem={({ item }) => renderSongItem(item, true)}
+                keyExtractor={item => item.song_id.toString()}
+                contentContainerStyle={styles.modalListContent}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 };
@@ -401,6 +549,124 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 16,
     fontWeight: '700',
+  },
+  
+  // Song List Styles
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  addSongButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  addSongButtonText: {
+    color: COLORS.primary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  songListContainer: {
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: 'hidden',
+  },
+  emptySongsText: {
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    padding: 24,
+    fontStyle: 'italic',
+  },
+  songItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  songImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 4,
+    backgroundColor: COLORS.surface,
+  },
+  songInfo: {
+    flex: 1,
+    marginLeft: 12,
+    justifyContent: 'center',
+  },
+  songTitle: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  songArtist: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+  },
+  songActionButton: {
+    padding: 8,
+  },
+  removeButton: {
+    backgroundColor: 'rgba(255, 68, 68, 0.1)',
+    borderRadius: 8,
+  },
+  addButton: {
+    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+    borderRadius: 8,
+  },
+  
+  // Modal Styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: COLORS.background,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    height: '70%',
+    paddingTop: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    paddingBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: COLORS.text,
+  },
+  modalListContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+  },
+  emptyModalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyModalText: {
+    fontSize: 16,
+    color: COLORS.text,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  emptyModalSubText: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
   },
 });
 
