@@ -138,9 +138,23 @@ const ArtistEditAlbumScreen = ({ route, navigation }) => {
 
   const handleAddSong = async (song) => {
     try {
+      // Remove fields that are not in the songs table to avoid SQL errors
+      const { 
+        artist_name, 
+        album_title, 
+        genre_name, 
+        rating_count, 
+        created_at, 
+        updated_at,
+        users_liked, // if exists
+        ...songData 
+      } = song;
+
       await artistService.updateSong(artistId, song.song_id, {
-        ...song,
-        album_id: album.album_id
+        ...songData,
+        album_id: album.album_id,
+        is_premium: songData.is_premium ? 1 : 0,
+        release_date: songData.release_date ? new Date(songData.release_date).toISOString().split('T')[0] : null
       });
       showSuccess('Thành công', 'Đã thêm bài hát vào album');
       loadSongs();
@@ -153,9 +167,23 @@ const ArtistEditAlbumScreen = ({ route, navigation }) => {
 
   const handleRemoveSong = async (song) => {
     try {
+      // Remove fields that are not in the songs table to avoid SQL errors
+      const { 
+        artist_name, 
+        album_title, 
+        genre_name, 
+        rating_count, 
+        created_at, 
+        updated_at,
+        users_liked,
+        ...songData 
+      } = song;
+
       await artistService.updateSong(artistId, song.song_id, {
-        ...song,
-        album_id: null
+        ...songData,
+        album_id: null,
+        is_premium: songData.is_premium ? 1 : 0,
+        release_date: songData.release_date ? new Date(songData.release_date).toISOString().split('T')[0] : null
       });
       showSuccess('Thành công', 'Đã xóa bài hát khỏi album');
       loadSongs();
