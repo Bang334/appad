@@ -856,7 +856,8 @@ class ArtistController {
     try {
       const { artist_id } = req.params;
       const AlbumModel = require('../models/album.model');
-      const albums = await AlbumModel.findByArtist(artist_id);
+      // Artist should see all their albums (including unreleased)
+      const albums = await AlbumModel.findByArtist(artist_id, true);
       
       res.json({
         success: true,
@@ -926,18 +927,50 @@ class ArtistController {
         });
       }
 
-      const albumData = req.body;
-      // Prevent changing artist_id
-      delete albumData.artist_id;
+      const allowedFields = ['title', 'release_date', 'is_premium', 'price'];
+      const updateData = {};
+      
+      // Only include allowed fields
+      allowedFields.forEach(field => {
+        if (req.body[field] !== undefined) {
+          // Format release_date if present
+          if (field === 'release_date' && req.body[field]) {
+             try {
+                // Parse and format to MySQL datetime, keeping LOCAL time (not UTC)
+                const date = new Date(req.body[field]);
+                if (!isNaN(date.getTime())) {
+                   // Use local time components instead of toISOString() which converts to UTC
+                   const year = date.getFullYear();
+                   const month = String(date.getMonth() + 1).padStart(2, '0');
+                   const day = String(date.getDate()).padStart(2, '0');
+                   const hours = String(date.getHours()).padStart(2, '0');
+                   const minutes = String(date.getMinutes()).padStart(2, '0');
+                   const seconds = String(date.getSeconds()).padStart(2, '0');
+                   updateData[field] = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+                } else {
+                   updateData[field] = req.body[field];
+                }
+             } catch (e) {
+                updateData[field] = req.body[field];
+             }
+          } else if (field === 'is_premium') {
+            // Convert boolean/string 'true'/'false' to 1/0
+             const val = req.body[field];
+             updateData[field] = (val === true || val === 'true' || val === 1 || val === '1') ? 1 : 0;
+          } else {
+             updateData[field] = req.body[field];
+          }
+        }
+      });
       
       // Handle file uploads if present
       if (req.files && req.files.cover) {
         const file = req.files.cover[0];
         // Use Cloudinary URL (path or secure_url)
-        albumData.cover_url = file.path || file.secure_url;
+        updateData.cover_url = file.path || file.secure_url;
       }
 
-      const updated = await AlbumModel.update(album_id, albumData);
+      const updated = await AlbumModel.update(album_id, updateData);
       
       if (!updated) {
         return res.status(404).json({
@@ -996,6 +1029,76 @@ class ArtistController {
       });
     } catch (error) {
       console.error('Delete album error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Server error'
+      });
+    }
+  }
+
+  // Update artist profile
+  static async updateProfile(req, res) {
+    try {
+      const { artist_id } = req.params;
+      const { name, bio, country, image_url } = req.body;
+
+      console.log('[updateProfile] Request body:', req.body);
+      console.log('[updateProfile] Request file:', req.file);
+
+      // Get current artist
+      const artist = await ArtistModel.findById(artist_id);
+      if (!artist) {
+        return res.status(404).json({
+          success: false,
+          message: 'Artist not found'
+        });
+      }
+
+      // Build update data
+      const updateData = {};
+      if (name !== undefined) updateData.name = name.trim();
+      if (bio !== undefined) updateData.bio = bio ? bio.trim() : null;
+      if (country !== undefined) updateData.country = country ? country.trim() : null;
+      
+      // Handle image - prioritize uploaded file over image_url from body
+      if (req.file) {
+        // Image was uploaded via Cloudinary middleware
+        const fileUrl = req.file.path || req.file.secure_url;
+        console.log('[updateProfile] Image uploaded to Cloudinary:', fileUrl);
+        updateData.image_url = fileUrl;
+      } else if (image_url !== undefined) {
+        // Use image_url from body (could be existing URL or null to clear)
+        updateData.image_url = image_url || null;
+      }
+
+      // Update in database
+      const db = require('../config/database');
+      const fields = Object.keys(updateData);
+      if (fields.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'No fields to update'
+        });
+      }
+
+      const setClause = fields.map(f => `${f} = ?`).join(', ');
+      const values = [...fields.map(f => updateData[f]), artist_id];
+
+      await db.execute(
+        `UPDATE artists SET ${setClause}, updated_at = NOW() WHERE artist_id = ?`,
+        values
+      );
+
+      // Return updated artist
+      const updatedArtist = await ArtistModel.findById(artist_id);
+
+      res.json({
+        success: true,
+        message: 'Profile updated successfully',
+        data: updatedArtist
+      });
+    } catch (error) {
+      console.error('Update artist profile error:', error);
       res.status(500).json({
         success: false,
         message: 'Server error'

@@ -22,6 +22,9 @@ router.get('/:artist_id/withdrawals', authenticateToken, isArtistOwner, ArtistCo
 // Bank info
 router.put('/:artist_id/bank-info', authenticateToken, isArtistOwner, ArtistController.updateBankInfo);
 
+// Profile update
+router.put('/:artist_id/profile', authenticateToken, isArtistOwner, uploadCover.single('image'), ArtistController.updateProfile);
+
 // Songs management
 router.get('/:artist_id/songs', authenticateToken, isArtistOwner, ArtistController.getMySongs);
 router.post('/:artist_id/songs', authenticateToken, isArtistOwner, upload.fields([

@@ -22,7 +22,11 @@ class SongModel {
     const [rows] = await db.execute(
       `SELECT s.*, 
               a.name as artist_name, 
-              al.title as album_title, 
+              al.title as album_title,
+              al.album_id as album_id,
+              al.is_premium as album_is_premium,
+              al.release_date as album_release_date,
+              al.price as album_price,
               g.name as genre_name,
               COALESCE(rc.rating_count, 0) as rating_count
        FROM songs s
@@ -41,14 +45,20 @@ class SongModel {
     return rows[0];
   }
 
-  // Get all songs with pagination (only active songs for users)
-  static async findAll(limit = 20, offset = 0) {
+  // Get all songs with pagination - show ALL songs
+  // Frontend will handle access control on click
+  static async findAll(limit = 20, offset = 0, userId = null) {
     limit = parseInt(limit) || 20;
     offset = parseInt(offset) || 0;
+    
     const [rows] = await db.query(
       `SELECT s.*, 
               a.name as artist_name, 
-              al.title as album_title, 
+              al.title as album_title,
+              al.album_id as album_id,
+              al.is_premium as album_is_premium,
+              al.release_date as album_release_date,
+              al.price as album_price,
               g.name as genre_name,
               COALESCE(rc.rating_count, 0) as rating_count
        FROM songs s
@@ -61,20 +71,29 @@ class SongModel {
          WHERE rating IS NOT NULL
          GROUP BY song_id
        ) rc ON s.song_id = rc.song_id
-       WHERE s.status = 1
+       WHERE s.status = 1 
+         AND (al.release_date IS NULL OR al.release_date <= NOW())
        ORDER BY s.song_id DESC
        LIMIT ${limit} OFFSET ${offset}`
     );
     return rows;
   }
 
-  // Search songs (only active songs)
-  static async search(keyword, limit = 20) {
+  // Search songs - show ALL songs including those in unreleased/premium albums
+  // Frontend will handle click logic based on album status
+  static async search(keyword, limit = 20, userId = null) {
     limit = parseInt(limit) || 20;
+    const params = [`%${keyword}%`, `%${keyword}%`];
+    
     const [rows] = await db.execute(
       `SELECT s.*, 
               a.name as artist_name, 
-              al.title as album_title, 
+              al.title as album_title,
+              al.album_id as album_id,
+              al.is_premium as album_is_premium,
+              al.release_date as album_release_date,
+              al.price as album_price,
+              al.cover_url as album_cover_url,
               g.name as genre_name,
               COALESCE(rc.rating_count, 0) as rating_count
        FROM songs s
@@ -87,9 +106,13 @@ class SongModel {
          WHERE rating IS NOT NULL
          GROUP BY song_id
        ) rc ON s.song_id = rc.song_id
-       WHERE s.status = 1 AND (s.title LIKE ? OR a.name LIKE ?)
+       WHERE s.status = 1 
+         AND (s.title LIKE ? OR a.name LIKE ?)
+       ORDER BY 
+         CASE WHEN al.release_date IS NULL OR al.release_date <= NOW() THEN 0 ELSE 1 END,
+         s.song_id DESC
        LIMIT ${limit}`,
-      [`%${keyword}%`, `%${keyword}%`]
+      params
     );
     return rows;
   }
@@ -124,7 +147,11 @@ class SongModel {
     const [rows] = await db.execute(
       `SELECT s.*, 
               a.name as artist_name, 
-              al.title as album_title, 
+              al.title as album_title,
+              al.album_id as album_id,
+              al.is_premium as album_is_premium,
+              al.release_date as album_release_date,
+              al.price as album_price,
               g.name as genre_name,
               COALESCE(rc.rating_count, 0) as rating_count
        FROM songs s
@@ -149,7 +176,11 @@ class SongModel {
     const [rows] = await db.execute(
       `SELECT s.*, 
               a.name as artist_name, 
-              al.title as album_title, 
+              al.title as album_title,
+              al.album_id as album_id,
+              al.is_premium as album_is_premium,
+              al.release_date as album_release_date,
+              al.price as album_price,
               g.name as genre_name,
               COALESCE(rc.rating_count, 0) as rating_count
        FROM songs s
@@ -162,7 +193,9 @@ class SongModel {
          WHERE rating IS NOT NULL
          GROUP BY song_id
        ) rc ON s.song_id = rc.song_id
-       WHERE s.genre_id = ? AND s.status = 1`,
+       WHERE s.genre_id = ? 
+         AND s.status = 1
+         AND (al.release_date IS NULL OR al.release_date <= NOW())`,
       [genreId]
     );
     return rows;
@@ -174,7 +207,11 @@ class SongModel {
     const [rows] = await db.query(
       `SELECT s.*, 
               a.name as artist_name, 
-              al.title as album_title, 
+              al.title as album_title,
+              al.album_id as album_id,
+              al.is_premium as album_is_premium,
+              al.release_date as album_release_date,
+              al.price as album_price,
               g.name as genre_name,
               COALESCE(rc.rating_count, 0) as rating_count
        FROM songs s
@@ -188,6 +225,7 @@ class SongModel {
          GROUP BY song_id
        ) rc ON s.song_id = rc.song_id
        WHERE s.status = 1
+         AND (al.release_date IS NULL OR al.release_date <= NOW())
        ORDER BY s.listen_count DESC
        LIMIT ${limit}`
     );
@@ -244,8 +282,44 @@ class SongModel {
     const song = await this.findById(songId);
     if (!song) return { hasAccess: false, reason: 'Song not found' };
     
-    // If not premium song, everyone can access
-    if (!song.is_premium) return { hasAccess: true, song };
+    // Check if album is premium or unreleased
+    let isAlbumPremium = false;
+    let isAlbumUnreleased = false;
+    let albumReleaseDate = null;
+
+    if (song.album_id) {
+       const [albumRows] = await db.execute(
+        'SELECT is_premium, release_date FROM albums WHERE album_id = ?',
+        [song.album_id]
+      );
+      if (albumRows.length > 0) {
+        if (albumRows[0].is_premium) isAlbumPremium = true;
+        if (albumRows[0].release_date && new Date(albumRows[0].release_date) > new Date()) {
+          isAlbumUnreleased = true;
+          albumReleaseDate = albumRows[0].release_date;
+        }
+      }
+    }
+
+    // Check if user is the artist of this song (artist can always access their own songs)
+    if (song.artist_id) {
+      const [artistRows] = await db.execute(
+        'SELECT user_id FROM artists WHERE artist_id = ?',
+        [song.artist_id]
+      );
+      
+      if (artistRows.length > 0 && artistRows[0].user_id === userId) {
+        return { hasAccess: true, song, accessType: 'artist_owner' };
+      }
+    }
+
+    // If album is unreleased, NO ONE except the artist can access
+    if (isAlbumUnreleased) {
+      return { hasAccess: false, reason: 'Album not yet released', release_date: albumReleaseDate };
+    }
+
+    // If neither song nor album is premium, everyone can access
+    if (!song.is_premium && !isAlbumPremium) return { hasAccess: true, song };
 
     // Check if user is the artist of this song (artist can always access their own songs)
     if (song.artist_id) {
@@ -314,7 +388,11 @@ class SongModel {
     const [rows] = await db.query(
       `SELECT s.*, 
               a.name as artist_name, 
-              al.title as album_title, 
+              al.title as album_title,
+              al.album_id as album_id,
+              al.is_premium as album_is_premium,
+              al.release_date as album_release_date,
+              al.price as album_price,
               g.name as genre_name,
               COALESCE(rc.rating_count, 0) as rating_count
        FROM songs s
@@ -340,7 +418,11 @@ class SongModel {
     const [rows] = await db.query(
       `SELECT s.*, 
               a.name as artist_name, 
-              al.title as album_title, 
+              al.title as album_title,
+              al.album_id as album_id,
+              al.is_premium as album_is_premium,
+              al.release_date as album_release_date,
+              al.price as album_price,
               g.name as genre_name,
               COALESCE(rc.rating_count, 0) as rating_count
        FROM songs s
@@ -486,7 +568,11 @@ class SongModel {
     const [candidates] = await db.query(
       `SELECT s.*, 
               a.name as artist_name, 
-              al.title as album_title, 
+              al.title as album_title,
+              al.album_id as album_id,
+              al.is_premium as album_is_premium,
+              al.release_date as album_release_date,
+              al.price as album_price,
               g.name as genre_name
        FROM songs s
        LEFT JOIN artists a ON s.artist_id = a.artist_id

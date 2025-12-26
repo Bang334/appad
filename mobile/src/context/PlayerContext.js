@@ -311,11 +311,20 @@ export const PlayerProvider = ({ children }) => {
   }, [handlePlaybackFinished]);
 
   const checkSongAccess = async (song) => {
-    // If not premium song, everyone can access
-    if (!song.is_premium || song.is_premium === 0) {
+    // 1. Check for unreleased album (local check for speed)
+    if (song.album_release_date && new Date(song.album_release_date) > new Date()) {
+      return { hasAccess: false, reason: 'Album not yet released' };
+    }
+
+    // 2. Check if it's a premium album song (local check)
+    // If it's a premium album and NOT a premium song (meaning it's a free song in a paid album)
+    // we still need to check access via backend unless we already know user has access.
+    // However, if song.is_premium is 0 and album_is_premium is 0, it's definitely free.
+    if ((!song.is_premium || song.is_premium === 0) && (!song.album_is_premium || song.album_is_premium === 0)) {
       return { hasAccess: true };
     }
 
+    // 3. Backend check for premium songs or premium album songs
     try {
       const response = await premiumService.checkSongAccess(song.song_id);
       if (response.success && response.data) {
@@ -324,7 +333,7 @@ export const PlayerProvider = ({ children }) => {
       return { hasAccess: false, reason: 'Cannot check access' };
     } catch (error) {
       console.error('Error checking song access:', error);
-      // If error, assume no access for premium songs
+      // If error, assume no access for premium songs/albums
       return { hasAccess: false, reason: 'Error checking access' };
     }
   };
@@ -504,9 +513,22 @@ export const PlayerProvider = ({ children }) => {
       if (!skipAccessCheck) {
         const accessInfo = await checkSongAccess(song);
         if (!accessInfo.hasAccess) {
-          // Show premium access modal
-          setPremiumSong(song);
-          setShowPremiumModal(true);
+          if (accessInfo.reason === 'Album not yet released') {
+             const releaseDate = song.album_release_date ? new Date(song.album_release_date) : null;
+             const formattedDate = releaseDate ? releaseDate.toLocaleString('vi-VN', {
+               hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
+             }) : 'Trong tương lai';
+             
+             Alert.alert(
+               '🎵 Sắp ra mắt',
+               `Bài hát "${song.title}" thuộc album chưa phát hành.\n\n⏰ Dự kiến: ${formattedDate}`,
+               [{ text: 'Đã hiểu' }]
+             );
+          } else {
+            // Show premium access modal
+            setPremiumSong(song);
+            setShowPremiumModal(true);
+          }
           return;
         }
       }

@@ -7,7 +7,9 @@ class SongController {
   static async getAll(req, res) {
     try {
       const { limit = 20, offset = 0 } = req.query;
-      const songs = await SongModel.findAll(parseInt(limit), parseInt(offset));
+      // Pass userId if authenticated to include premium album songs the user has access to
+      const userId = req.user?.user_id || null;
+      const songs = await SongModel.findAll(parseInt(limit), parseInt(offset), userId);
       
       res.json({
         success: true,
@@ -64,7 +66,9 @@ class SongController {
         });
       }
 
-      const songs = await SongModel.search(q, parseInt(limit));
+      // Pass userId if authenticated to include premium album songs the user has access to
+      const userId = req.user?.user_id || null;
+      const songs = await SongModel.search(q, parseInt(limit), userId);
       
       res.json({
         success: true,

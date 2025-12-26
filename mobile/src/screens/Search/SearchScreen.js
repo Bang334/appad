@@ -259,12 +259,69 @@ const SearchScreen = ({ navigation }) => {
     setAlbumCurrentPage(1);
   }, [searchQuery, allAlbums, activeTab, albumPremiumFilter]);
 
-  const handlePlaySong = (song, index) => {
+  const handlePlaySong = async (song, index) => {
     if (currentSong?.song_id === song.song_id) {
       togglePlayPause();
-    } else {
-      playSong(song, filteredSongs, index);
+      return;
     }
+
+    // Check if song is in an unreleased album
+    if (song.album_release_date && new Date(song.album_release_date) > new Date()) {
+      const { Alert } = require('react-native');
+      const releaseDate = new Date(song.album_release_date);
+      const formattedDate = releaseDate.toLocaleString('vi-VN', {
+        hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
+      });
+      Alert.alert(
+        '🎵 Sắp ra mắt',
+        `Bài hát "${song.title}" sẽ được phát hành vào:\n\n⏰ ${formattedDate}`,
+        [{ text: 'Đã hiểu' }]
+      );
+      return;
+    }
+
+    // Check if song is FREE but in a PREMIUM album
+    if (song.album_is_premium === 1 && song.is_premium !== 1) {
+      try {
+        const response = await premiumService.checkSongAccess(song.song_id);
+        if (!response.data?.hasAccess) {
+          const { Alert } = require('react-native');
+          Alert.alert(
+            '🔒 Nội dung Premium',
+            `Bài hát "${song.title}" thuộc album Premium.\n\nMua album để nghe!`,
+            [
+              { text: 'Để sau', style: 'cancel' },
+              { 
+                text: 'Xem Album', 
+                onPress: () => navigation.navigate('AlbumDetail', { albumId: song.album_id })
+              }
+            ]
+          );
+          return;
+        }
+      } catch (error) {
+        console.error('Error checking song access:', error);
+        return;
+      }
+    }
+
+    // Check if song is premium
+    if (song.is_premium === 1) {
+      try {
+        const response = await premiumService.checkSongAccess(song.song_id);
+        if (!response.data?.hasAccess) {
+          setSelectedSong(song);
+          setSelectedSongList(filteredSongs);
+          setShowPremiumModal(true);
+          return;
+        }
+      } catch (error) {
+        console.error('Error checking song access:', error);
+        return;
+      }
+    }
+
+    playSong(song, filteredSongs, index);
   };
 
   const handleSongPress = async (song, index) => {
@@ -274,7 +331,47 @@ const SearchScreen = ({ navigation }) => {
       return;
     }
 
-    // Check access for premium songs
+    // Check if song is in an unreleased album
+    if (song.album_release_date && new Date(song.album_release_date) > new Date()) {
+      const { Alert } = require('react-native');
+      const releaseDate = new Date(song.album_release_date);
+      const formattedDate = releaseDate.toLocaleString('vi-VN', {
+        hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
+      });
+      Alert.alert(
+        '🎵 Sắp ra mắt',
+        `Bài hát "${song.title}" thuộc album "${song.album_title}" sẽ được phát hành vào:\n\n⏰ ${formattedDate}`,
+        [{ text: 'Đã hiểu' }]
+      );
+      return;
+    }
+
+    // Check if song is in a premium album (and not a premium single)
+    if (song.album_is_premium === 1 && song.is_premium !== 1) {
+      try {
+        const response = await premiumService.checkSongAccess(song.song_id);
+        if (!response.data?.hasAccess) {
+          // Redirect to album detail page to purchase
+          const { Alert } = require('react-native');
+          Alert.alert(
+            '🔒 Nội dung Premium',
+            `Bài hát "${song.title}" thuộc album Premium "${song.album_title}".\n\nMua album để nghe tất cả bài hát!`,
+            [
+              { text: 'Để sau', style: 'cancel' },
+              { 
+                text: 'Xem Album', 
+                onPress: () => navigation.navigate('AlbumDetail', { albumId: song.album_id })
+              }
+            ]
+          );
+          return;
+        }
+      } catch (error) {
+        console.error('Error checking song access:', error);
+      }
+    }
+
+    // Check access for premium songs (singles)
     if (song.is_premium === 1) {
       try {
         const response = await premiumService.checkSongAccess(song.song_id);
@@ -307,8 +404,6 @@ const SearchScreen = ({ navigation }) => {
     } catch (error) {
       // Silent fail
     }
-    
-    // Already navigated above
   };
 
   const handleFollowToggle = async (artistId) => {
@@ -384,32 +479,65 @@ const SearchScreen = ({ navigation }) => {
   };
 
   const renderAlbumItem = ({ item }) => {
+    const isReleased = !item.release_date || new Date(item.release_date) <= new Date();
+    const releaseDate = item.release_date ? new Date(item.release_date) : null;
+    const formattedReleaseTime = releaseDate ? releaseDate.toLocaleString('vi-VN', {
+      hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit'
+    }) : '';
+
+    const handleAlbumPress = () => {
+      if (isReleased) {
+        navigation.navigate('AlbumDetail', { albumId: item.album_id });
+      } else {
+        const { Alert } = require('react-native');
+        const fullDate = releaseDate.toLocaleString('vi-VN', {
+          hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
+        });
+        Alert.alert(
+          '🎵 Sắp ra mắt',
+          `Album "${item.title}" sẽ được phát hành vào:\n\n⏰ ${fullDate}`,
+          [{ text: 'Đã hiểu' }]
+        );
+      }
+    };
+
     return (
       <View style={GlobalStyles.songItemWrapper}>
         <LinearGradient
-          colors={['#161616', '#050505']}
+          colors={!isReleased ? ['#1a1a2e', '#16213e'] : ['#161616', '#050505']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={GlobalStyles.songItem}
+          style={[GlobalStyles.songItem, !isReleased && { borderColor: COLORS.info, borderWidth: 1 }]}
         >
           <TouchableOpacity
             style={GlobalStyles.songContent}
-            onPress={() => navigation.navigate('AlbumDetail', { albumId: item.album_id })}
+            onPress={handleAlbumPress}
             activeOpacity={0.8}
           >
             <View style={GlobalStyles.coverContainer}>
               <Image
                 source={{ uri: item.cover_url || 'https://via.placeholder.com/150' }}
-                style={GlobalStyles.songImage}
+                style={[GlobalStyles.songImage, !isReleased && { opacity: 0.5 }]}
               />
+              {/* Upcoming Overlay */}
+              {!isReleased && (
+                <View style={styles.upcomingOverlay}>
+                  <Ionicons name="time-outline" size={24} color="#FFF" />
+                </View>
+              )}
             </View>
             
             <View style={GlobalStyles.songInfo}>
               <View style={[GlobalStyles.titleRow, { justifyContent: 'space-between' }]}>
-                <Text style={GlobalStyles.songTitle} numberOfLines={1}>
+                <Text style={[GlobalStyles.songTitle, !isReleased && { color: COLORS.textMuted }]} numberOfLines={1}>
                   {item.title}
                 </Text>
                 <View style={{display: 'flex', flexDirection: 'row', position: 'relative', top: -10, right:-15}}>
+                  {!isReleased && (
+                    <View style={styles.upcomingBadge}>
+                      <Text style={styles.upcomingBadgeText}>SẮP RA MẮT</Text>
+                    </View>
+                  )}
                   {item.is_premium === 1 && <PremiumBadge size="small" style={GlobalStyles.premiumBadge} />}
                 </View>
               </View>
@@ -419,10 +547,21 @@ const SearchScreen = ({ navigation }) => {
               </Text>
               
               <View style={GlobalStyles.songMeta}>
-                <Ionicons name="calendar-outline" size={12} color="#94A3B8" />
-                <Text style={GlobalStyles.metaText}>
-                  {item.release_date ? new Date(item.release_date).getFullYear() : 'N/A'}
-                </Text>
+                {!isReleased && formattedReleaseTime ? (
+                  <>
+                    <Ionicons name="calendar-outline" size={12} color={COLORS.info} />
+                    <Text style={[GlobalStyles.metaText, { color: COLORS.info }]}>
+                      {formattedReleaseTime}
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="calendar-outline" size={12} color="#94A3B8" />
+                    <Text style={GlobalStyles.metaText}>
+                      {item.release_date ? new Date(item.release_date).getFullYear() : 'N/A'}
+                    </Text>
+                  </>
+                )}
                 {item.is_premium === 1 && item.price > 0 && (
                   <>
                     <Ionicons name="cash-outline" size={12} color={COLORS.warning} />
@@ -438,9 +577,13 @@ const SearchScreen = ({ navigation }) => {
           <View style={GlobalStyles.cardActions}>
             <TouchableOpacity
               style={GlobalStyles.addButton}
-              onPress={() => navigation.navigate('AlbumDetail', { albumId: item.album_id })}
+              onPress={handleAlbumPress}
             >
-              <Ionicons name="chevron-forward-circle-outline" size={28} color="#E2E8F0" />
+              <Ionicons 
+                name={isReleased ? "chevron-forward-circle-outline" : "time-outline"} 
+                size={28} 
+                color={isReleased ? "#E2E8F0" : COLORS.info} 
+              />
             </TouchableOpacity>
           </View>
         </LinearGradient>
@@ -452,10 +595,18 @@ const SearchScreen = ({ navigation }) => {
     const isCurrentSong = currentSong?.song_id === item.song_id;
     const isCurrentPlaying = isCurrentSong && isPlaying;
     const showPrice = item.is_premium === 1 && !userHasAccessToSong(item) && Number(item.price) > 0;
+    
+    // Check album status
+    const isAlbumUnreleased = item.album_release_date && new Date(item.album_release_date) > new Date();
+    const isInPremiumAlbum = item.album_is_premium === 1 && item.is_premium !== 1;
 
     const gradientColors = isCurrentSong
       ? ['#2B124C', '#08040F']
-      : ['#161616', '#050505'];
+      : isAlbumUnreleased 
+        ? ['#1a1a2e', '#16213e']  // Blue tint for unreleased
+        : isInPremiumAlbum
+          ? ['#2d1f3d', '#1a1025']  // Purple tint for premium album
+          : ['#161616', '#050505'];
 
     return (
       <View style={GlobalStyles.songItemWrapper}>
@@ -463,7 +614,12 @@ const SearchScreen = ({ navigation }) => {
           colors={gradientColors}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[GlobalStyles.songItem, isCurrentSong && GlobalStyles.songItemActive]}
+          style={[
+            GlobalStyles.songItem, 
+            isCurrentSong && GlobalStyles.songItemActive,
+            isAlbumUnreleased && { borderColor: COLORS.info, borderWidth: 1 },
+            isInPremiumAlbum && !isAlbumUnreleased && { borderColor: COLORS.primary, borderWidth: 1 }
+          ]}
         >
           <TouchableOpacity
             style={GlobalStyles.songContent}
@@ -473,21 +629,41 @@ const SearchScreen = ({ navigation }) => {
             <View style={GlobalStyles.coverContainer}>
               <Image
                 source={{ uri: item.cover_url || 'https://via.placeholder.com/60' }}
-                style={GlobalStyles.songImage}
+                style={[GlobalStyles.songImage, (isAlbumUnreleased || isInPremiumAlbum) && { opacity: 0.6 }]}
               />
               {isCurrentPlaying && (
                 <View style={GlobalStyles.playingIndicator}>
                   <Ionicons name="volume-high" size={20} color="#FFF" />
                 </View>
               )}
+              {/* Overlay for unreleased/premium album songs */}
+              {(isAlbumUnreleased || isInPremiumAlbum) && !isCurrentPlaying && (
+                <View style={styles.songOverlay}>
+                  <Ionicons 
+                    name={isAlbumUnreleased ? "time-outline" : "lock-closed"} 
+                    size={16} 
+                    color="#FFF" 
+                  />
+                </View>
+              )}
             </View>
 
             <View style={GlobalStyles.songInfo}>
               <View style={[GlobalStyles.titleRow, { justifyContent: 'space-between' }]}>
-                <Text style={GlobalStyles.songTitle} numberOfLines={1}>
+                <Text style={[GlobalStyles.songTitle, (isAlbumUnreleased || isInPremiumAlbum) && { color: COLORS.textMuted }]} numberOfLines={1}>
                   {item.title}
                 </Text>
                 <View style={{display: 'flex', flexDirection: 'row', position: 'relative', top: -10, right:-15}}>
+                  {isAlbumUnreleased && (
+                    <View style={styles.upcomingBadge}>
+                      <Text style={styles.upcomingBadgeText}>SẮP RA MẮT</Text>
+                    </View>
+                  )}
+                  {isInPremiumAlbum && !isAlbumUnreleased && (
+                    <View style={[styles.upcomingBadge, { backgroundColor: COLORS.primary }]}>
+                      <Text style={styles.upcomingBadgeText}>ALBUM VIP</Text>
+                    </View>
+                  )}
                   {item.is_premium === 1 && <PremiumBadge size="small" style={GlobalStyles.premiumBadge} />}
                   {item.is_premium === 1 && songAccessTypes[item.song_id] && (
                     <AccessBadge accessType={songAccessTypes[item.song_id]} size={16} />
@@ -499,7 +675,7 @@ const SearchScreen = ({ navigation }) => {
                 {item.album_title && (
                   <>
                     <Text style={{ color: '#94A3B8' }}> • </Text>
-                    <Text style={{ color: '#CBD5F5', fontStyle: 'italic' }}>
+                    <Text style={{ color: isInPremiumAlbum ? COLORS.primary : '#CBD5F5', fontStyle: 'italic' }}>
                       {item.album_title}
                     </Text>
                   </>
@@ -535,6 +711,15 @@ const SearchScreen = ({ navigation }) => {
                   </Text>
                 </View>
               )}
+              {/* Show album price for premium album songs */}
+              {isInPremiumAlbum && !isAlbumUnreleased && item.album_price > 0 && (
+                <View style={GlobalStyles.priceRow}>
+                  <Ionicons name="disc-outline" size={12} color={COLORS.primary} />
+                  <Text style={[GlobalStyles.priceText, { color: COLORS.primary }]}>
+                    Album: {Number(item.album_price).toLocaleString('vi-VN')}đ
+                  </Text>
+                </View>
+              )}
             </View>
           </TouchableOpacity>
 
@@ -544,9 +729,9 @@ const SearchScreen = ({ navigation }) => {
               onPress={() => handlePlaySong(item, index)}
             >
               <Ionicons
-                name={isCurrentPlaying ? 'pause-circle' : 'play-circle'}
+                name={isAlbumUnreleased ? 'time-outline' : isInPremiumAlbum ? 'cart-outline' : isCurrentPlaying ? 'pause-circle' : 'play-circle'}
                 size={36}
-                color={COLORS.primary}
+                color={isAlbumUnreleased ? COLORS.info : isInPremiumAlbum ? COLORS.primary : COLORS.primary}
               />
             </TouchableOpacity>
             <TouchableOpacity
@@ -1355,6 +1540,42 @@ const styles = StyleSheet.create({
   genreCountLabel: {
     color: COLORS.textMuted,
     fontSize: SIZES.xs,
+  },
+  // Upcoming Album Styles
+  upcomingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  upcomingBadge: {
+    backgroundColor: COLORS.info,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginRight: 4,
+  },
+  upcomingBadgeText: {
+    color: '#FFF',
+    fontSize: 8,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+  },
+  songOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 

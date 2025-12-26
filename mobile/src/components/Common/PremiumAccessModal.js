@@ -28,7 +28,7 @@ const PremiumAccessModal = ({ visible, song, onClose, onPurchaseSong, onSubscrib
   const [membershipStatus, setMembershipStatus] = useState(null);
   const [loadingMembership, setLoadingMembership] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [confirmType, setConfirmType] = useState(null); // 'song', 'membership', 'premium'
+  const [confirmType, setConfirmType] = useState(null); // 'song', 'membership', 'premium', 'album'
   const [loadingConfirm, setLoadingConfirm] = useState(false);
   const navigation = useNavigation();
 
@@ -94,6 +94,11 @@ const PremiumAccessModal = ({ visible, song, onClose, onPurchaseSong, onSubscrib
 
   const handleSubscribePremium = () => {
     setConfirmType('premium');
+    setShowConfirmModal(true);
+  };
+
+  const handlePurchaseAlbum = () => {
+    setConfirmType('album');
     setShowConfirmModal(true);
   };
 
@@ -166,6 +171,30 @@ const PremiumAccessModal = ({ visible, song, onClose, onPurchaseSong, onSubscrib
           navigation.navigate('Premium');
         }, 300);
         onSubscribePremium && onSubscribePremium();
+      } else if (confirmType === 'album') {
+        const response = await premiumService.purchaseAlbum(song.album_id);
+        if (response.success) {
+          setShowConfirmModal(false);
+          onClose();
+          
+          const songIndex = songList.length > 0 
+            ? songList.findIndex(s => s.song_id === song.song_id)
+            : 0;
+          
+          if (songList.length > 0 && songIndex >= 0) {
+            playSong(song, songList, songIndex);
+          } else {
+            playSong(song, [song], 0);
+          }
+          
+          setTimeout(() => {
+             navigation.navigate('FullPlayer');
+          }, 300);
+          
+          Alert.alert('Thành công', 'Bạn đã sở hữu trọn bộ album này!');
+        } else {
+          Alert.alert('Lỗi', response.message || 'Không thể mua album');
+        }
       }
     } catch (error) {
       console.error(`Error in ${confirmType}:`, error);
@@ -209,6 +238,16 @@ const PremiumAccessModal = ({ visible, song, onClose, onPurchaseSong, onSubscrib
           price: premiumPrice,
           currentBalance: balance,
           additionalInfo: {},
+        };
+      case 'album':
+        return {
+          type: 'album',
+          title: `Album ${song.album_title || 'Collection'}`,
+          price: parseFloat(song.album_price) || 0,
+          currentBalance: balance,
+          additionalInfo: {
+            artist_name: song.artist_name,
+          },
         };
       default:
         return null;
@@ -335,33 +374,58 @@ const PremiumAccessModal = ({ visible, song, onClose, onPurchaseSong, onSubscrib
                   </TouchableOpacity>
                 )}
 
+                {/* Option 4: Purchase Album */}
+                {song.album_id && song.album_is_premium === 1 && (
+                  <TouchableOpacity
+                    style={[styles.optionCard, styles.normalCard]}
+                    onPress={handlePurchaseAlbum}
+                  >
+                    <View style={styles.optionHeader}>
+                      <View style={[styles.iconContainer, { backgroundColor: 'rgba(234, 179, 8, 0.1)' }]}>
+                        <Ionicons name="disc" size={24} color={COLORS.warning} />
+                      </View>
+                      <View style={styles.optionInfo}>
+                        <Text style={styles.optionTitle}>Mua trọn bộ Album</Text>
+                        <Text style={styles.optionPrice}>
+                          {(parseFloat(song.album_price) || 0).toLocaleString('vi-VN')}đ
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.optionDescription}>
+                      Sở hữu vĩnh viễn toàn bộ bài hát trong album "{song.album_title || 'này'}".
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
                 {/* Option 1: Purchase Song */}
-                <TouchableOpacity
-                  style={[styles.optionCard, styles.normalCard]}
-                  onPress={handlePurchaseSong}
-                >
-                  <View style={styles.optionHeader}>
-                    <View style={[styles.iconContainer, { backgroundColor: 'rgba(6, 182, 212, 0.1)' }]}>
-                      <Ionicons name="cart" size={24} color={COLORS.accent} />
+                {song.is_premium === 1 && songPrice > 0 && (
+                  <TouchableOpacity
+                    style={[styles.optionCard, styles.normalCard]}
+                    onPress={handlePurchaseSong}
+                  >
+                    <View style={styles.optionHeader}>
+                      <View style={[styles.iconContainer, { backgroundColor: 'rgba(6, 182, 212, 0.1)' }]}>
+                        <Ionicons name="cart" size={24} color={COLORS.accent} />
+                      </View>
+                      <View style={styles.optionInfo}>
+                        <Text style={styles.optionTitle}>Mua bài hát này</Text>
+                        <Text style={styles.optionPrice}>
+                          {songPrice.toLocaleString('vi-VN')}đ
+                        </Text>
+                      </View>
                     </View>
-                    <View style={styles.optionInfo}>
-                      <Text style={styles.optionTitle}>Mua bài hát này</Text>
-                      <Text style={styles.optionPrice}>
-                        {songPrice.toLocaleString('vi-VN')}đ
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={styles.optionDescription}>
-                    Sở hữu vĩnh viễn bài hát này. Không cần đăng ký gói tháng.
-                  </Text>
-                  {parseFloat(balance) < parseFloat(songPrice) && (
-                    <View style={styles.balanceWarning}>
-                      <Text style={styles.balanceWarningText}>
-                        Số dư hiện tại: {balance.toLocaleString('vi-VN')}đ (Không đủ)
-                      </Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
+                    <Text style={styles.optionDescription}>
+                      Sở hữu vĩnh viễn bài hát này. Không cần đăng ký gói tháng.
+                    </Text>
+                    {parseFloat(balance) < parseFloat(songPrice) && (
+                      <View style={styles.balanceWarning}>
+                        <Text style={styles.balanceWarningText}>
+                          Số dư hiện tại: {balance.toLocaleString('vi-VN')}đ (Không đủ)
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                )}
 
               </View>
 

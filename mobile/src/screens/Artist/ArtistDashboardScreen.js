@@ -208,6 +208,20 @@ const ArtistDashboardScreen = ({ route, navigation }) => {
 
         <TouchableOpacity
           style={styles.actionButton}
+          onPress={() => navigation.navigate('ArtistEditProfile', { artistId })}
+        >
+          <LinearGradient
+            colors={['#6366F1', '#8B5CF6']}
+            style={styles.actionIconContainer}
+          >
+            <Ionicons name="person-circle" size={24} color="#FFF" />
+          </LinearGradient>
+          <Text style={styles.actionText}>Chỉnh sửa hồ sơ</Text>
+          <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionButton}
           onPress={() => navigation.navigate('ArtistSongs', { artistId })}
         >
           <LinearGradient

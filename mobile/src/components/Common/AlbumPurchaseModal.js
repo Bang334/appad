@@ -8,13 +8,17 @@ import {
   Image,
   ActivityIndicator,
   Alert,
+  Dimensions,
+  Pressable,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SIZES } from '../../config/theme';
+import { COLORS, SIZES, SHADOWS } from '../../config/theme';
 import { walletService } from '../../services/walletService';
 import { premiumService } from '../../services/premiumService';
 import { useNavigation } from '@react-navigation/native';
+
+const { width } = Dimensions.get('window');
 
 const AlbumPurchaseModal = ({ visible, onClose, album, onSuccess }) => {
   const navigation = useNavigation();
@@ -91,93 +95,133 @@ const AlbumPurchaseModal = ({ visible, onClose, album, onSuccess }) => {
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType="fade"
       onRequestClose={onClose}
     >
-      <View style={styles.overlay}>
-        <View style={styles.container}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Mua Album</Text>
-            <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={24} color={COLORS.text} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.content}>
-            <Image
-              source={{ uri: album.cover_url || 'https://via.placeholder.com/150' }}
-              style={styles.cover}
-            />
-            <Text style={styles.albumTitle} numberOfLines={2}>{album.title}</Text>
-            <Text style={styles.artistName}>{album.artist_name}</Text>
-
-            <View style={styles.priceContainer}>
-              <Text style={styles.priceLabel}>Giá album:</Text>
-              <Text style={styles.priceValue}>{price.toLocaleString('vi-VN')}đ</Text>
-            </View>
-
-            <View style={styles.divider} />
-
-            <View style={styles.balanceContainer}>
-              <Text style={styles.balanceLabel}>Số dư ví của bạn:</Text>
-              {loading ? (
-                <ActivityIndicator size="small" color={COLORS.primary} />
-              ) : (
-                <Text style={[styles.balanceValue, !isAffordable && styles.insufficientBalance]}>
-                  {balance.toLocaleString('vi-VN')}đ
-                </Text>
-              )}
-            </View>
-
-            {!isAffordable && !loading && (
-              <View style={styles.warningContainer}>
-                <Ionicons name="warning-outline" size={16} color={COLORS.error} />
-                <Text style={styles.warningText}>
-                  Thiếu {(price - balance).toLocaleString('vi-VN')}đ
-                </Text>
-              </View>
-            )}
-          </View>
-
-          <View style={styles.footer}>
-            <TouchableOpacity
-              style={[styles.button, styles.cancelButton]}
+      <Pressable style={styles.overlay} onPress={onClose}>
+        <Pressable 
+          style={styles.modal}
+          onPress={(e) => e.stopPropagation()}
+        >
+          <LinearGradient
+            colors={['#1F1F1F', '#121212']}
+            style={styles.container}
+          >
+            <TouchableOpacity 
+              style={styles.closeBtn} 
               onPress={onClose}
-              disabled={processing}
+              activeOpacity={0.7}
             >
-              <Text style={styles.cancelButtonText}>Hủy</Text>
+              <View style={styles.closeIconBox}>
+                <Ionicons name="close" size={20} color="#FFF" />
+              </View>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[
-                styles.button, 
-                styles.confirmButton,
-                (!isAffordable || processing) && styles.disabledButton
-              ]}
-              onPress={isAffordable ? handlePurchase : () => {
-                onClose();
-                navigation.navigate('Wallet');
-              }}
-              disabled={processing}
-            >
-              {processing ? (
-                <ActivityIndicator color={COLORS.white} size="small" />
-              ) : (
+            <View style={styles.content}>
+              <Text style={styles.mainTitle}>Sở hữu Album</Text>
+              
+              <View style={styles.coverWrapper}>
+                <Image
+                  source={{ uri: album.cover_url || 'https://via.placeholder.com/200' }}
+                  style={styles.coverImg}
+                />
                 <LinearGradient
-                  colors={isAffordable ? COLORS.gradient.primary : [COLORS.textMuted, COLORS.textMuted]}
-                  style={styles.gradientButton}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                >
-                  <Text style={styles.confirmButtonText}>
-                    {isAffordable ? 'Mua ngay' : 'Nạp tiền'}
+                  colors={['transparent', 'rgba(0,0,0,0.4)']}
+                  style={styles.coverShadow}
+                />
+                <View style={styles.albumBadge}>
+                  <Ionicons name="disc" size={16} color="#FFF" />
+                </View>
+              </View>
+
+              <Text style={styles.albumName} numberOfLines={2}>{album.title}</Text>
+              <Text style={styles.artistName}>{album.artist_name}</Text>
+
+              <View style={styles.priceBox}>
+                <View style={styles.priceRow}>
+                  <Text style={styles.priceLabel}>Giá Album</Text>
+                  <Text style={styles.priceText}>{price.toLocaleString('vi-VN')}đ</Text>
+                </View>
+                <View style={[styles.divider, { marginVertical: 12 }]} />
+                <View style={styles.priceRow}>
+                  <Text style={styles.priceLabel}>Số dư của bạn</Text>
+                  {loading ? (
+                    <ActivityIndicator size="small" color={COLORS.primary} />
+                  ) : (
+                    <Text style={[
+                      styles.balanceText, 
+                      !isAffordable && styles.textError
+                    ]}>
+                      {balance.toLocaleString('vi-VN')}đ
+                    </Text>
+                  )}
+                </View>
+              </View>
+
+              {!isAffordable && !loading && (
+                <View style={styles.alertBox}>
+                  <Ionicons name="information-circle" size={18} color={COLORS.error} />
+                  <Text style={styles.alertText}>
+                    Bạn còn thiếu {(price - balance).toLocaleString('vi-VN')}đ để hoàn tất giao dịch.
                   </Text>
-                </LinearGradient>
+                </View>
               )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
+            </View>
+
+            <View style={styles.footer}>
+              {isAffordable ? (
+                <TouchableOpacity
+                  style={styles.actionBtn}
+                  onPress={handlePurchase}
+                  disabled={processing}
+                >
+                  <LinearGradient
+                    colors={COLORS.gradient.primary}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.gradientBtn}
+                  >
+                    {processing ? (
+                      <ActivityIndicator color="#FFF" />
+                    ) : (
+                      <>
+                        <Ionicons name="cart" size={20} color="#FFF" />
+                        <Text style={styles.btnText}>Xác nhận mua</Text>
+                      </>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={styles.actionBtn}
+                  onPress={() => {
+                    onClose();
+                    navigation.navigate('Wallet');
+                  }}
+                >
+                  <LinearGradient
+                    colors={['#334155', '#1e293b']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.gradientBtn}
+                  >
+                    <Ionicons name="wallet-outline" size={20} color="#FFF" />
+                    <Text style={styles.btnText}>Nạp thêm tiền</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
+              
+              <TouchableOpacity 
+                style={styles.secondaryBtn} 
+                onPress={onClose}
+                disabled={processing}
+              >
+                <Text style={styles.secondaryBtnText}>Để sau</Text>
+              </TouchableOpacity>
+            </View>
+          </LinearGradient>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 };
@@ -185,143 +229,181 @@ const AlbumPurchaseModal = ({ visible, onClose, album, onSuccess }) => {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0,0,0,0.85)',
     justifyContent: 'center',
+    alignItems: 'center',
     padding: 24,
+  },
+  modal: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 32,
+    overflow: 'hidden',
+    ...SHADOWS.dark,
   },
   container: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 24,
-    padding: 24,
-    // minHeight removed to let content dictate height
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    padding: 32,
     alignItems: 'center',
-    marginBottom: 24,
   },
-  title: {
-    fontSize: SIZES.xl,
-    fontWeight: '700',
-    color: COLORS.text,
+  closeBtn: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    zIndex: 10,
+  },
+  closeIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   content: {
+    width: '100%',
     alignItems: 'center',
-    marginBottom: 24,
   },
-  cover: {
-    width: 120,
-    height: 120,
-    borderRadius: 12,
-    marginBottom: 16,
-  },
-  albumTitle: {
+  mainTitle: {
     fontSize: SIZES.lg,
     fontWeight: '700',
-    color: COLORS.text,
+    color: '#FFF',
+    marginBottom: 24,
+    letterSpacing: 0.5,
+  },
+  coverWrapper: {
+    position: 'relative',
+    marginBottom: 20,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  coverImg: {
+    width: 160,
+    height: 160,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  coverShadow: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 60,
+    borderRadius: 20,
+  },
+  albumBadge: {
+    position: 'absolute',
+    bottom: -8,
+    right: -8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#1F1F1F',
+  },
+  albumName: {
+    fontSize: SIZES.xl,
+    fontWeight: '700',
+    color: '#FFF',
     textAlign: 'center',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   artistName: {
     fontSize: SIZES.md,
     color: COLORS.textSecondary,
+    marginBottom: 32,
+  },
+  priceBox: {
+    width: '100%',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
     marginBottom: 20,
   },
-  priceContainer: {
+  priceRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    width: '100%',
-    backgroundColor: COLORS.background,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
+    alignItems: 'center',
   },
   priceLabel: {
     fontSize: SIZES.md,
     color: COLORS.textSecondary,
   },
-  priceValue: {
+  priceText: {
     fontSize: SIZES.lg,
     fontWeight: '700',
     color: COLORS.primary,
   },
+  balanceText: {
+    fontSize: SIZES.md,
+    fontWeight: '600',
+    color: '#FFF',
+  },
+  textError: {
+    color: COLORS.error,
+  },
   divider: {
     height: 1,
-    backgroundColor: COLORS.border,
+    backgroundColor: 'rgba(255,255,255,0.05)',
     width: '100%',
-    marginBottom: 16,
   },
-  balanceContainer: {
+  alertBox: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginBottom: 8,
-  },
-  balanceLabel: {
-    fontSize: SIZES.md,
-    color: COLORS.text,
-  },
-  balanceValue: {
-    fontSize: SIZES.md,
-    fontWeight: '600',
-    color: COLORS.text,
-  },
-  insufficientBalance: {
-    color: COLORS.error,
-  },
-  warningContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
     backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    width: '100%',
+    padding: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 10,
   },
-  warningText: {
+  alertText: {
+    flex: 1,
     color: COLORS.error,
-    fontSize: SIZES.sm,
+    fontSize: 13,
+    lineHeight: 18,
   },
   footer: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  button: {
-    flex: 1,
-    height: 50,
-    borderRadius: 25,
-    overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cancelButton: {
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  cancelButtonText: {
-    color: COLORS.text,
-    fontWeight: '600',
-    fontSize: SIZES.md,
-  },
-  confirmButton: {
-    // Background handled by gradient
-  },
-  disabledButton: {
-    opacity: 0.7,
-  },
-  gradientButton: {
     width: '100%',
-    height: '100%',
+    marginTop: 8,
+  },
+  actionBtn: {
+    width: '100%',
+    height: 56,
+    borderRadius: 28,
+    overflow: 'hidden',
+    ...SHADOWS.medium,
+  },
+  gradientBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  btnText: {
+    color: '#FFF',
+    fontSize: SIZES.md,
+    fontWeight: '700',
+  },
+  secondaryBtn: {
+    width: '100%',
+    height: 50,
     justifyContent: 'center',
     alignItems: 'center',
+    marginTop: 8,
   },
-  confirmButtonText: {
-    color: COLORS.white,
-    fontWeight: '700',
+  secondaryBtnText: {
+    color: COLORS.textSecondary,
     fontSize: SIZES.md,
+    fontWeight: '600',
   },
 });
 

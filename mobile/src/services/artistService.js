@@ -1,4 +1,6 @@
 import api from '../config/api';
+import { API_BASE_URL } from '../config/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const artistService = {
   // Get artist by ID
@@ -90,6 +92,13 @@ export const artistService = {
   // Update bank info
   updateBankInfo: async (artistId, bankInfo) => {
     const response = await api.put(`/artists/${artistId}/bank-info`, bankInfo);
+    return response.data;
+  },
+
+  // Update artist profile (JSON only, image handled via uploadCoverFile)
+  updateProfile: async (artistId, profileData) => {
+    // Send JSON data directly
+    const response = await api.put(`/artists/${artistId}/profile`, profileData);
     return response.data;
   },
 

@@ -24,21 +24,32 @@ class AlbumModel {
   }
 
   // Get all albums
-  static async findAll(limit = 50, offset = 0) {
+  static async findAll(limit = 50, offset = 0, includeUnreleased = false) {
     const limitNum = Math.max(1, Math.min(parseInt(limit) || 50, 1000));
     const offsetNum = Math.max(0, parseInt(offset) || 0);
     
-    const [rows] = await db.execute(
-      `SELECT al.*, 
+    // Get current date for comparison
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const params = [];
+
+    let query = `SELECT al.*, 
               a.name as artist_name,
               COUNT(s.song_id) as song_count
        FROM albums al
        LEFT JOIN artists a ON al.artist_id = a.artist_id
-       LEFT JOIN songs s ON al.album_id = s.album_id
-       GROUP BY al.album_id, al.title, al.artist_id, al.release_date, al.cover_url, al.is_premium, al.price, a.name
-       ORDER BY al.album_id DESC
-       LIMIT ${limitNum} OFFSET ${offsetNum}`
-    );
+       LEFT JOIN songs s ON al.album_id = s.album_id`;
+
+    if (!includeUnreleased) {
+      query += ` WHERE al.release_date <= ?`;
+      params.push(now);
+    }
+
+    query += ` GROUP BY al.album_id, al.title, al.artist_id, al.release_date, al.cover_url, al.is_premium, al.price, a.name
+       ORDER BY al.release_date DESC
+       LIMIT ${limitNum} OFFSET ${offsetNum}`;
+
+    const [rows] = await db.execute(query, params);
+    
     // Convert song_count to number
     return rows.map(row => ({
       ...row,
@@ -60,18 +71,25 @@ class AlbumModel {
   }
 
   // Get albums by artist with song count
-  static async findByArtist(artistId) {
-    const [rows] = await db.execute(
-      `SELECT al.*, 
+  static async findByArtist(artistId, includeUnreleased = false) {
+    let query = `SELECT al.*, 
               COUNT(s.song_id) as song_count,
               YEAR(al.release_date) as release_year
        FROM albums al
        LEFT JOIN songs s ON al.album_id = s.album_id
-       WHERE al.artist_id = ?
-       GROUP BY al.album_id
-       ORDER BY al.release_date DESC`,
-      [artistId]
-    );
+       WHERE al.artist_id = ?`;
+
+    const params = [artistId];
+
+    if (!includeUnreleased) {
+      query += ` AND al.release_date <= ?`;
+      params.push(new Date().toISOString().slice(0, 19).replace('T', ' '));
+    }
+
+    query += ` GROUP BY al.album_id
+       ORDER BY al.release_date DESC`;
+
+    const [rows] = await db.execute(query, params);
     return rows;
   }
 

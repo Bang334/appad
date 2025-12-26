@@ -24,6 +24,8 @@ import { usePlayer } from '../../context/PlayerContext';
 import MiniPlayer from '../../components/Player/MiniPlayer';
 import AddToPlaylistModal from '../../components/Playlist/AddToPlaylistModal';
 import AlbumPurchaseModal from '../../components/Common/AlbumPurchaseModal';
+import SongPurchaseModal from '../../components/Common/SongPurchaseModal';
+import PremiumAccessModal from '../../components/Common/PremiumAccessModal';
 import PremiumBadge from '../../components/Common/PremiumBadge';
 import AccessBadge from '../../components/Common/AccessBadge';
 import DraggableFlatList, { ScaleDecorator, OpacityDecorator, ShadowDecorator } from 'react-native-draggable-flatlist';
@@ -46,6 +48,8 @@ const AlbumDetailScreen = ({ route, navigation }) => {
   const [isPremium, setIsPremium] = useState(false);
   const [isPurchased, setIsPurchased] = useState(false);
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
+  const [showSongPurchaseModal, setShowSongPurchaseModal] = useState(false);
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [userPremiumStatus, setUserPremiumStatus] = useState(false);
   const [purchasedSongIds, setPurchasedSongIds] = useState(new Set());
 
@@ -113,32 +117,77 @@ const AlbumDetailScreen = ({ route, navigation }) => {
     }
   };
 
-  const handlePlaySong = (song, index) => {
+  const checkAccessAndShowModal = (song) => {
+    // 1. Unreleased check
+    if (album.release_date && new Date(album.release_date) > new Date()) {
+        const releaseDate = new Date(album.release_date);
+        const formattedDate = releaseDate.toLocaleString('vi-VN', {
+            hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
+        });
+        Alert.alert(
+            '🎵 Sắp ra mắt',
+            `Album "${album.title}" sẽ được phát hành vào:\n\n⏰ ${formattedDate}`,
+            [{ text: 'Đã hiểu' }]
+        );
+        return false;
+    }
+
+    // 2. Premium Check
+    if (isPremium || (song && song.is_premium === 1)) {
+        if (!hasSongAccess(song || songs[0])) {
+            // Use the comprehensive PremiumAccessModal for choosing between ALL options
+            if (song) {
+                // Prepare song data with album info for the modal
+                const modalSong = {
+                    ...song,
+                    album_id: albumId,
+                    album_title: album.title,
+                    album_price: album.price,
+                    album_is_premium: album.is_premium,
+                    artist_id: album.artist_id,
+                    artist_name: album.artist_name
+                };
+                setSelectedSong(modalSong);
+                setShowPremiumModal(true);
+            } else {
+                // If Play All is clicked and album is premium
+                setShowPurchaseModal(true);
+            }
+            return false;
+        }
+    }
+
+    return true;
+  };
+
+  const handlePlaySong = async (song, index) => {
     // If clicking on currently playing song, toggle play/pause
     if (currentSong?.song_id === song.song_id) {
       togglePlayPause();
-    } else {
-      // Navigate first
-      navigation.navigate('FullPlayer');
-      // Play after interactions
-      InteractionManager.runAfterInteractions(() => {
-        playSong(song, songs, index);
-      });
+      return;
     }
+
+    // Check access first
+    if (!checkAccessAndShowModal(song)) return;
+
+    // Navigate and play
+    navigation.navigate('FullPlayer');
+    InteractionManager.runAfterInteractions(() => {
+        playSong(song, songs, index);
+        AsyncStorage.setItem('isPlayingAlbum', '1');
+        AsyncStorage.setItem('currentAlbumId', albumId.toString());
+    });
   };
 
   const handleSongPress = async (song, index) => {
-    // Check premium/purchase status
-    if (song.is_premium === 1) {
-      const isSongPurchased = purchasedSongIds.has(song.song_id);
-      
-      // If user is not premium, hasn't purchased the album, and hasn't purchased the song
-      if (!userPremiumStatus && !isPurchased && !isSongPurchased) {
-        // Show purchase modal for album
-        setShowPurchaseModal(true);
-        return;
-      }
+    // If clicking on currently playing song, navigate to FullPlayer
+    if (currentSong?.song_id === song.song_id) {
+      navigation.navigate('FullPlayer');
+      return;
     }
+
+    // Check access first
+    if (!checkAccessAndShowModal(song)) return;
 
     // Always open FullPlayer first for faster UX
     navigation.navigate('FullPlayer');
@@ -156,22 +205,8 @@ const AlbumDetailScreen = ({ route, navigation }) => {
 
   const handlePlayAll = async () => {
     if (songs.length > 0) {
-      // Check access for the first song (assuming all songs in album have same access rules if album is premium)
-      // Or check album premium status directly
-      if (isPremium && !userPremiumStatus && !isPurchased) {
-        // Check if user purchased ALL songs individually? 
-        // For simplicity, if album is premium and not purchased, we require purchase unless user has purchased specific songs.
-        // But "Play All" implies playing the whole album.
-        // If user purchased some songs, we could play only those, but that's complex logic.
-        // Let's stick to: if album is premium & not purchased & user not premium -> Show modal.
-        
-        // However, we should check if the user has purchased ALL songs.
-        const allSongsPurchased = songs.every(s => purchasedSongIds.has(s.song_id));
-        if (!allSongsPurchased) {
-           setShowPurchaseModal(true);
-           return;
-        }
-      }
+      // Check access for the album/songs
+      if (!checkAccessAndShowModal(null)) return;
 
       navigation.navigate('FullPlayer');
       InteractionManager.runAfterInteractions(async () => {
@@ -502,6 +537,31 @@ const AlbumDetailScreen = ({ route, navigation }) => {
         onSuccess={() => {
           setIsPurchased(true);
           loadAlbumData(); // Reload to update UI/songs access if needed
+        }}
+      />
+
+      {/* Song Purchase Modal (Fallback/Direct) */}
+      <SongPurchaseModal
+        visible={showSongPurchaseModal}
+        onClose={() => setShowSongPurchaseModal(false)}
+        song={selectedSong}
+        onSuccess={(purchasedSong) => {
+          if (purchasedSong) {
+            setPurchasedSongIds(prev => new Set([...prev, purchasedSong.song_id]));
+          }
+          loadAlbumData();
+        }}
+      />
+
+      {/* Modern Multi-Choice Access Modal */}
+      <PremiumAccessModal
+        visible={showPremiumModal}
+        song={selectedSong}
+        onClose={() => setShowPremiumModal(false)}
+        songList={songs}
+        playSong={playSong}
+        onPurchaseSong={() => {
+          loadAlbumData();
         }}
       />
     </View>

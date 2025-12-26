@@ -617,14 +617,75 @@ const ArtistDetailScreen = ({ route, navigation }) => {
         </View>
       )}
 
-      {/* Albums Section */}
-      {albums.length > 0 && (
+      {/* Upcoming Albums Section */}
+      {albums.filter(a => a.release_date && new Date(a.release_date) > new Date()).length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="time-outline" size={20} color={COLORS.info} />
+            <Text style={[styles.sectionTitle, { color: COLORS.info }]}>Album sắp ra mắt</Text>
+          </View>
+          <FlatList
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            data={albums.filter(a => a.release_date && new Date(a.release_date) > new Date())}
+            keyExtractor={(item) => `upcoming-${item.album_id}`}
+            renderItem={({ item }) => {
+              const releaseDate = new Date(item.release_date);
+              const formattedDate = releaseDate.toLocaleString('vi-VN', {
+                hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit'
+              });
+              
+              return (
+                <TouchableOpacity
+                  style={styles.upcomingAlbumItem}
+                  onPress={() => {
+                    const { Alert } = require('react-native');
+                    const fullDate = releaseDate.toLocaleString('vi-VN', {
+                      hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
+                    });
+                    Alert.alert(
+                      '🎵 Sắp ra mắt',
+                      `Album "${item.title}" sẽ được phát hành vào:\n\n⏰ ${fullDate}`,
+                      [{ text: 'Đã hiểu' }]
+                    );
+                  }}
+                >
+                  <View style={styles.upcomingAlbumImageContainer}>
+                    <Image
+                      source={{ uri: item.cover_url || 'https://via.placeholder.com/120' }}
+                      style={[styles.albumImage, { opacity: 0.6 }]}
+                    />
+                    <View style={styles.upcomingOverlay}>
+                      <Ionicons name="time-outline" size={28} color="#FFF" />
+                    </View>
+                    {item.is_premium === 1 && (
+                      <View style={styles.premiumBadgeOverlay}>
+                        <PremiumBadge />
+                      </View>
+                    )}
+                  </View>
+                  <Text style={[styles.albumTitle, { color: COLORS.textMuted }]} numberOfLines={1}>
+                    {item.title}
+                  </Text>
+                  <View style={styles.upcomingDateContainer}>
+                    <Ionicons name="calendar-outline" size={12} color={COLORS.info} />
+                    <Text style={styles.upcomingDateText}>{formattedDate}</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            }}
+          />
+        </View>
+      )}
+
+      {/* Released Albums Section */}
+      {albums.filter(a => !a.release_date || new Date(a.release_date) <= new Date()).length > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Albums</Text>
           <FlatList
             horizontal
             showsHorizontalScrollIndicator={false}
-            data={albums}
+            data={albums.filter(a => !a.release_date || new Date(a.release_date) <= new Date())}
             keyExtractor={(item) => item.album_id.toString()}
             renderItem={({ item }) => (
               <TouchableOpacity
@@ -1265,6 +1326,43 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     textAlign: 'center',
     marginTop: 8,
+  },
+  // Upcoming Albums Styles
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  upcomingAlbumItem: {
+    width: 120,
+    marginRight: 12,
+  },
+  upcomingAlbumImageContainer: {
+    position: 'relative',
+    marginBottom: 8,
+  },
+  upcomingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: SIZES.borderRadius,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  upcomingDateContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  upcomingDateText: {
+    color: COLORS.info,
+    fontSize: 11,
+    fontWeight: '600',
   },
 });
 

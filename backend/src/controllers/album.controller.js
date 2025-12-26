@@ -5,7 +5,8 @@ class AlbumController {
   static async getAll(req, res) {
     try {
       const { limit = 50, offset = 0 } = req.query;
-      const albums = await AlbumModel.findAll(parseInt(limit), parseInt(offset));
+      // Allow unreleased albums for the carousel display (frontend will handle clicks)
+      const albums = await AlbumModel.findAll(parseInt(limit), parseInt(offset), true);
       
       res.json({
         success: true,
@@ -30,6 +31,14 @@ class AlbumController {
         return res.status(404).json({
           success: false,
           message: 'Album not found'
+        });
+      }
+
+      // Check for release date (Security check for unreleased albums)
+      if (album.release_date && new Date(album.release_date) > new Date()) {
+        return res.status(404).json({
+          success: false,
+          message: 'Album not yet released'
         });
       }
 

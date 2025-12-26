@@ -25,6 +25,13 @@ const ArtistAlbumsScreen = ({ route, navigation }) => {
   useFocusEffect(
     useCallback(() => {
       loadAlbums();
+
+      // Check every 5 minutes for new releases
+      const interval = setInterval(() => {
+        loadAlbums();
+      }, 5 * 60 * 1000);
+
+      return () => clearInterval(interval);
     }, [artistId])
   );
 
@@ -91,7 +98,13 @@ const ArtistAlbumsScreen = ({ route, navigation }) => {
         </Text>
         {item.release_date && (
           <Text style={styles.albumDate}>
-            {new Date(item.release_date).toLocaleDateString('vi-VN')}
+            {new Date(item.release_date).toLocaleString('vi-VN', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
           </Text>
         )}
       </View>

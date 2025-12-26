@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -66,6 +66,7 @@ import ArtistMembershipScreen from '../screens/Artist/ArtistMembershipScreen';
 
 import ArtistEditSongScreen from '../screens/Artist/ArtistEditSongScreen';
 import ArtistEditAlbumScreen from '../screens/Artist/ArtistEditAlbumScreen';
+import ArtistEditProfileScreen from '../screens/Artist/ArtistEditProfileScreen';
 
 // Player Component
 import MiniPlayer from '../components/Player/MiniPlayer';
@@ -160,9 +161,20 @@ const TabNavigator = () => {
       >
         <Tab.Screen 
           name="Home" 
-          component={HomeScreen}
-          options={{ title: 'Trang chủ' }}
-        />
+          options={({ navigation }) => ({ 
+            title: 'Trang chủ',
+            headerRight: () => (
+              <TouchableOpacity 
+                style={{ marginRight: 16, padding: 8 }}
+                onPress={() => navigation.setParams({ shouldRefresh: Date.now() })}
+              >
+                <Ionicons name="refresh-outline" size={22} color={COLORS.text} />
+              </TouchableOpacity>
+            ),
+          })}
+        >
+          {(props) => <HomeScreen {...props} />}
+        </Tab.Screen>
         <Tab.Screen 
           name="Search" 
           component={SearchScreen}
@@ -469,6 +481,15 @@ const MainTabNavigator = () => {
             },
             headerTintColor: COLORS.text,
             title: 'Artist Dashboard',
+          }}
+        />
+        <Stack.Screen
+          name="ArtistEditProfile"
+          component={ArtistEditProfileScreen}
+          options={{
+            presentation: 'card',
+            gestureEnabled: true,
+            headerShown: false,
           }}
         />
         <Stack.Screen

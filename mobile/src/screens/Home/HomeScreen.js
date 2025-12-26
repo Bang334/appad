@@ -28,7 +28,7 @@ import DraggableFlatList, { ScaleDecorator, OpacityDecorator, ShadowDecorator } 
 
 const { width } = Dimensions.get('window');
 
-const HomeScreen = ({ navigation }) => {
+const HomeScreen = ({ navigation, route }) => {
   const [trendingSongs, setTrendingSongs] = useState([]);
   const [frequentSongs, setFrequentSongs] = useState([]);
   const [recommendedSongs, setRecommendedSongs] = useState([]);
@@ -67,6 +67,13 @@ const HomeScreen = ({ navigation }) => {
   useEffect(() => {
     loadData();
   }, []);
+
+  // Listen for refresh trigger from header button
+  useEffect(() => {
+    if (route.params?.shouldRefresh) {
+      onRefresh();
+    }
+  }, [route.params?.shouldRefresh]);
 
   // Reset scroll position when data refreshes
   useEffect(() => {
@@ -243,27 +250,68 @@ const HomeScreen = ({ navigation }) => {
     // If clicking on currently playing song, toggle play/pause
     if (currentSong?.song_id === song.song_id) {
       togglePlayPause();
-    } else {
-      // Check if song is premium
-      if (song.is_premium) {
-        try {
+      return;
+    }
+
+    // Check if song is in an unreleased album
+    if (song.album_release_date && new Date(song.album_release_date) > new Date()) {
+      const { Alert } = require('react-native');
+      const releaseDate = new Date(song.album_release_date);
+      const formattedDate = releaseDate.toLocaleString('vi-VN', {
+        hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
+      });
+      Alert.alert(
+        '🎵 Sắp ra mắt',
+        `Bài hát "${song.title}" sẽ được phát hành vào:\n\n⏰ ${formattedDate}`,
+        [{ text: 'Đã hiểu' }]
+      );
+      return;
+    }
+
+    // Check if song is FREE but in a PREMIUM album
+    if (song.album_is_premium === 1 && song.is_premium !== 1) {
+      try {
         const response = await premiumService.checkSongAccess(song.song_id);
-        if (!response.data.hasAccess) {
+        if (!response.data?.hasAccess) {
+          const { Alert } = require('react-native');
+          Alert.alert(
+            '🔒 Nội dung Premium',
+            `Bài hát "${song.title}" thuộc album Premium.\n\nMua album để nghe!`,
+            [
+              { text: 'Để sau', style: 'cancel' },
+              { 
+                text: 'Xem Album', 
+                onPress: () => navigation.navigate('AlbumDetail', { albumId: song.album_id })
+              }
+            ]
+          );
+          return;
+        }
+      } catch (error) {
+        console.error('Error checking song access:', error);
+        return; // Don't play if we can't verify access
+      }
+    }
+
+    // Check if song is premium (single)
+    if (song.is_premium === 1) {
+      try {
+        const response = await premiumService.checkSongAccess(song.song_id);
+        if (!response.data?.hasAccess) {
           // Show premium access modal with 3 options
           setSelectedSong(song);
           setSelectedSongList(list);
           setShowPremiumModal(true);
           return;
         }
-        } catch (error) {
-          console.error('Error checking song access:', error);
-          // If error, try to play anyway (for backward compatibility)
-        }
+      } catch (error) {
+        console.error('Error checking song access:', error);
+        return; // Don't play if we can't verify access
       }
-
-      // Play new song (will pause current if playing)
-      playSong(song, list, index);
     }
+
+    // Play new song (will pause current if playing)
+    playSong(song, list, index);
     // Don't navigate to FullPlayer, just show MiniPlayer
   };
 
@@ -274,7 +322,47 @@ const HomeScreen = ({ navigation }) => {
       return;
     }
 
-    // Check access for premium songs
+    // Check if song is in an unreleased album
+    if (song.album_release_date && new Date(song.album_release_date) > new Date()) {
+      const { Alert } = require('react-native');
+      const releaseDate = new Date(song.album_release_date);
+      const formattedDate = releaseDate.toLocaleString('vi-VN', {
+        hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
+      });
+      Alert.alert(
+        '🎵 Sắp ra mắt',
+        `Bài hát "${song.title}" thuộc album "${song.album_title}" sẽ được phát hành vào:\n\n⏰ ${formattedDate}`,
+        [{ text: 'Đã hiểu' }]
+      );
+      return;
+    }
+
+    // Check if song is FREE but in a PREMIUM album
+    if (song.album_is_premium === 1 && song.is_premium !== 1) {
+      try {
+        const response = await premiumService.checkSongAccess(song.song_id);
+        if (!response.data?.hasAccess) {
+          // Redirect to album detail page to purchase
+          const { Alert } = require('react-native');
+          Alert.alert(
+            '🔒 Nội dung Premium',
+            `Bài hát "${song.title}" thuộc album Premium "${song.album_title}".\n\nMua album để nghe tất cả bài hát!`,
+            [
+              { text: 'Để sau', style: 'cancel' },
+              { 
+                text: 'Xem Album', 
+                onPress: () => navigation.navigate('AlbumDetail', { albumId: song.album_id })
+              }
+            ]
+          );
+          return;
+        }
+      } catch (error) {
+        console.error('Error checking song access:', error);
+      }
+    }
+
+    // Check access for premium songs (singles)
     if (song.is_premium === 1) {
       try {
         const response = await premiumService.checkSongAccess(song.song_id);
@@ -307,7 +395,6 @@ const HomeScreen = ({ navigation }) => {
     } catch (error) {
       // Silent fail
     }
-    
   };
 
   const formatListenCount = (count) => {
@@ -562,29 +649,63 @@ const HomeScreen = ({ navigation }) => {
           initialNumToRender={3}
           maxToRenderPerBatch={5}
           windowSize={5}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={GlobalStyles.trendingItem}
-              onPress={() => navigation.navigate('AlbumDetail', { albumId: item.album_id })}
-            >
+          renderItem={({ item }) => {
+            const isReleased = !item.release_date || new Date(item.release_date) <= new Date();
+            const releaseDate = item.release_date ? new Date(item.release_date) : null;
+            const formattedReleaseTime = releaseDate ? releaseDate.toLocaleString('vi-VN', {
+              hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit'
+            }) : '';
+
+            return (
+              <TouchableOpacity
+                style={GlobalStyles.trendingItem}
+                onPress={() => {
+                   if (isReleased) {
+                     navigation.navigate('AlbumDetail', { albumId: item.album_id });
+                   } else {
+                      const formattedDateFull = releaseDate.toLocaleString('vi-VN', {
+                        hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
+                      });
+                      const { Alert } = require('react-native');
+                      Alert.alert(
+                        '🎵 Sắp ra mắt',
+                        `Album "${item.title}" sẽ được phát hành vào:\n\n⏰ ${formattedDateFull}`,
+                        [{ text: 'Đã hiểu', style: 'default' }]
+                      );
+                   }
+                }}
+              >
               <View style={GlobalStyles.trendingImageContainer}>
                 <Image
                   source={{ uri: item.cover_url || 'https://via.placeholder.com/150' }}
-                  style={GlobalStyles.trendingImage}
+                  style={[GlobalStyles.trendingImage, !isReleased && { opacity: 0.6 }]}
                 />
+                {/* Upcoming Overlay */}
+                {!isReleased && (
+                  <View style={styles.upcomingOverlay}>
+                    <Ionicons name="time-outline" size={24} color="#FFF" />
+                    <Text style={styles.upcomingBadgeText}>SẮP RA MẮT</Text>
+                  </View>
+                )}
                 {item.is_premium === 1 && (
                   <View style={GlobalStyles.albumPremiumBadge}>
                     <PremiumBadge small />
                   </View>
                 )}
               </View>
-              <Text style={GlobalStyles.trendingTitle} numberOfLines={1}>
+              <Text style={[GlobalStyles.trendingTitle, !isReleased && { color: COLORS.textMuted }]} numberOfLines={1}>
                 {item.title}
               </Text>
               <Text style={GlobalStyles.trendingArtist} numberOfLines={1}>
                 {item.artist_name || 'Unknown Artist'}
               </Text>
-              {item.song_count !== undefined && (
+              {/* Show release time for upcoming albums */}
+              {!isReleased && formattedReleaseTime ? (
+                <View style={styles.releaseTimeContainer}>
+                  <Ionicons name="calendar-outline" size={12} color={COLORS.info} />
+                  <Text style={styles.releaseTimeText}>{formattedReleaseTime}</Text>
+                </View>
+              ) : item.song_count !== undefined && (
                 <View style={GlobalStyles.albumSongCount}>
                   <Ionicons name="musical-notes" size={12} color={COLORS.textMuted} />
                   <Text style={GlobalStyles.albumSongCountText}>
@@ -593,7 +714,8 @@ const HomeScreen = ({ navigation }) => {
                 </View>
               )}
             </TouchableOpacity>
-          )}
+          );
+        }}
         />
       </View>
 
@@ -796,6 +918,37 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     fontSize: 13,
     marginBottom: 4,
+  },
+  // Upcoming Album Styles
+  upcomingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  upcomingBadgeText: {
+    color: '#FFF',
+    fontSize: 9,
+    fontWeight: 'bold',
+    marginTop: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  releaseTimeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+    gap: 4,
+  },
+  releaseTimeText: {
+    color: COLORS.info,
+    fontSize: 10,
+    fontWeight: '600',
   },
 });
 
