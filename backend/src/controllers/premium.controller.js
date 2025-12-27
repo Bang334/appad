@@ -532,7 +532,8 @@ class PremiumController {
         // Create revenue sharing record
         await RevenueSharingModel.create({
           transaction_id: transactionId || null,
-          purchase_id: purchaseId || null,
+          album_purchase_id: purchaseId || null,
+          purchase_id: null,
           artist_id: album.artist_id,
           user_id: userId,
           song_id: null,
@@ -579,6 +580,7 @@ class PremiumController {
         // Platform gets 100%
          await RevenueSharingModel.create({
           transaction_id: transactionId || null,
+          album_purchase_id: purchaseId || null,
           purchase_id: null,
           artist_id: null,
           user_id: userId,

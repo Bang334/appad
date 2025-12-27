@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../config/theme';
 
-const PremiumBadge = ({ size = 'small', style }) => {
+const PremiumBadge = ({ size = 'small', style, text = 'PREMIUM' }) => {
   const sizeStyles = size === 'large' ? styles.large : styles.small;
   const iconSize = size === 'large' ? 14 : 10;
   const fontSize = size === 'large' ? 10 : 8;
@@ -11,7 +11,7 @@ const PremiumBadge = ({ size = 'small', style }) => {
   return (
     <View style={[styles.badge, sizeStyles, style]}>
       <Ionicons name="star" size={iconSize} color="#FFD700" />
-      <Text style={[styles.text, { fontSize }]}>PREMIUM</Text>
+      <Text style={[styles.text, { fontSize }]}>{text}</Text>
     </View>
   );
 };

@@ -19,6 +19,7 @@ import { COLORS, SIZES, SHADOWS } from '../../config/theme';
 import { GlobalStyles } from '../../config/styles';
 import { songService } from '../../services/songService';
 import { albumService } from '../../services/albumService';
+import { artistService } from '../../services/artistService';
 import { premiumService } from '../../services/premiumService';
 import { usePlayer } from '../../context/PlayerContext';
 import MiniPlayer from '../../components/Player/MiniPlayer';
@@ -51,6 +52,7 @@ const AlbumDetailScreen = ({ route, navigation }) => {
   const [showSongPurchaseModal, setShowSongPurchaseModal] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [userPremiumStatus, setUserPremiumStatus] = useState(false);
+  const [hasArtistMembership, setHasArtistMembership] = useState(false);
   const [purchasedSongIds, setPurchasedSongIds] = useState(new Set());
 
   useEffect(() => {
@@ -111,6 +113,14 @@ const AlbumDetailScreen = ({ route, navigation }) => {
       if (purchasedRes.success) {
         const hasPurchased = purchasedRes.data.some(a => a.album_id === albumId);
         setIsPurchased(hasPurchased);
+      }
+
+      // Check if user has active artist membership
+      if (albumData.artist_id) {
+        const membershipRes = await artistService.getMembershipStatus(albumData.artist_id);
+        if (membershipRes.success && membershipRes.data.has_membership) {
+          setHasArtistMembership(true);
+        }
       }
     } catch (error) {
       console.error('Error checking access:', error);
@@ -237,7 +247,7 @@ const AlbumDetailScreen = ({ route, navigation }) => {
 
   const hasSongAccess = (song) => {
     if (!song) return false;
-    if (userPremiumStatus || isPurchased) return true;
+    if (userPremiumStatus || isPurchased || hasArtistMembership) return true;
     if (purchasedSongIds.has(song.song_id)) return true;
     return false;
   };
@@ -312,8 +322,12 @@ const AlbumDetailScreen = ({ route, navigation }) => {
                         {song.title}
                       </Text>
                       <View style={{flexDirection: 'row', alignItems: 'center', gap: 4, position: 'relative', top: -10}}>
-                        {song.is_premium === 1 && <PremiumBadge small />}
-                        {song.is_premium === 1 && (isPurchased || isSongPurchased) && (
+                        {isPremium ? (
+                          <PremiumBadge text="ALBUM PRE" small />
+                        ) : (
+                          song.is_premium === 1 && <PremiumBadge small />
+                        )}
+                        {(isPremium || song.is_premium === 1) && (isPurchased || isSongPurchased) && (
                           <AccessBadge accessType="purchased" size={16} />
                         )}
                       </View>

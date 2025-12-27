@@ -164,8 +164,10 @@ const HistoryScreen = ({ navigation }) => {
             <Text style={styles.songTitle} numberOfLines={1}>
               {song.title}
             </Text>
-            {song.is_premium === 1 && (
-              <PremiumBadge size="small" style={styles.premiumBadge} />
+            {song.album_is_premium === 1 ? (
+              <PremiumBadge text="ALBUM PRE" size="small" style={styles.premiumBadge} />
+            ) : (
+              song.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />
             )}
           </View>
           <Text style={styles.songArtist} numberOfLines={1}>

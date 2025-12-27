@@ -212,17 +212,31 @@ const TabNavigator = () => {
 
 const MainTabNavigator = () => {
   return (
-    <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="MainTabs" component={TabNavigator} />
-      <Stack.Screen 
-        name="FullPlayer" 
-        component={FullPlayerScreen}
-        options={{
-          presentation: 'modal',
-          gestureEnabled: false,
+    <View style={styles.container}>
+      <Stack.Navigator 
+        screenOptions={{ 
+          headerShown: false,
+          cardStyle: { backgroundColor: COLORS.background }
         }}
-      />
+      >
+        <Stack.Screen name="MainTabs" component={TabNavigator} />
+        <Stack.Screen 
+          name="FullPlayer" 
+          component={FullPlayerScreen}
+          options={{
+            presentation: 'modal',
+            gestureEnabled: false,
+            cardStyleInterpolator: ({ current: { progress } }) => ({
+              cardStyle: {
+                opacity: progress.interpolate({
+                  inputRange: [0, 0.5, 0.9, 1],
+                  outputRange: [0, 0.25, 0.7, 1],
+                }),
+              },
+            }),
+          }}
+        />
+        {/* ... existing screens ... */}
       <Stack.Screen 
         name="ArtistDetail" 
         component={ArtistDetailScreen}
@@ -623,11 +637,15 @@ const MainTabNavigator = () => {
         />
 
       </Stack.Navigator>
-    </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
   safeArea: {
     flex: 1,
     backgroundColor: COLORS.background,

@@ -143,7 +143,11 @@ const ArtistSongsScreen = ({ route, navigation }) => {
                       <Text style={styles.hiddenBadgeText}>Ẩn</Text>
                     </View>
                   )}
-                  {item.is_premium === 1 && <PremiumBadge size="small" />}
+                  {item.album_is_premium === 1 ? (
+                    <PremiumBadge text="ALBUM PRE" size="small" />
+                  ) : (
+                    item.is_premium === 1 && <PremiumBadge size="small" />
+                  )}
                 </View>
               </View>
               <Text style={GlobalStyles.songArtist} numberOfLines={1}>

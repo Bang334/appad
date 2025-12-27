@@ -32,6 +32,8 @@ const MiniPlayer = ({ bottomOffset }) => {
   const { currentSong, isPlaying, togglePlayPause, playNext, playPrevious, stopPlayer, seekTo } = usePlayer();
   const { position, duration } = usePlayerProgress();
 
+  const isPremiumContent = currentSong?.is_premium === 1 || currentSong?.album_is_premium === 1;
+
   // Use player duration if available, otherwise fallback to song duration from database
   const displayDuration = useMemo(() => {
     if (duration > 0) {
@@ -101,8 +103,21 @@ const MiniPlayer = ({ bottomOffset }) => {
 
   return (
     <View
-      style={[styles.container, { bottom: calculatedBottom }]}
+      style={[
+        styles.container, 
+        { bottom: calculatedBottom },
+        isPremiumContent && styles.premiumContainer
+      ]}
     >
+      {isPremiumContent && (
+        <LinearGradient
+          colors={['rgba(245, 158, 11, 0.15)', 'transparent']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={StyleSheet.absoluteFillObject}
+          pointerEvents="none"
+        />
+      )}
       <View style={styles.contentRow}>
         {/* Close Button - Top Right */}
         <TouchableOpacity 
@@ -131,13 +146,15 @@ const MiniPlayer = ({ bottomOffset }) => {
         >
           <Image
             source={{ uri: currentSong.cover_url || 'https://via.placeholder.com/50' }}
-            style={styles.cover}
+            style={[styles.cover, isPremiumContent && { borderColor: COLORS.warning, borderWidth: 1.5 }]}
           />
           
           <View style={styles.info}>
-            <Text style={styles.title} numberOfLines={1}>
-              {currentSong.title}
-            </Text>
+            <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
+              <Text style={[styles.title, isPremiumContent && { color: COLORS.warning }]} numberOfLines={1}>
+                {currentSong.title}
+              </Text>
+            </View>
             <Text style={styles.artist} numberOfLines={1}>
               {currentSong.artist_name || 'Unknown Artist'}
             </Text>
@@ -176,9 +193,9 @@ const MiniPlayer = ({ bottomOffset }) => {
           minimumValue={0}
           maximumValue={displayDuration || 1}
           value={position}
-          minimumTrackTintColor={COLORS.primary}
+          minimumTrackTintColor={isPremiumContent ? COLORS.warning : COLORS.primary}
           maximumTrackTintColor={COLORS.border}
-          thumbTintColor={COLORS.primary}
+          thumbTintColor={isPremiumContent ? COLORS.warning : COLORS.primary}
           onSlidingComplete={seekTo}
         />
         <View style={styles.progressTimes}>
@@ -194,8 +211,8 @@ const styles = StyleSheet.create({
   container: {
     maxHeight: 100,  
     position: 'absolute',
-    left: 0,
-    right: 0,
+    left: 5,
+    right: 5,
     paddingVertical: 10,
     paddingHorizontal: SIZES.padding,
     backgroundColor: '#050505',
@@ -210,6 +227,14 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 10,
     gap: 8,
+  },
+  premiumContainer: {
+    borderColor: COLORS.warning,
+    borderWidth: 1.5,
+    shadowColor: COLORS.warning,
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 12,
   },
   collapsedContainer: {
     position: 'absolute',

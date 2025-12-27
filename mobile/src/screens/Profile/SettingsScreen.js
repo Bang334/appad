@@ -11,7 +11,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../../config/theme';
 import MiniPlayer from '../../components/Player/MiniPlayer';
+import { historyService } from '../../services/historyService';
 import SuccessModal from '../../components/Common/SuccessModal';
+import { settingsDatabase } from '../../config/settingsDb';
 
 const SettingsScreen = ({ navigation }) => {
   const [settings, setSettings] = useState({
@@ -21,6 +23,17 @@ const SettingsScreen = ({ navigation }) => {
     downloadOnWifi: true,
     darkMode: true,
   });
+
+  React.useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    const savedSettings = await settingsDatabase.getAllSettings();
+    if (Object.keys(savedSettings).length > 0) {
+      setSettings(prev => ({ ...prev, ...savedSettings }));
+    }
+  };
 
   // Custom Alert State
   const [alertVisible, setAlertVisible] = useState(false);
@@ -48,8 +61,9 @@ const SettingsScreen = ({ navigation }) => {
     }
   };
 
-  const handleSettingChange = (key, value) => {
-    setSettings({ ...settings, [key]: value });
+  const handleSettingChange = async (key, value) => {
+    setSettings(prev => ({ ...prev, [key]: value }));
+    await settingsDatabase.updateSetting(key, value);
   };
 
   const SettingItem = ({ icon, title, subtitle, onPress, rightComponent }) => (
@@ -92,9 +106,14 @@ const SettingsScreen = ({ navigation }) => {
         {
           text: 'Xóa',
           style: 'destructive',
-          onPress: () => {
-            // Implement history clearing logic
-            showAlert('Thành công', 'Đã xóa lịch sử nghe nhạc', 'checkmark-circle');
+          onPress: async () => {
+            try {
+              await historyService.clearHistory();
+              showAlert('Thành công', 'Đã xóa lịch sử nghe nhạc', 'checkmark-circle');
+            } catch (error) {
+              console.error('Clear history error:', error);
+              showAlert('Lỗi', 'Không thể xóa lịch sử. Vui lòng thử lại.', 'alert-circle');
+            }
           },
         },
       ]
@@ -131,20 +150,6 @@ const SettingsScreen = ({ navigation }) => {
               onValueChange={(value) => handleSettingChange('notifications', value)}
               trackColor={{ false: COLORS.border, true: COLORS.primary }}
               thumbColor={settings.notifications ? COLORS.white : COLORS.textMuted}
-            />
-          }
-        />
-
-        <SettingItem
-          icon="play-circle-outline"
-          title="Tự động phát"
-          subtitle="Tự động phát bài tiếp theo"
-          rightComponent={
-            <Switch
-              value={settings.autoPlay}
-              onValueChange={(value) => handleSettingChange('autoPlay', value)}
-              trackColor={{ false: COLORS.border, true: COLORS.primary }}
-              thumbColor={settings.autoPlay ? COLORS.white : COLORS.textMuted}
             />
           }
         />

@@ -6,6 +6,7 @@ class RevenueSharingModel {
     const {
       transaction_id,
       purchase_id,
+      album_purchase_id,
       artist_id,
       user_id,
       song_id,
@@ -25,14 +26,15 @@ class RevenueSharingModel {
     // Convert undefined to null for SQL
     const [result] = await db.execute(
       `INSERT INTO revenue_sharing (
-        transaction_id, purchase_id, artist_id, user_id, song_id, album_id,
+        transaction_id, purchase_id, album_purchase_id, artist_id, user_id, song_id, album_id,
         share_type, total_amount, artist_share, artist_percentage,
         platform_share, platform_percentage, calculation_period,
         stream_count, listen_duration, is_paid_to_artist
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         transaction_id || null,
         purchase_id || null,
+        album_purchase_id || null,
         artist_id || null,
         user_id || null,
         song_id || null,

@@ -110,7 +110,19 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
 
     // Check access
     const isPurchased = purchasedSongIds.has(song.song_id);
-    const hasAccess = !song.is_premium || isPurchased || userIsPremium;
+    let hasAccess = !song.is_premium || isPurchased || userIsPremium;
+
+    // If still no access, check backend for artist membership or other access types
+    if (!hasAccess && song.is_premium) {
+      try {
+        const response = await premiumService.checkSongAccess(song.song_id);
+        if (response.success && response.data?.hasAccess) {
+          hasAccess = true;
+        }
+      } catch (error) {
+        console.error('Error checking song access:', error);
+      }
+    }
 
     if (!hasAccess) {
       setSongToPurchase(song);
@@ -322,7 +334,11 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
                             <Text style={GlobalStyles.songTitle} numberOfLines={1}>
                                 {item.title}
                             </Text>
-                            {item.is_premium === 1 && <PremiumBadge size="small" style={GlobalStyles.premiumBadge} />}
+                            {item.album_is_premium === 1 ? (
+                              <PremiumBadge text="ALBUM PRE" size="small" style={GlobalStyles.premiumBadge} />
+                            ) : (
+                              item.is_premium === 1 && <PremiumBadge size="small" style={GlobalStyles.premiumBadge} />
+                            )}
                             </View>
                             <Text style={GlobalStyles.songArtist} numberOfLines={1}>
                             {item.artist_name || 'Unknown Artist'}

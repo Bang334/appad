@@ -201,9 +201,15 @@ class SongModel {
     return rows;
   }
 
-  // Get trending songs (most listened, only active)
+  // Get trending songs (most listened in last 7 days, only active)
   static async getTrending(limit = 10) {
     limit = parseInt(limit) || 10;
+    
+    // Calculate date 7 days ago
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const dateStr = sevenDaysAgo.toISOString().split('T')[0]; // YYYY-MM-DD
+
     const [rows] = await db.query(
       `SELECT s.*, 
               a.name as artist_name, 
@@ -213,8 +219,10 @@ class SongModel {
               al.release_date as album_release_date,
               al.price as album_price,
               g.name as genre_name,
-              COALESCE(rc.rating_count, 0) as rating_count
+              COALESCE(rc.rating_count, 0) as rating_count,
+              COALESCE(SUM(lh.count), 0) as weekly_listens
        FROM songs s
+       LEFT JOIN listening_history lh ON s.song_id = lh.song_id AND lh.day >= ?
        LEFT JOIN artists a ON s.artist_id = a.artist_id
        LEFT JOIN albums al ON s.album_id = al.album_id
        LEFT JOIN genres g ON s.genre_id = g.genre_id
@@ -226,8 +234,10 @@ class SongModel {
        ) rc ON s.song_id = rc.song_id
        WHERE s.status = 1
          AND (al.release_date IS NULL OR al.release_date <= NOW())
-       ORDER BY s.listen_count DESC
-       LIMIT ${limit}`
+       GROUP BY s.song_id
+       ORDER BY weekly_listens DESC, s.listen_count DESC
+       LIMIT ?`,
+       [dateStr, limit]
     );
     return rows;
   }

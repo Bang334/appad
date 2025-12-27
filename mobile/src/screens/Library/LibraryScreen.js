@@ -622,7 +622,11 @@ const LibraryScreen = ({ navigation }) => {
                   {song.title}
                 </Text>
                 <View style={{display: 'flex', flexDirection: 'row', position: 'relative', top: -10, right:-35}}>
-                  {song.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
+                  {song.album_is_premium === 1 ? (
+                    <PremiumBadge text="ALBUM PRE" size="small" style={styles.premiumBadge} />
+                  ) : (
+                    song.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />
+                  )}
                 </View>
               </View>
               <Text style={styles.songArtist} numberOfLines={1}>
@@ -823,8 +827,12 @@ const LibraryScreen = ({ navigation }) => {
                   {item.title}
                 </Text>
                 <View style={{display: 'flex', flexDirection: 'row', position: 'relative', top: -10, right: 15}}>
-                  {item.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
-                  {item.is_premium === 1 && songAccessTypes[item.song_id] && (
+                  {item.album_is_premium === 1 ? (
+                    <PremiumBadge text="ALBUM PRE" size="small" style={styles.premiumBadge} />
+                  ) : (
+                    item.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />
+                  )}
+                  {(item.album_is_premium === 1 || item.is_premium === 1) && songAccessTypes[item.song_id] && (
                     <AccessBadge accessType={songAccessTypes[item.song_id]} size={16} />
                   )}
                 </View>
@@ -938,8 +946,12 @@ const LibraryScreen = ({ navigation }) => {
                   {item.title}
                 </Text>
                 <View style={{display: 'flex', flexDirection: 'row', position: 'relative', top: -10, right:-35}}>
-                  {item.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
-                  {songAccessTypes[item.song_id] && (
+                  {item.album_is_premium === 1 ? (
+                    <PremiumBadge text="ALBUM PRE" size="small" style={styles.premiumBadge} />
+                  ) : (
+                    item.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />
+                  )}
+                  {(item.album_is_premium === 1 || item.is_premium === 1) && songAccessTypes[item.song_id] && (
                     <AccessBadge accessType={songAccessTypes[item.song_id]} size={16} />
                   )}
                 </View>
@@ -1050,25 +1062,40 @@ const LibraryScreen = ({ navigation }) => {
 
   const renderAlbumItem = ({ item }) => (
     <TouchableOpacity 
-      style={styles.playlistItem}
+      style={styles.albumGridItem}
       onPress={() => navigation.navigate('AlbumDetail', { albumId: item.album_id })}
-      activeOpacity={0.7}
+      activeOpacity={0.8}
     >
-      <Image
-        source={{ uri: getImageUrl(item.cover_url) || 'https://via.placeholder.com/60' }}
-        style={styles.playlistCover}
-      />
-      <View style={styles.playlistInfo}>
-        <Text style={styles.playlistName}>{item.title}</Text>
-        <Text style={styles.playlistCount}>{item.artist_name}</Text>
-        <View style={styles.songMeta}>
-          <Ionicons name="cash" size={12} color={COLORS.primary} />
-          <Text style={styles.priceText}>
-            Đã mua: {parseFloat(item.price_paid || item.price || 0).toLocaleString('vi-VN')}đ
-          </Text>
+      <LinearGradient
+        colors={['rgba(255,255,255,0.05)', 'rgba(0,0,0,0.3)']}
+        style={styles.albumCard}
+      >
+        <View style={styles.albumCoverContainer}>
+          <Image
+            source={{ uri: getImageUrl(item.cover_url) || 'https://via.placeholder.com/150' }}
+            style={styles.albumCover}
+          />
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.8)']}
+            style={styles.albumOverlay}
+          />
+          <View style={styles.albumBadgeContainer}>
+            <PremiumBadge size="small" text="OWNED" />
+          </View>
         </View>
-      </View>
-      <Ionicons name="chevron-forward" size={24} color={COLORS.textSecondary} />
+        
+        <View style={styles.albumInfo}>
+          <Text style={styles.albumName} numberOfLines={1}>{item.title}</Text>
+          <Text style={styles.albumArtistName} numberOfLines={1}>{item.artist_name || 'Nghệ sĩ'}</Text>
+          
+          <View style={styles.albumPurchaseInfo}>
+            <Ionicons name="checkmark-circle" size={12} color={COLORS.primary} />
+            <Text style={styles.albumPriceText}>
+              {parseFloat(item.price_paid || item.price || 0).toLocaleString('vi-VN')}đ
+            </Text>
+          </View>
+        </View>
+      </LinearGradient>
     </TouchableOpacity>
   );
 
@@ -1552,7 +1579,9 @@ const LibraryScreen = ({ navigation }) => {
               data={filteredPurchasedAlbums}
               renderItem={renderAlbumItem}
               keyExtractor={(item) => item.album_id?.toString() || item.purchase_id?.toString()}
-              contentContainerStyle={styles.list}
+              contentContainerStyle={styles.albumGrid}
+              numColumns={2}
+              columnWrapperStyle={styles.albumColumnWrapper}
               refreshControl={
                 <RefreshControl
                   refreshing={refreshing}
@@ -1562,9 +1591,11 @@ const LibraryScreen = ({ navigation }) => {
                 />
               }
               ListHeaderComponent={
-                <>
+                <View style={styles.albumHeaderContainer}>
+                  {/* Play All Button removed for albums grid */}
+                  
                   {/* Search Bar */}
-                  <View style={[styles.searchContainer, { marginTop: 10 }]}>
+                  <View style={[styles.searchContainer, { marginTop: 10, marginHorizontal: 16 }]}>
                     <Ionicons name="search" size={20} color={COLORS.textSecondary} style={styles.searchIcon} />
                     <TextInput
                       style={styles.searchInput}
@@ -1581,7 +1612,7 @@ const LibraryScreen = ({ navigation }) => {
                   </View>
 
                   {/* Filter Bar */}
-                  <View style={styles.filterContainer}>
+                  <View style={[styles.filterContainer, { paddingHorizontal: 16 }]}>
                     <View style={styles.filterRow}>
                       <Text style={styles.filterLabel}>Sắp xếp:</Text>
                       <TouchableOpacity
@@ -1610,7 +1641,7 @@ const LibraryScreen = ({ navigation }) => {
                       </TouchableOpacity>
                     </View>
                   </View>
-                </>
+                </View>
               }
             />
           ) : (
@@ -2382,12 +2413,80 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 10,
     marginTop: 4,
-    gap: 4,
   },
-  seeMoreText: {
-    color: COLORS.link || '#3B82F6',
-    fontSize: SIZES.sm,
-    fontWeight: '600',
+  albumName: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  albumArtistName: {
+    color: '#94A3B8',
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 8,
+  },
+  albumPurchaseInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  albumPriceText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  albumHeaderContainer: {
+    marginBottom: 16,
+  },
+  albumGrid: {
+    paddingBottom: 120,
+  },
+  albumColumnWrapper: {
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    gap: 16,
+  },
+  albumGridItem: {
+    width: '47.5%',
+    marginBottom: 20,
+  },
+  albumCard: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  albumCoverContainer: {
+    width: '100%',
+    aspectRatio: 1,
+    position: 'relative',
+  },
+  albumCover: {
+    width: '100%',
+    height: '100%',
+  },
+  albumOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '40%',
+  },
+  albumBadgeContainer: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
   },
   noSongsText: {
     color: COLORS.textSecondary,

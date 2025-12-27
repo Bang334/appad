@@ -37,7 +37,7 @@ const PremiumScreen = ({ navigation }) => {
       }
       
       if (balanceRes.success) {
-        setBalance(balanceRes.data.balance);
+        setBalance(Number(balanceRes.data.balance || 0));
       }
     } catch (error) {
       console.error('Error fetching premium status:', error);

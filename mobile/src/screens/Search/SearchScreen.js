@@ -134,7 +134,7 @@ const SearchScreen = ({ navigation }) => {
 
       // Check access types for premium songs (limit to first 50 to avoid too many requests)
       const accessTypesMap = {};
-      const premiumSongs = songsData.filter(s => s.is_premium === 1).slice(0, 50);
+      const premiumSongs = songsData.filter(s => s.is_premium === 1 || s.album_is_premium === 1).slice(0, 50);
       
       const accessChecks = premiumSongs.map(async (song) => {
         try {
@@ -604,9 +604,7 @@ const SearchScreen = ({ navigation }) => {
       ? ['#2B124C', '#08040F']
       : isAlbumUnreleased 
         ? ['#1a1a2e', '#16213e']  // Blue tint for unreleased
-        : isInPremiumAlbum
-          ? ['#2d1f3d', '#1a1025']  // Purple tint for premium album
-          : ['#161616', '#050505'];
+        : ['#161616', '#050505'];
 
     return (
       <View style={GlobalStyles.songItemWrapper}>
@@ -617,8 +615,7 @@ const SearchScreen = ({ navigation }) => {
           style={[
             GlobalStyles.songItem, 
             isCurrentSong && GlobalStyles.songItemActive,
-            isAlbumUnreleased && { borderColor: COLORS.info, borderWidth: 1 },
-            isInPremiumAlbum && !isAlbumUnreleased && { borderColor: COLORS.primary, borderWidth: 1 }
+            isAlbumUnreleased && { borderColor: COLORS.info, borderWidth: 1 }
           ]}
         >
           <TouchableOpacity
@@ -629,7 +626,7 @@ const SearchScreen = ({ navigation }) => {
             <View style={GlobalStyles.coverContainer}>
               <Image
                 source={{ uri: item.cover_url || 'https://via.placeholder.com/60' }}
-                style={[GlobalStyles.songImage, (isAlbumUnreleased || isInPremiumAlbum) && { opacity: 0.6 }]}
+                style={[GlobalStyles.songImage, isAlbumUnreleased && { opacity: 0.6 }]}
               />
               {isCurrentPlaying && (
                 <View style={GlobalStyles.playingIndicator}>
@@ -637,10 +634,10 @@ const SearchScreen = ({ navigation }) => {
                 </View>
               )}
               {/* Overlay for unreleased/premium album songs */}
-              {(isAlbumUnreleased || isInPremiumAlbum) && !isCurrentPlaying && (
+              {isAlbumUnreleased && !isCurrentPlaying && (
                 <View style={styles.songOverlay}>
                   <Ionicons 
-                    name={isAlbumUnreleased ? "time-outline" : "lock-closed"} 
+                    name="time-outline"
                     size={16} 
                     color="#FFF" 
                   />
@@ -650,7 +647,7 @@ const SearchScreen = ({ navigation }) => {
 
             <View style={GlobalStyles.songInfo}>
               <View style={[GlobalStyles.titleRow, { justifyContent: 'space-between' }]}>
-                <Text style={[GlobalStyles.songTitle, (isAlbumUnreleased || isInPremiumAlbum) && { color: COLORS.textMuted }]} numberOfLines={1}>
+                <Text style={[GlobalStyles.songTitle, isAlbumUnreleased && { color: COLORS.textMuted }]} numberOfLines={1}>
                   {item.title}
                 </Text>
                 <View style={{display: 'flex', flexDirection: 'row', position: 'relative', top: -10, right:-15}}>
@@ -659,13 +656,12 @@ const SearchScreen = ({ navigation }) => {
                       <Text style={styles.upcomingBadgeText}>SẮP RA MẮT</Text>
                     </View>
                   )}
-                  {isInPremiumAlbum && !isAlbumUnreleased && (
-                    <View style={[styles.upcomingBadge, { backgroundColor: COLORS.primary }]}>
-                      <Text style={styles.upcomingBadgeText}>ALBUM VIP</Text>
-                    </View>
+                  {item.album_is_premium === 1 ? (
+                    <PremiumBadge text="ALBUM PRE" size="small" style={GlobalStyles.premiumBadge} />
+                  ) : (
+                    item.is_premium === 1 && <PremiumBadge size="small" style={GlobalStyles.premiumBadge} />
                   )}
-                  {item.is_premium === 1 && <PremiumBadge size="small" style={GlobalStyles.premiumBadge} />}
-                  {item.is_premium === 1 && songAccessTypes[item.song_id] && (
+                  {(item.album_is_premium === 1 || item.is_premium === 1) && songAccessTypes[item.song_id] && (
                     <AccessBadge accessType={songAccessTypes[item.song_id]} size={16} />
                   )}
                 </View>
@@ -675,7 +671,7 @@ const SearchScreen = ({ navigation }) => {
                 {item.album_title && (
                   <>
                     <Text style={{ color: '#94A3B8' }}> • </Text>
-                    <Text style={{ color: isInPremiumAlbum ? COLORS.primary : '#CBD5F5', fontStyle: 'italic' }}>
+                    <Text style={{ color: '#CBD5F5', fontStyle: 'italic' }}>
                       {item.album_title}
                     </Text>
                   </>
@@ -712,14 +708,7 @@ const SearchScreen = ({ navigation }) => {
                 </View>
               )}
               {/* Show album price for premium album songs */}
-              {isInPremiumAlbum && !isAlbumUnreleased && item.album_price > 0 && (
-                <View style={GlobalStyles.priceRow}>
-                  <Ionicons name="disc-outline" size={12} color={COLORS.primary} />
-                  <Text style={[GlobalStyles.priceText, { color: COLORS.primary }]}>
-                    Album: {Number(item.album_price).toLocaleString('vi-VN')}đ
-                  </Text>
-                </View>
-              )}
+
             </View>
           </TouchableOpacity>
 
@@ -729,9 +718,9 @@ const SearchScreen = ({ navigation }) => {
               onPress={() => handlePlaySong(item, index)}
             >
               <Ionicons
-                name={isAlbumUnreleased ? 'time-outline' : isInPremiumAlbum ? 'cart-outline' : isCurrentPlaying ? 'pause-circle' : 'play-circle'}
+                name={isAlbumUnreleased ? 'time-outline' : isCurrentPlaying ? 'pause-circle' : 'play-circle'}
                 size={36}
-                color={isAlbumUnreleased ? COLORS.info : isInPremiumAlbum ? COLORS.primary : COLORS.primary}
+                color={isAlbumUnreleased ? COLORS.info : COLORS.primary}
               />
             </TouchableOpacity>
             <TouchableOpacity

@@ -19,6 +19,7 @@ import { usePlayer } from '../../context/PlayerContext';
 import { useAlert } from '../../context/AlertContext';
 import PremiumBadge from '../../components/Common/PremiumBadge';
 import AccessBadge from '../../components/Common/AccessBadge';
+import PremiumAccessModal from '../../components/Common/PremiumAccessModal';
 import { premiumService } from '../../services/premiumService';
 import MiniPlayer from '../../components/Player/MiniPlayer';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -39,6 +40,9 @@ const GenreDetailScreen = ({ route, navigation }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [premiumFilter, setPremiumFilter] = useState('all'); // 'all', 'premium', 'free'
   const [sortBy, setSortBy] = useState('title'); // 'title', 'popular', 'recent'
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [selectedSong, setSelectedSong] = useState(null);
+  const [selectedSongList, setSelectedSongList] = useState([]);
 
   const { playSong, currentSong, isPlaying, togglePlayPause } = usePlayer();
   const { showError } = useAlert();
@@ -98,17 +102,36 @@ const GenreDetailScreen = ({ route, navigation }) => {
   };
 
   const handleSongPress = async (song, index) => {
-    const isPremiumSong = song.is_premium === 1;
-    const hasPurchased = purchasedSongIds.has(song.song_id);
-    const hasAccess = !isPremiumSong || hasPurchased || userIsPremium;
-
-    if (hasAccess) {
+    // If clicking on currently playing song, navigate to FullPlayer
+    if (currentSong?.song_id === song.song_id) {
       navigation.navigate('FullPlayer');
+      return;
     }
 
-    if (currentSong?.song_id !== song.song_id) {
-      await playSong(song, filteredSongs, index);
+    // Check access for premium songs
+    if (song.is_premium === 1 || song.album_is_premium === 1) {
+      try {
+        const response = await premiumService.checkSongAccess(song.song_id);
+        if (!response.data?.hasAccess) {
+          setSelectedSong(song);
+          setSelectedSongList(filteredSongs);
+          setShowPremiumModal(true);
+          return;
+        }
+        // Update access type cache
+        if (response.success && response.data?.accessType) {
+          setSongAccessTypes(prev => ({
+            ...prev,
+            [song.song_id]: response.data.accessType
+          }));
+        }
+      } catch (error) {
+        console.error('Error checking song access:', error);
+      }
     }
+
+    navigation.navigate('FullPlayer');
+    await playSong(song, filteredSongs, index);
   };
 
   const handlePlayAll = async () => {
@@ -199,8 +222,12 @@ const GenreDetailScreen = ({ route, navigation }) => {
                 <Text style={styles.songTitle} numberOfLines={1}>
                   {item.title}
                 </Text>
-                {item.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
-                {item.is_premium === 1 && songAccessTypes[item.song_id] && (
+                {item.album_is_premium === 1 ? (
+                  <PremiumBadge text="ALBUM PRE" size="small" style={styles.premiumBadge} />
+                ) : (
+                  item.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />
+                )}
+                {(item.album_is_premium === 1 || item.is_premium === 1) && songAccessTypes[item.song_id] && (
                   <AccessBadge accessType={songAccessTypes[item.song_id]} size={16} />
                 )}
               </View>
@@ -398,6 +425,27 @@ const GenreDetailScreen = ({ route, navigation }) => {
             <Text style={styles.emptyText}>Chưa có bài hát nào</Text>
           </View>
         }
+      />
+
+      <PremiumAccessModal
+        visible={showPremiumModal}
+        song={selectedSong}
+        onClose={() => setShowPremiumModal(false)}
+        onPurchaseSong={async () => {
+          if (selectedSong) {
+            try {
+              await premiumService.purchaseSong(selectedSong.song_id);
+              setShowPremiumModal(false);
+              loadData();
+            } catch (error) {
+              console.error('Error purchasing song:', error);
+            }
+          }
+        }}
+        onSubscribePremium={() => {
+          setShowPremiumModal(false);
+          navigation.navigate('PremiumTab');
+        }}
       />
 
       <MiniPlayer bottomOffset={0} />

@@ -412,7 +412,16 @@ export const PlayerProvider = ({ children }) => {
       let nextIndex;
       if (isShuffleRef.current) {
         // Shuffle mode: pick random song
-        nextIndex = Math.floor(Math.random() * songList.length);
+        if (songList.length > 1) {
+          // Avoid playing the same song
+          let randomIdx;
+          do {
+            randomIdx = Math.floor(Math.random() * songList.length);
+          } while (randomIdx === startIdx);
+          nextIndex = randomIdx;
+        } else {
+          nextIndex = 0;
+        }
       } else {
         // Normal mode: play next song in order
         nextIndex = (startIdx + attempts + 1) % songList.length;
@@ -688,6 +697,20 @@ export const PlayerProvider = ({ children }) => {
     setIsRepeat(prev => {
       const newValue = !prev;
       isRepeatRef.current = newValue;
+
+      // If enabling repeat, disable shuffle
+      if (newValue && isShuffleRef.current) {
+        setIsShuffle(false);
+        isShuffleRef.current = false;
+
+         // Restore original playlist order (same logic as disabling shuffle)
+         if (originalPlaylistRef.current.length > 0) {
+            const currentSongId = currentSongRef.current?.song_id;
+            const originalIndex = originalPlaylistRef.current.findIndex(s => s.song_id === currentSongId);
+            setPlaylist(originalPlaylistRef.current);
+            setCurrentIndex(originalIndex >= 0 ? originalIndex : 0);
+          }
+      }
       return newValue;
     });
   };
@@ -726,6 +749,12 @@ export const PlayerProvider = ({ children }) => {
           setCurrentIndex(originalIndex >= 0 ? originalIndex : 0);
         }
       }
+
+      // If enabling shuffle, disable repeat
+      if (newValue && isRepeatRef.current) {
+        setIsRepeat(false);
+        isRepeatRef.current = false;
+      }
       
       return newValue;
     });
@@ -745,7 +774,15 @@ export const PlayerProvider = ({ children }) => {
       let prevIndex;
       if (isShuffleRef.current) {
         // Shuffle mode: pick random song
-        prevIndex = Math.floor(Math.random() * currentPlaylist.length);
+        if (currentPlaylist.length > 1) {
+          let randomIdx;
+          do {
+            randomIdx = Math.floor(Math.random() * currentPlaylist.length);
+          } while (randomIdx === currentIndexRef.current);
+          prevIndex = randomIdx;
+        } else {
+          prevIndex = 0;
+        }
       } else {
         // Normal mode: play previous song in order
         const baseIndex = currentIndexRef.current === 0 ? currentPlaylist.length - 1 : currentIndexRef.current - 1;

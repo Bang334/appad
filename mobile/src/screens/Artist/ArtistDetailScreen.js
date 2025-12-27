@@ -186,8 +186,8 @@ const ArtistDetailScreen = ({ route, navigation }) => {
     try {
       // Check balance first
       const balanceRes = await walletService.getBalance();
-      const balance = balanceRes.data?.balance || 0;
-      const price = membershipStatus.membership_info.price;
+      const balance = Number(balanceRes.data?.balance || 0);
+      const price = Number(membershipStatus.membership_info.price || 0);
 
       if (balance < price) {
         showWarning('Số dư không đủ', `Bạn cần ${price.toLocaleString('vi-VN')}đ nhưng chỉ có ${balance.toLocaleString('vi-VN')}đ`);

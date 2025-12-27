@@ -11,6 +11,7 @@ import {
   SafeAreaView,
   Alert,
   ActivityIndicator,
+  InteractionManager,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,6 +26,7 @@ import SuccessModal from '../../components/Common/SuccessModal';
 import ReportModal from '../../components/Common/ReportModal';
 import { songService } from '../../services/songService';
 import { favoriteService } from '../../services/favoriteService';
+import PremiumBadge from '../../components/Common/PremiumBadge';
 
 const { width, height } = Dimensions.get('window');
 
@@ -53,37 +55,49 @@ const FullPlayerScreen = ({ navigation, route }) => {
 
   useEffect(() => {
     // Animate cover when playing
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(coverScale, {
-          toValue: 1.05,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(coverScale, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
+    const task = InteractionManager.runAfterInteractions(() => {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(coverScale, {
+            toValue: 1.05,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(coverScale, {
+            toValue: 1,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    });
+
+    return () => task.cancel();
   }, []);
 
   useEffect(() => {
     if (!currentSong) return;
     
-    // Debounce to prevent double loading when song and playlist update sequentially
-    const timer = setTimeout(() => {
-      loadNextSongs();
-      loadRelatedSongs();
-    }, 100);
+    // Defer heavy data loading until transition completes to prevent stutter
+    const task = InteractionManager.runAfterInteractions(() => {
+      // Debounce to prevent double loading
+      const timer = setTimeout(() => {
+        loadNextSongs();
+        loadRelatedSongs();
+      }, 100);
+      
+      return () => clearTimeout(timer);
+    });
 
-    return () => clearTimeout(timer);
+    return () => task.cancel();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSong?.song_id, currentPlaylist?.playlist_id, playlist?.length, currentIndex]);
+  }, [currentSong?.song_id, currentPlaylist?.playlist_id, playlist?.length, currentIndex, isRepeat]);
 
   useEffect(() => {
-    checkFavoriteStatus();
+    const task = InteractionManager.runAfterInteractions(() => {
+      checkFavoriteStatus();
+    });
+    return () => task.cancel();
   }, [currentSong]);
 
   const loadNextSongs = async () => {
@@ -96,34 +110,46 @@ const FullPlayerScreen = ({ navigation, route }) => {
       let finalSongs = [];
       const needCount = 5;
 
-      // 1. Get from Queue/Playlist
-      if (playlist && playlist.length > 0) {
-        const currentIdx = playlist.findIndex(s => s.song_id === currentSong.song_id);
+      // 1. If Repeat is ON, next song is the current song itself
+      if (isRepeat) {
+        finalSongs = [{ ...currentSong, _isRepeatClone: true }];
         
-        if (currentIdx !== -1 && currentIdx < playlist.length - 1) {
-          // Get remaining songs in queue
-          const queueNext = playlist.slice(currentIdx + 1, currentIdx + 1 + needCount);
-          finalSongs = [...queueNext];
+        // Skip queue logic
+      }
+      // 2. Get from Queue/Playlist (Normal mode)
+      else if (playlist && playlist.length > 0) {
+        const currentIdx = playlist.findIndex(s => s.song_id === currentSong.song_id);
+         
+        if (currentIdx !== -1) {
+          // Wrap-around logic: Get next songs cyclically
+          // Max songs to show is 5, OR (total - 1) to avoid showing current song again in next list if playlist is small
+          const maxCount = Math.min(playlist.length - 1, 5);
           
+          for (let i = 1; i <= maxCount; i++) {
+             const nextIndex = (currentIdx + i) % playlist.length;
+             finalSongs.push(playlist[nextIndex]);
+          }
+
           if (finalSongs.length > 0) {
              setIsPlayingPlaylist(true); 
           }
         }
       }
 
-      // 2. Fill with Recommendation if needed (< 5 songs)
-      if (finalSongs.length < needCount) {
+      // 3. Fill with Recommendation ONLY if we have NO songs in queue (e.g. playing single song from search)
+      // If we are playing a playlist/album (even if it has only 1 song), we do NOT fill random stuff.
+      if (finalSongs.length === 0 && (!playlist || playlist.length <= 1)) {
          // Avoid duplicates
          const existingIds = new Set(finalSongs.map(s => s.song_id));
          existingIds.add(currentSong.song_id);
 
-         const res = await songService.getTrendingSongs(10); // Fetch more to filter
+         const res = await songService.getTrendingSongs(10); 
          const trending = res.data || [];
          
          for (const s of trending) {
             if (finalSongs.length >= needCount) break;
             if (!existingIds.has(s.song_id)) {
-               finalSongs.push({...s, isRecommendation: true}); // Mark as recommendation
+               finalSongs.push({...s, isRecommendation: true}); 
                existingIds.add(s.song_id);
             }
          }
@@ -294,9 +320,16 @@ WHERE song_id = ${currentSong.song_id};`;
 
           {/* Song Info */}
           <View style={styles.songInfo}>
-            <Text style={styles.songTitle} numberOfLines={2}>
-              {currentSong.title}
-            </Text>
+            <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8}}>
+              <Text style={styles.songTitle} numberOfLines={2}>
+                {currentSong.title}
+              </Text>
+              {currentSong.album_is_premium === 1 ? (
+                <PremiumBadge text="ALBUM PRE" size="small" />
+              ) : (
+                currentSong.is_premium === 1 && <PremiumBadge size="small" />
+              )}
+            </View>
             <TouchableOpacity
               onPress={() => {
                 if (currentSong.artist_id) {
@@ -620,9 +653,16 @@ WHERE song_id = ${currentSong.song_id};`;
                         style={styles.nextSongImage}
                       />
                       <View style={styles.nextSongInfo}>
-                        <Text style={styles.nextSongTitle} numberOfLines={1}>
-                          {song.title}
-                        </Text>
+                        <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
+                          <Text style={styles.nextSongTitle} numberOfLines={1}>
+                            {song.title}
+                          </Text>
+                          {song.album_is_premium === 1 ? (
+                            <PremiumBadge text="ALBUM PRE" size="small" />
+                          ) : (
+                            song.is_premium === 1 && <PremiumBadge size="small" />
+                          )}
+                        </View>
                         <Text style={styles.nextSongArtist} numberOfLines={2}>
                           <Text style={styles.nextSongArtistName}>{song.artist_name}</Text>
                           {song.album_title ? (

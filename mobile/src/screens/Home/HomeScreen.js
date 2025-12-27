@@ -205,7 +205,7 @@ const HomeScreen = ({ navigation, route }) => {
 
   // Check access for premium songs
   const checkAccessForSongs = async (songs) => {
-    const premiumSongs = (songs || []).filter(s => s && s.is_premium === 1);
+    const premiumSongs = (songs || []).filter(s => s && (s.is_premium === 1 || s.album_is_premium === 1));
     if (premiumSongs.length === 0) return;
 
     const accessTypesMap = { ...songAccessTypes };
@@ -502,8 +502,12 @@ const HomeScreen = ({ navigation, route }) => {
                         {song.title}
                         </Text>
                         <View style={{display: 'flex', flexDirection: 'row', position: 'relative', top: -10, right:-30}}>
-                        {song.is_premium === 1 && <PremiumBadge size="small" style={GlobalStyles.premiumBadge} />}
-                        {song.is_premium === 1 && songAccessTypes[song.song_id] && (
+                        {song.album_is_premium === 1 ? (
+                          <PremiumBadge text="ALBUM PRE" size="small" style={GlobalStyles.premiumBadge} />
+                        ) : (
+                          song.is_premium === 1 && <PremiumBadge size="small" style={GlobalStyles.premiumBadge} />
+                        )}
+                        {(song.album_is_premium === 1 || song.is_premium === 1) && songAccessTypes[song.song_id] && (
                             <AccessBadge accessType={songAccessTypes[song.song_id]} size={16} />
                         )}
                         </View>

@@ -8,8 +8,13 @@ import { AuthProvider } from './src/context/AuthContext';
 import { PlayerProvider } from './src/context/PlayerContext';
 import { AlertProvider } from './src/context/AlertContext';
 import AppNavigator from './src/navigation/AppNavigator';
+import { settingsDatabase } from './src/config/settingsDb';
 
 export default function App() {
+  React.useEffect(() => {
+    settingsDatabase.init();
+  }, []);
+
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
