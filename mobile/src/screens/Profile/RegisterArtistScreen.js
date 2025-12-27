@@ -23,6 +23,8 @@ const RegisterArtistScreen = ({ navigation }) => {
     artist_bio: '',
     artist_country: '',
     artist_image_url: user?.avatar_url || '',
+    membership_price: '50000',
+    membership_duration_days: '30',
   });
   const [loading, setLoading] = useState(false);
 
@@ -138,6 +140,32 @@ const RegisterArtistScreen = ({ navigation }) => {
             <Text style={styles.helperText}>Để trống để sử dụng ảnh đại diện hiện tại</Text>
           </View>
 
+          <View style={styles.membershipRow}>
+            <View style={[styles.inputGroup, { flex: 1 }]}>
+              <Text style={styles.label}>Giá hội viên (VNĐ)</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.membership_price}
+                onChangeText={(text) => handleChange('membership_price', text.replace(/[^0-9]/g, ''))}
+                placeholder="50000"
+                placeholderTextColor={COLORS.textSecondary}
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={[styles.inputGroup, { flex: 1 }]}>
+              <Text style={styles.label}>Số ngày hiệu lực</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.membership_duration_days}
+                onChangeText={(text) => handleChange('membership_duration_days', text.replace(/[^0-9]/g, ''))}
+                placeholder="30"
+                placeholderTextColor={COLORS.textSecondary}
+                keyboardType="numeric"
+              />
+            </View>
+          </View>
+
           <TouchableOpacity
             style={[styles.submitButton, loading && styles.disabledButton]}
             onPress={handleSubmit}
@@ -208,6 +236,10 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: 20,
+  },
+  membershipRow: {
+    flexDirection: 'row',
+    gap: 16,
   },
   inputGroup: {
     gap: 8,

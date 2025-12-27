@@ -1,4 +1,5 @@
 const UserModel = require('../models/user.model');
+const NotificationModel = require('../models/notification.model');
 const bcrypt = require('bcryptjs');
 
 class UserController {
@@ -313,15 +314,56 @@ class UserController {
       }
 
       // Update user status to pending (is_banned = 2)
-      await db.query('UPDATE users SET is_banned = 2 WHERE user_id = ?', [userId]);
+    await db.query('UPDATE users SET is_banned = 2 WHERE user_id = ?', [userId]);
 
-      res.json({
-        success: true,
-        message: 'Đã gửi yêu cầu đăng ký nghệ sĩ. Vui lòng chờ admin duyệt.'
-      });
+    // Notify Admins
+    try {
+      const admins = await UserModel.findAdmins();
+      if (admins.length > 0) {
+        const adminIds = admins.map(a => a.user_id);
+        const currentUser = await UserModel.findById(userId);
+        await NotificationModel.createBroadcast({
+          user_ids: adminIds,
+          type: 'system',
+          title: 'Yêu cầu duyệt nghệ sĩ mới',
+          message: `Người dùng ${currentUser.username} vừa gửi yêu cầu đăng ký nghệ sĩ với tên: ${artist_name}.`,
+          data: {
+            user_id: userId,
+            artist_name: artist_name,
+            action: 'approve_artist'
+          }
+        });
+      }
+    } catch (notifyError) {
+      console.error('Notify admin artist registration error:', notifyError);
+    }
+
+    res.json({
+      success: true,
+      message: 'Đã gửi yêu cầu đăng ký nghệ sĩ. Vui lòng chờ admin duyệt.'
+    });
 
     } catch (error) {
       console.error('Register artist error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Lỗi server'
+      });
+    }
+  }
+
+  // Get profile statistics (following, followers, playlists)
+  static async getStats(req, res) {
+    try {
+      const { id } = req.params;
+      const stats = await UserModel.getProfileStats(id);
+      
+      res.json({
+        success: true,
+        data: stats
+      });
+    } catch (error) {
+      console.error('Get profile stats error:', error);
       res.status(500).json({
         success: false,
         message: 'Lỗi server'

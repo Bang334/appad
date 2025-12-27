@@ -37,6 +37,7 @@ const updateBackgroundVideoValidation = [
 
 // Routes
 router.get('/profile/:id', authenticateToken, UserController.getProfile);
+router.get('/profile/:id/stats', authenticateToken, UserController.getStats);
 router.put('/profile', authenticateToken, updateProfileValidation, validate, UserController.updateProfile);
 router.put('/change-password', authenticateToken, changePasswordValidation, validate, UserController.changePassword);
 router.put('/background-video', authenticateToken, updateBackgroundVideoValidation, validate, UserController.updateBackgroundVideo);

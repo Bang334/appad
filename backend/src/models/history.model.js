@@ -382,6 +382,8 @@ class HistoryModel {
       `SELECT s.*, 
               a.name as artist_name, 
               al.title as album_title,
+              al.is_premium as album_is_premium,
+              al.release_date as album_release_date,
               SUM(lh.count) as my_listen_count
        FROM listening_history lh
        JOIN songs s ON lh.song_id = s.song_id
@@ -400,4 +402,3 @@ class HistoryModel {
 }
 
 module.exports = HistoryModel;
-

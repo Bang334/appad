@@ -124,6 +124,8 @@ class SongModel {
       `SELECT s.*, 
               a.name as artist_name, 
               al.title as album_title, 
+              al.is_premium as album_is_premium,
+              al.release_date as album_release_date,
               g.name as genre_name,
               COALESCE(rc.rating_count, 0) as rating_count
        FROM songs s

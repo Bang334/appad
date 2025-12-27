@@ -7,7 +7,11 @@ class AuthController {
   // Register new user (normal user or artist)
   static async register(req, res) {
     try {
-      const { username, email, password, full_name, artist_register, artist_bio, artist_country, artist_image_url } = req.body;
+      const { 
+        username, email, password, full_name, artist_register, 
+        artist_bio, artist_country, artist_image_url,
+        membership_price, membership_duration_days 
+      } = req.body;
 
       // Check if user exists
       const existingUser = await UserModel.findByEmail(email);
@@ -48,6 +52,8 @@ class AuthController {
             image_url: artist_image_url || null,
             country: artist_country || null,
             user_id: userId,
+            membership_price: membership_price || 0,
+            membership_duration_days: membership_duration_days || 30
           });
         } catch (artistError) {
           console.error('Error creating artist profile during register:', artistError);
@@ -159,7 +165,9 @@ class AuthController {
           role: effectiveRole,
           artist_id,
           token,
-          is_pending_artist: user.is_banned === 2
+          is_pending_artist: user.is_banned === 2,
+          is_premium: user.is_premium,
+          premium_expiry: user.premium_expiry
         }
       });
     } catch (error) {

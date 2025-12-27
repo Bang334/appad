@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { userService } from '../../services/userService';
+import { useAuth } from '../../context/AuthContext';
 import { usePlayer, usePlayerProgress } from '../../context/PlayerContext';
 import { COLORS, SIZES } from '../../config/theme';
 import Slider from '@react-native-community/slider';
@@ -18,21 +20,62 @@ import Slider from '@react-native-community/slider';
 const MiniPlayer = ({ bottomOffset }) => {
   const insets = useSafeAreaInsets();
   
-  // Calculate bottom position to be above the tab bar
-  // Tab bar height is 60px (simplified since SafeAreaView handles safe area)
-  const tabBarHeight = 60;
+  // Calculate dynamic dimensions consistent with safe area
+  const baseTabBarHeight = 56;
+  const safeAreaBottom = insets.bottom > 0 ? insets.bottom : (Platform.OS === 'android' ? 10 : 8);
   
-  // Use provided bottomOffset or calculate from tab bar height
-  // If bottomOffset is undefined (for tab screens), calculate from tab bar height + spacing
-  // If bottomOffset is provided (for stack screens), use it directly
+  // Position MiniPlayer:
+  // - If bottomOffset is provided (e.g. 0), we use it + safe area + small spacing
+  // - If not provided (in TabNavigator), we use tab bar height + safe area + small spacing
   const calculatedBottom = bottomOffset !== undefined 
-    ? bottomOffset + 8 
-    : tabBarHeight + 8; // 8px spacing above tab bar for tab screens
+    ? bottomOffset + safeAreaBottom + 8
+    : baseTabBarHeight + safeAreaBottom + 8;
+
+  const { user, updateUser } = useAuth();
   const navigation = useNavigation();
   const { currentSong, isPlaying, togglePlayPause, playNext, playPrevious, stopPlayer, seekTo } = usePlayer();
   const { position, duration } = usePlayerProgress();
 
-  const isPremiumContent = currentSong?.is_premium === 1 || currentSong?.album_is_premium === 1;
+  // Refresh user profile if we have a user but status might be stale
+  // This ensures that when a user subscribes, the MiniPlayer UI updates accordingly
+  useEffect(() => {
+    if (user && user.is_premium != 1) {
+      const refreshProfile = async () => {
+        try {
+          const response = await userService.getProfile();
+          if (response.success && response.data) {
+            // Only update if there's a change to avoid infinite loops
+            if (response.data.is_premium != user.is_premium) {
+              updateUser(response.data);
+            }
+          }
+        } catch (error) {
+          // Silent fail
+        }
+      };
+      refreshProfile();
+    }
+  }, [user?.user_id]);
+
+  // Check premium status from multiple sources
+  const isUserPremiumSub = user?.is_premium == 1; 
+  const isArtistMember = user?.is_membership == 1;
+  const isPremiumSong = currentSong?.is_premium == 1 || currentSong?.album_is_premium == 1;
+  
+  const isPremiumContent = isUserPremiumSub || isArtistMember || isPremiumSong;
+
+  // Debug log to check premium status
+  useEffect(() => {
+    if (user) {
+      console.log('💎 Player Premium Debug:', {
+        username: user.username,
+        is_premium_sub: user.is_premium,
+        is_artist_member: user.is_membership,
+        is_premium_song: currentSong?.is_premium,
+        final_is_premium_content: isPremiumContent
+      });
+    }
+  }, [user, currentSong, isPremiumContent]);
 
   // Use player duration if available, otherwise fallback to song duration from database
   const displayDuration = useMemo(() => {
@@ -119,24 +162,24 @@ const MiniPlayer = ({ bottomOffset }) => {
         />
       )}
       <View style={styles.contentRow}>
-        {/* Close Button - Top Right */}
+        {/* Close Button - Top Right Overlay */}
         <TouchableOpacity 
           onPress={handleClose} 
-          style={styles.closeButton}
+          style={[styles.closeButton, isPremiumContent && styles.premiumActionButton]}
           activeOpacity={0.7}
           hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
         >
-          <Ionicons name="close" size={20} color={COLORS.textSecondary} />
+          <Ionicons name="close" size={18} color={isPremiumContent ? COLORS.warning : COLORS.textSecondary} />
         </TouchableOpacity>
 
-        {/* Collapse Button - Below Close Button */}
+        {/* Collapse Button - Bottom Right Overlay */}
         <TouchableOpacity 
           onPress={handleCollapse} 
-          style={styles.collapseButton}
+          style={[styles.collapseButton, isPremiumContent && styles.premiumActionButton]}
           activeOpacity={0.7}
           hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
         >
-          <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+          <Ionicons name="chevron-forward" size={18} color={isPremiumContent ? COLORS.warning : COLORS.textSecondary} />
         </TouchableOpacity>
 
         <TouchableOpacity 
@@ -163,26 +206,51 @@ const MiniPlayer = ({ bottomOffset }) => {
 
         <View style={styles.controls}>
           <TouchableOpacity onPress={playPrevious} style={styles.controlButton} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
-            <Ionicons name="play-skip-back" size={24} color={COLORS.textSecondary} />
+            <LinearGradient
+              colors={isPremiumContent ? ['#332200', '#554400', '#332200'] : ['#222', '#444', '#222']}
+              style={styles.smallControlGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <View style={styles.shineOverlay} />
+              <Ionicons 
+                 name="play-skip-back" 
+                 size={20} 
+                 color={isPremiumContent ? COLORS.warning : COLORS.textSecondary} 
+              />
+            </LinearGradient>
           </TouchableOpacity>
 
           <TouchableOpacity onPress={togglePlayPause} style={styles.playButton} hitSlop={{top: 5, bottom: 5, left: 5, right: 5}}>
             <LinearGradient
-              colors={COLORS.gradient.primary}
-              style={styles.playButtonGradient}
+              colors={isPremiumContent ? ['#f59e0b', '#fde68a', '#fbbf24'] : ['#8b5cf6', '#d8b4fe', '#ec4899']}
+              style={[styles.playButtonGradient, isPremiumContent && styles.premiumPlayButton]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
             >
+              <View style={styles.shineOverlay} />
               <Ionicons
                 name={isPlaying ? 'pause' : 'play'}
-                size={20}
-                color={COLORS.white}
+                size={22}
+                color={isPremiumContent ? '#000' : COLORS.white}
               />
             </LinearGradient>
           </TouchableOpacity>
           
           <TouchableOpacity onPress={playNext} style={styles.controlButton} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
-            <Ionicons name="play-skip-forward" size={24} color={COLORS.textSecondary} />
+            <LinearGradient
+              colors={isPremiumContent ? ['#332200', '#554400', '#332200'] : ['#222', '#444', '#222']}
+              style={styles.smallControlGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <View style={styles.shineOverlay} />
+              <Ionicons 
+                name="play-skip-forward" 
+                size={20} 
+                color={isPremiumContent ? COLORS.warning : COLORS.textSecondary} 
+              />
+            </LinearGradient>
           </TouchableOpacity>
         </View>
       </View>
@@ -266,15 +334,15 @@ const styles = StyleSheet.create({
     right: -5,
     zIndex: 10,
     padding: 4,
-    borderRadius: 12,
-    backgroundColor: '#2a0a0a', // Solid dark red (opaque)
+    borderRadius: 10,
+    backgroundColor: '#1a1a1a',
     borderWidth: 1,
-    borderColor: 'rgba(255, 60, 60, 0.2)',
+    borderColor: 'rgba(255,255,255,0.1)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 5,
   },
   collapseButton: {
     position: 'absolute',
@@ -282,15 +350,19 @@ const styles = StyleSheet.create({
     right: -5,
     zIndex: 10,
     padding: 4,
-    borderRadius: 12,
-    backgroundColor: '#0a0a2a', // Solid dark blue (opaque)
+    borderRadius: 10,
+    backgroundColor: '#1a1a1a',
     borderWidth: 1,
-    borderColor: 'rgba(60, 100, 255, 0.2)',
+    borderColor: 'rgba(255,255,255,0.1)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  premiumActionButton: {
+    backgroundColor: '#2d2201',
+    borderColor: COLORS.warning,
   },
   songInfo: {
     flexDirection: 'row',
@@ -357,6 +429,30 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  premiumPlayButton: {
+    shadowColor: COLORS.warning,
+    shadowOpacity: 0.6,
+    shadowRadius: 10,
+    elevation: 8,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+  },
+  smallControlGradient: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  shineOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 20,
+    height: '50%', // Upper half shine
+    opacity: 0.5,
   },
 });
 

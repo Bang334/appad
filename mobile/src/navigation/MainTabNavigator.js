@@ -10,6 +10,7 @@ import { COLORS } from '../config/theme';
 import { notificationService } from '../services/notificationService';
 
 // Screens
+
 import HomeScreen from '../screens/Home/HomeScreen';
 import SearchScreen from '../screens/Search/SearchScreen';
 import LibraryScreen from '../screens/Library/LibraryScreen';
@@ -103,12 +104,14 @@ const TabNavigator = () => {
     return () => clearInterval(interval);
   }, [fetchUnreadCount]);
 
-  // Calculate bottom padding - now simplified since SafeAreaView handles safe area
-  // Just add a small padding for visual consistency
-  const bottomPadding = 8;
+  // Calculate dynamic dimensions based on safe area
+  // We use the bottom inset to push the tab bar icons above system navigation
+  // On Android, if insets.bottom is 0 (non-edge-to-edge), we still add a bit of padding.
+  const bottomPadding = insets.bottom > 0 ? insets.bottom : (Platform.OS === 'android' ? 12 : 8);
+  const tabBarHeight = 56 + bottomPadding;
 
   return (
-    <>
+    <View style={{ flex: 1, backgroundColor: COLORS.background }}>
       <Tab.Navigator
         screenOptions={({ route }) => ({
           tabBarIcon: ({ focused, color, size }) => {
@@ -148,13 +151,17 @@ const TabNavigator = () => {
             backgroundColor: '#050505',
             borderTopColor: 'rgba(255,255,255,0.08)',
             borderTopWidth: 1,
-            height: 60,
+            height: tabBarHeight,
             paddingBottom: bottomPadding,
             paddingTop: 8,
-            elevation: 8, // Ensure tab bar is above other content on Android
+            elevation: 8,
+            borderBottomWidth: 0,
           },
           headerStyle: {
             backgroundColor: COLORS.background,
+            elevation: 0,
+            shadowOpacity: 0,
+            borderBottomWidth: 0,
           },
           headerTintColor: COLORS.text,
         })}
@@ -190,6 +197,7 @@ const TabNavigator = () => {
           options={{ 
             title: 'Thông báo',
             tabBarLabel: 'Thông báo',
+            headerShown: false,
           }}
         >
           {(props) => (
@@ -206,17 +214,18 @@ const TabNavigator = () => {
         />
       </Tab.Navigator>
       <MiniPlayer />
-    </>
+    </View>
   );
 };
 
 const MainTabNavigator = () => {
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: COLORS.background }]}>
       <Stack.Navigator 
         screenOptions={{ 
           headerShown: false,
-          cardStyle: { backgroundColor: COLORS.background }
+          cardStyle: { backgroundColor: COLORS.background },
+          detachPreviousScreen: Platform.OS === 'ios' ? false : true,
         }}
       >
         <Stack.Screen name="MainTabs" component={TabNavigator} />

@@ -1,5 +1,6 @@
 const UserModel = require('../models/user.model');
 const TransactionModel = require('../models/transaction.model');
+const NotificationModel = require('../models/notification.model');
 const crypto = require('crypto');
 
 class WalletController {
@@ -71,6 +72,31 @@ class WalletController {
         // VietComBank QR format
         qr_url: `https://img.vietqr.io/image/VCB-1029727303-compact2.png?amount=${amount}&addInfo=${referenceCode}&accountName=NGUYEN%20SY%20KIM%20BANG`
       };
+
+      // Notify Admins
+      try {
+        const admins = await UserModel.findAdmins();
+        if (admins.length > 0) {
+          const adminIds = admins.map(a => a.user_id);
+          const user = await UserModel.findById(userId);
+          await NotificationModel.createBroadcast({
+            user_ids: adminIds,
+            type: 'system',
+            title: 'Yêu cầu nạp tiền mới',
+            message: `Người dùng ${user.username} vừa tạo yêu cầu nạp ${parseFloat(amount).toLocaleString('vi-VN')}đ. Mã lệnh: ${referenceCode}`,
+            data: {
+              transaction_id: transactionId,
+              reference_code: referenceCode,
+              amount: parseFloat(amount),
+              user_id: userId,
+              action: 'approve_deposit'
+            }
+          });
+        }
+      } catch (notifyError) {
+        console.error('Notify admin deposit error:', notifyError);
+        // Don't fail the request if notification fails
+      }
 
       res.json({
         success: true,

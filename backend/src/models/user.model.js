@@ -23,7 +23,7 @@ class UserModel {
   // Find user by ID
   static async findById(userId) {
     const [rows] = await db.execute(
-      'SELECT user_id, username, email, full_name, avatar_url, role, background_video_url, created_at FROM users WHERE user_id = ?',
+      'SELECT user_id, username, email, full_name, avatar_url, role, is_premium, premium_expiry, background_video_url, created_at FROM users WHERE user_id = ?',
       [userId]
     );
     return rows[0];
@@ -83,6 +83,15 @@ class UserModel {
     const [rows] = await db.execute(
       'SELECT user_id, username, email, full_name, avatar_url, role, is_premium, premium_expiry, background_video_url, created_at FROM users LIMIT ? OFFSET ?',
       [parseInt(limit), parseInt(offset)]
+    );
+    return rows;
+  }
+
+  // Find all admin users
+  static async findAdmins() {
+    const [rows] = await db.execute(
+      'SELECT user_id FROM users WHERE role = ?',
+      ['admin']
     );
     return rows;
   }
@@ -188,6 +197,50 @@ class UserModel {
       [userId]
     );
     return rows[0];
+  }
+
+  // Update expired premium for all users (cron job)
+  static async updateExpiredPremium() {
+    const [result] = await db.execute(
+      'UPDATE users SET is_premium = 0 WHERE is_premium = 1 AND premium_expiry <= NOW()'
+    );
+    return result.affectedRows;
+  }
+
+  // Get user profile statistics (following, followers, playlists)
+  static async getProfileStats(userId) {
+    // 1. Get following count (artists this user follows)
+    const [followingRows] = await db.execute(
+      'SELECT COUNT(*) as following_count FROM follows WHERE user_id = ?',
+      [userId]
+    );
+
+    // 2. Get playlist count
+    const [playlistRows] = await db.execute(
+      'SELECT COUNT(*) as playlist_count FROM playlists WHERE user_id = ?',
+      [userId]
+    );
+
+    // 3. Get follower count (if this user is an artist)
+    const [artistRows] = await db.execute(
+      'SELECT artist_id FROM artists WHERE user_id = ?',
+      [userId]
+    );
+
+    let followerCount = 0;
+    if (artistRows.length > 0) {
+      const [followerRows] = await db.execute(
+        'SELECT COUNT(*) as follower_count FROM follows WHERE artist_id = ?',
+        [artistRows[0].artist_id]
+      );
+      followerCount = followerRows[0].follower_count;
+    }
+
+    return {
+      following: followingRows[0].following_count || 0,
+      playlists: playlistRows[0].playlist_count || 0,
+      followers: followerCount || 0
+    };
   }
 }
 

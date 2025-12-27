@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   FlatList,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -45,6 +46,9 @@ const ArtistDetailScreen = ({ route, navigation }) => {
   const [songAccessTypes, setSongAccessTypes] = useState({});
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
   const [playlistSong, setPlaylistSong] = useState(null);
+  const [showMembershipConfirm, setShowMembershipConfirm] = useState(false);
+  const [userIsPremium, setUserIsPremium] = useState(false);
+  const [purchasedSongIds, setPurchasedSongIds] = useState(new Set());
 
   useEffect(() => {
     loadArtistData();
@@ -53,13 +57,15 @@ const ArtistDetailScreen = ({ route, navigation }) => {
   const loadArtistData = async () => {
     setLoading(true);
     try {
-      const [artistRes, albumsRes, songsRes, followRes, followerCountRes, membershipRes] = await Promise.all([
+      const [artistRes, albumsRes, songsRes, followRes, followerCountRes, membershipRes, purchasedRes, premiumStatusRes] = await Promise.all([
         artistService.getArtistById(artistId),
         artistService.getArtistAlbums(artistId),
         artistService.getArtistSongs(artistId),
         followService.checkFollowing(artistId).catch(() => ({ data: { is_following: false } })),
         followService.getFollowerCount(artistId).catch(() => ({ data: { follower_count: 0 } })),
         artistService.getMembershipStatus(artistId).catch(() => ({ success: false })),
+        premiumService.getPurchasedSongs().catch(() => ({ data: [] })),
+        premiumService.checkStatus().catch(() => ({ data: { is_premium: false } })),
       ]);
       
       const artistData = artistRes.data;
@@ -74,6 +80,9 @@ const ArtistDetailScreen = ({ route, navigation }) => {
       if (membershipRes.success) {
         setMembershipStatus(membershipRes.data);
       }
+      
+      setUserIsPremium(premiumStatusRes.data?.is_premium || false);
+      setPurchasedSongIds(new Set((purchasedRes.data || []).map(s => s.song_id)));
 
       // Preload access types for this artist's premium songs (similar to SearchScreen)
       const accessTypesMap = {};
@@ -122,27 +131,57 @@ const ArtistDetailScreen = ({ route, navigation }) => {
     }
   };
 
-  const handlePlaySong = (song, index) => {
+  const handlePlaySong = async (song, index) => {
     if (currentSong?.song_id === song.song_id) {
       togglePlayPause();
-    } else {
-      playSong(song, songs, index);
-    }
-  };
-
-  const handleSongPress = async (song, index) => {
-    // If clicking on currently playing song, navigate to FullPlayer
-    if (currentSong?.song_id === song.song_id) {
-      navigation.navigate('FullPlayer');
       return;
     }
 
-    // Check access for premium songs
+    // Check if song is in an unreleased album
+    if (song.album_release_date && new Date(song.album_release_date) > new Date()) {
+      const { Alert } = require('react-native');
+      const releaseDate = new Date(song.album_release_date);
+      const formattedDate = releaseDate.toLocaleString('vi-VN', {
+        hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
+      });
+      Alert.alert(
+        '🎵 Sắp ra mắt',
+        `Bài hát "${song.title}" sẽ được phát hành vào:\n\n⏰ ${formattedDate}`,
+        [{ text: 'Đã hiểu' }]
+      );
+      return;
+    }
+
+    // Check if song is FREE but in a PREMIUM album
+    if (song.album_is_premium === 1 && song.is_premium !== 1) {
+      try {
+        const response = await premiumService.checkSongAccess(song.song_id);
+        if (!response.data?.hasAccess) {
+          const { Alert } = require('react-native');
+          Alert.alert(
+            '🔒 Nội dung Premium',
+            `Bài hát "${song.title}" thuộc album Premium.\n\nMua album để nghe!`,
+            [
+              { text: 'Để sau', style: 'cancel' },
+              { 
+                text: 'Xem Album', 
+                onPress: () => navigation.navigate('AlbumDetail', { albumId: song.album_id })
+              }
+            ]
+          );
+          return;
+        }
+      } catch (error) {
+        console.error('Error checking song access:', error);
+        return;
+      }
+    }
+
+    // Check if song is premium (single)
     if (song.is_premium === 1) {
       try {
         const response = await premiumService.checkSongAccess(song.song_id);
         if (!response.data?.hasAccess) {
-          // Show premium access modal with options
           setSelectedSong(song);
           setSelectedSongList(songs);
           setShowPremiumModal(true);
@@ -150,11 +189,73 @@ const ArtistDetailScreen = ({ route, navigation }) => {
         }
       } catch (error) {
         console.error('Error checking song access:', error);
-        // If error, try to play anyway
+        return;
       }
     }
 
-    // Navigate first for faster UX, then start playback
+    playSong(song, songs, index);
+  };
+
+  const handleSongPress = async (song, index) => {
+    if (currentSong?.song_id === song.song_id) {
+      navigation.navigate('FullPlayer');
+      return;
+    }
+
+    // Check if song is in an unreleased album
+    if (song.album_release_date && new Date(song.album_release_date) > new Date()) {
+      const { Alert } = require('react-native');
+      const releaseDate = new Date(song.album_release_date);
+      const formattedDate = releaseDate.toLocaleString('vi-VN', {
+        hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
+      });
+      Alert.alert(
+        '🎵 Sắp ra mắt',
+        `Bài hát "${song.title}" thuộc album "${song.album_title}" sẽ được phát hành vào:\n\n⏰ ${formattedDate}`,
+        [{ text: 'Đã hiểu' }]
+      );
+      return;
+    }
+
+    // Check if song is FREE but in a PREMIUM album
+    if (song.album_is_premium === 1 && song.is_premium !== 1) {
+      try {
+        const response = await premiumService.checkSongAccess(song.song_id);
+        if (!response.data?.hasAccess) {
+          const { Alert } = require('react-native');
+          Alert.alert(
+            '🔒 Nội dung Premium',
+            `Bài hát "${song.title}" thuộc album Premium "${song.album_title}".\n\nMua album để nghe tất cả bài hát!`,
+            [
+              { text: 'Để sau', style: 'cancel' },
+              { 
+                text: 'Xem Album', 
+                onPress: () => navigation.navigate('AlbumDetail', { albumId: song.album_id })
+              }
+            ]
+          );
+          return;
+        }
+      } catch (error) {
+        console.error('Error checking song access:', error);
+      }
+    }
+
+    // Check access for premium songs (singles)
+    if (song.is_premium === 1) {
+      try {
+        const response = await premiumService.checkSongAccess(song.song_id);
+        if (!response.data?.hasAccess) {
+          setSelectedSong(song);
+          setSelectedSongList(songs);
+          setShowPremiumModal(true);
+          return;
+        }
+      } catch (error) {
+        console.error('Error checking song access:', error);
+      }
+    }
+
     navigation.navigate('FullPlayer');
     await playSong(song, songs, index);
   };
@@ -171,7 +272,7 @@ const ArtistDetailScreen = ({ route, navigation }) => {
     }
   };
 
-  const handleSubscribeMembership = async () => {
+  const handleSubscribeMembership = () => {
     if (!membershipStatus?.membership_info?.price || membershipStatus?.membership_info?.price <= 0) {
       showWarning('Thông báo', 'Artist chưa thiết lập giá hội viên');
       return;
@@ -182,6 +283,11 @@ const ArtistDetailScreen = ({ route, navigation }) => {
       return;
     }
 
+    setShowMembershipConfirm(true);
+  };
+
+  const confirmSubscribeMembership = async () => {
+    setShowMembershipConfirm(false);
     setMembershipLoading(true);
     try {
       // Check balance first
@@ -226,6 +332,14 @@ const ArtistDetailScreen = ({ route, navigation }) => {
     }
   };
 
+  const userHasAccessToSong = (song) => {
+    if (membershipStatus?.has_membership) return true;
+    if (userIsPremium && (song.is_premium == 1 || song.album_is_premium == 1)) return true;
+    if (purchasedSongIds.has(song.song_id)) return true;
+    if (songAccessTypes[song.song_id]) return true;
+    return false;
+  };
+
   const formatDuration = (duration) => {
     if (!duration) return '0:00';
     
@@ -248,8 +362,8 @@ const ArtistDetailScreen = ({ route, navigation }) => {
   };
 
   // Filter premium content
-  const premiumSongs = songs.filter(song => song.is_premium === 1);
-  const premiumAlbums = albums.filter(album => album.is_premium === 1);
+  const premiumSongs = songs.filter(song => song.is_premium == 1 || song.album_is_premium == 1);
+  const premiumAlbums = albums.filter(album => album.is_premium == 1);
 
   if (loading) {
     return (
@@ -494,7 +608,8 @@ const ArtistDetailScreen = ({ route, navigation }) => {
                 {premiumSongs.slice(0, 5).map((song, index) => {
                   const isCurrentSong = currentSong?.song_id === song.song_id;
                   const isCurrentPlaying = isCurrentSong && isPlaying;
-                  const showPrice = song.is_premium === 1 && !songAccessTypes[song.song_id] && Number(song.price) > 0;
+                  const hasAccess = userHasAccessToSong(song);
+                  const showPrice = (song.is_premium == 1 || song.album_is_premium == 1) && !songAccessTypes[song.song_id] && Number(song.price) > 0;
                   const mainIndex = songs.findIndex(s => s.song_id === song.song_id);
 
                   const gradientColors = isCurrentSong
@@ -531,9 +646,24 @@ const ArtistDetailScreen = ({ route, navigation }) => {
                               <Text style={styles.songTitle} numberOfLines={1}>
                                 {song.title}
                               </Text>
-                <View style={{display: 'flex', flexDirection: 'row', position: 'relative', top: -10, right:-30}}>
-                  {song.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
-                </View>
+                              <View style={styles.badgeContainer}>
+                                {song.album_is_premium == 1 ? (
+                                  <PremiumBadge text="ALBUM PRE" size="small" />
+                                ) : (
+                                  song.is_premium == 1 && <PremiumBadge size="small" />
+                                )}
+                                {hasAccess && (song.is_premium == 1 || song.album_is_premium == 1) && (
+                                    <AccessBadge 
+                                      accessType={
+                                        membershipStatus?.has_membership ? 'membership' :
+                                        userIsPremium ? 'premium' :
+                                        purchasedSongIds.has(song.song_id) ? 'purchase' :
+                                        songAccessTypes[song.song_id] || 'free'
+                                      } 
+                                      size={16} 
+                                    />
+                                )}
+                              </View>
               </View>
                             
                             <Text style={styles.songArtist} numberOfLines={1}>
@@ -714,7 +844,8 @@ const ArtistDetailScreen = ({ route, navigation }) => {
         {songs.map((song, index) => {
           const isCurrentSong = currentSong?.song_id === song.song_id;
           const isCurrentPlaying = isCurrentSong && isPlaying;
-          const showPrice = song.is_premium === 1 && !songAccessTypes[song.song_id] && Number(song.price) > 0;
+          const hasAccess = userHasAccessToSong(song);
+          const showPrice = (song.is_premium === 1 || song.album_is_premium === 1) && !hasAccess && Number(song.price || 0) > 0;
 
           const gradientColors = isCurrentSong
             ? ['#2B124C', '#08040F']
@@ -750,12 +881,24 @@ const ArtistDetailScreen = ({ route, navigation }) => {
                       <Text style={styles.songTitle} numberOfLines={1}>
                         {song.title}
                       </Text>
-                    <View style={{display: 'flex', flexDirection: 'row', position: 'relative', top: -10, right:-30}}>
-                      {song.is_premium === 1 && <PremiumBadge size="small" style={styles.premiumBadge} />}
-                      {song.is_premium === 1 && songAccessTypes[song.song_id] && (
-                        <AccessBadge accessType={songAccessTypes[song.song_id]} size={16} />
-                      )}
-                    </View>
+                      <View style={styles.badgeContainer}>
+                        {song.album_is_premium == 1 ? (
+                          <PremiumBadge text="ALBUM PRE" size="small" />
+                        ) : (
+                          song.is_premium == 1 && <PremiumBadge size="small" />
+                        )}
+                        {hasAccess && (song.is_premium == 1 || song.album_is_premium == 1) && (
+                          <AccessBadge 
+                            accessType={
+                              membershipStatus?.has_membership ? 'membership' :
+                              userIsPremium ? 'premium' :
+                              purchasedSongIds.has(song.song_id) ? 'purchase' :
+                              songAccessTypes[song.song_id] || 'free'
+                            } 
+                            size={16} 
+                          />
+                        )}
+                      </View>
                     </View>
                     <Text style={styles.songArtist} numberOfLines={1}>
                       {song.artist_name || artist.name}
@@ -866,6 +1009,56 @@ const ArtistDetailScreen = ({ route, navigation }) => {
           setPlaylistSong(null);
         }}
       />
+
+      {/* Membership Confirmation Modal */}
+      <Modal
+        visible={showMembershipConfirm}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowMembershipConfirm(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.confirmModalContent}>
+            <Ionicons name="star" size={60} color="#FFD700" />
+            <Text style={styles.confirmModalTitle}>Xác nhận đăng ký</Text>
+            <Text style={styles.confirmModalSubtitle}>
+              Bạn sẽ nhận được toàn bộ quyền lợi hội viên của {artist.name}
+            </Text>
+
+            <View style={styles.membershipInfoCard}>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Tên nghệ sĩ</Text>
+                <Text style={styles.infoValue}>{artist.name}</Text>
+              </View>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Thời hạn</Text>
+                <Text style={styles.infoValue}>{membershipStatus?.membership_info?.duration_days || 30} ngày</Text>
+              </View>
+              <View style={styles.infoRowLast}>
+                <Text style={styles.infoLabel}>Tổng phí</Text>
+                <Text style={styles.priceValue}>
+                  {(membershipStatus?.membership_info?.price || 0).toLocaleString('vi-VN')}đ
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.confirmActions}>
+              <TouchableOpacity 
+                style={styles.cancelBtn} 
+                onPress={() => setShowMembershipConfirm(false)}
+              >
+                <Text style={styles.cancelBtnText}>Hủy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.confirmBtn} 
+                onPress={confirmSubscribeMembership}
+              >
+                <Text style={styles.confirmBtnText}>Xác nhận</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       <MiniPlayer bottomOffset={0} />
     </View>
   );
@@ -1157,6 +1350,14 @@ const styles = StyleSheet.create({
     minWidth: 100,
     flex: 1,
   },
+  badgeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    position: 'ralative',
+    top: -10,
+    right: -10,
+  },
   premiumBadge: {
     marginLeft: 6,
   },
@@ -1363,6 +1564,105 @@ const styles = StyleSheet.create({
     color: COLORS.info,
     fontSize: 11,
     fontWeight: '600',
+  },
+  // Membership Confirm Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  confirmModalContent: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 215, 0, 0.3)', // Subtle gold border
+  },
+  confirmModalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: COLORS.text,
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  confirmModalSubtitle: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  membershipInfoCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 16,
+    padding: 20,
+    width: '100%',
+    marginBottom: 24,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  infoRowLast: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.1)',
+  },
+  infoLabel: {
+    color: COLORS.textSecondary,
+    fontSize: 15,
+  },
+  infoValue: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  priceValue: {
+    color: '#FFD700', // Gold color for price
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+  },
+  cancelBtnText: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  confirmBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+  },
+  confirmBtnText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
 

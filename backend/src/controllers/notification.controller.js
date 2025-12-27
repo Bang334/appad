@@ -180,6 +180,28 @@ class NotificationController {
       });
     }
   }
+
+  // Delete all notifications
+  static async deleteAll(req, res) {
+    try {
+      const userId = req.user.user_id;
+      const count = await NotificationModel.deleteAll(userId);
+
+      res.json({
+        success: true,
+        message: 'All notifications deleted',
+        data: {
+          deleted_count: count
+        }
+      });
+    } catch (error) {
+      console.error('Delete all error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Server error'
+      });
+    }
+  }
 }
 
 module.exports = NotificationController;

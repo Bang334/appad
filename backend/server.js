@@ -126,11 +126,13 @@ cron.schedule('0 9 * * *', async () => {
   timezone: "Asia/Ho_Chi_Minh"
 });
 
-// Artist Membership Expiring Job: Chạy mỗi ngày lúc 0h (nửa đêm)
-cron.schedule('0 0 * * *', async () => {
-  console.log('[Cron] Starting artist membership expiring job...');
+// Membership Expiry Job: Chạy mỗi 5 phút để cập nhật trạng thái hết hạn cho Artist Membership và Site-wide Premium
+cron.schedule('*/5 * * * *', async () => {
+  // console.log('[Cron] Checking for expired memberships and premium...');
   const result = await ArtistMembershipExpiringJob.updateExpired();
-  console.log('[Cron] Artist membership expiring job completed:', result);
+  if (result.artist_updated > 0 || result.premium_updated > 0) {
+    console.log(`[Cron] 🕒 Updated ${result.artist_updated} artist memberships and ${result.premium_updated} site-wide premiums!`);
+  }
 }, {
   scheduled: true,
   timezone: "Asia/Ho_Chi_Minh"
@@ -154,13 +156,12 @@ cron.schedule('* * * * *', async () => {
 
 // Log cron job schedules
 console.log('📅 Cron jobs scheduled:');
-console.log('  - Monthly Revenue: 1:00 AM on 1st of every month');
-console.log('  - Premium Expiring: 9:00 AM every day');
-console.log('  - Artist Membership Expiring: 12:00 AM (midnight) every day');
-console.log('  - Song Release: Every minute');
+console.log(`  - Monthly Revenue: 1:00 AM on 1st of every month
+  - Premium Expiring Notifications: 9:00 AM every day
+  - Membership/Premium Expiry Check: Every 5 minutes
+  - Song Release: Every minute`);
 
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on port ${PORT}`);
   console.log(`📝 Environment: ${process.env.NODE_ENV}`);
 });
-

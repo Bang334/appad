@@ -2,6 +2,7 @@ const ArtistModel = require('../models/artist.model');
 const RevenueSharingModel = require('../models/revenue-sharing.model');
 const TransactionModel = require('../models/transaction.model');
 const UserModel = require('../models/user.model');
+const NotificationModel = require('../models/notification.model');
 const https = require('https');
 const http = require('http');
 const mm = require('music-metadata');
@@ -316,6 +317,29 @@ class ArtistController {
         description: `Rút tiền - ${wallet.bank_name} - ${wallet.bank_account}`,
         reference_code: `WD${Date.now()}${artist_id}`
       });
+
+      // Notify Admins
+      try {
+        const admins = await UserModel.findAdmins();
+        if (admins.length > 0) {
+          const adminIds = admins.map(a => a.user_id);
+          await NotificationModel.createBroadcast({
+            user_ids: adminIds,
+            type: 'system',
+            title: 'Yêu cầu rút tiền mới',
+            message: `Nghệ sĩ ${artist.name} vừa yêu cầu rút ${parseFloat(amount).toLocaleString('vi-VN')}đ về ngân hàng ${wallet.bank_name}.`,
+            data: {
+              transaction_id: transactionId,
+              artist_id: artist_id,
+              amount: amount,
+              action: 'approve_withdrawal'
+            }
+          });
+        }
+      } catch (notifyError) {
+        console.error('Notify admin withdrawal error:', notifyError);
+        // Don't fail the request if notification fails
+      }
 
       res.json({
         success: true,
@@ -1040,7 +1064,7 @@ class ArtistController {
   static async updateProfile(req, res) {
     try {
       const { artist_id } = req.params;
-      const { name, bio, country, image_url } = req.body;
+      const { name, bio, country, image_url, membership_price, membership_duration_days } = req.body;
 
       console.log('[updateProfile] Request body:', req.body);
       console.log('[updateProfile] Request file:', req.file);
@@ -1059,6 +1083,8 @@ class ArtistController {
       if (name !== undefined) updateData.name = name.trim();
       if (bio !== undefined) updateData.bio = bio ? bio.trim() : null;
       if (country !== undefined) updateData.country = country ? country.trim() : null;
+      if (membership_price !== undefined) updateData.membership_price = parseFloat(membership_price) || 0;
+      if (membership_duration_days !== undefined) updateData.membership_duration_days = parseInt(membership_duration_days) || 30;
       
       // Handle image - prioritize uploaded file over image_url from body
       if (req.file) {

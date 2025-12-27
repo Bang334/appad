@@ -78,12 +78,12 @@ class CommentController {
             ? `${commenter.username} đã đánh giá ${rating} sao cho bài hát "${song.title}"${content ? ' và để lại bình luận' : ''}`
             : `${commenter.username} đã bình luận về bài hát "${song.title}"`;
           
-          await NotificationModel.create({
-            user_id: artist.user_id,
-            type: 'new_comment',
-            title: rating ? 'Đánh giá mới' : 'Bình luận mới',
-            message: message,
-            data: {
+          await NotificationModel.upsertCommentNotification(
+            artist.user_id,
+            'new_comment',
+            rating ? 'Đánh giá mới' : 'Bình luận mới',
+            message,
+            {
               comment_id: commentId,
               song_id: song_id,
               song_title: song.title,
@@ -93,7 +93,7 @@ class CommentController {
               rating: rating || null,
               has_content: !!content
             }
-          });
+          );
         }
       }
       
@@ -166,6 +166,43 @@ class CommentController {
       // Update song average rating if rating changed
       if (rating && originalComment) {
         await CommentController.updateSongAverageRating(originalComment.song_id);
+      }
+
+      // Notify artist about updated comment/rating
+      try {
+        const song = await SongModel.findById(originalComment.song_id);
+        if (song && song.artist_id) {
+          const artist = await ArtistModel.findById(song.artist_id);
+          if (artist && artist.user_id) {
+            const commenter = req.user;
+            const finalRating = rating !== undefined ? rating : originalComment.rating;
+            const finalContent = content !== undefined ? content : originalComment.content;
+            
+            const message = finalRating 
+              ? `${commenter.username} đã cập nhật đánh giá ${finalRating} sao cho bài hát "${song.title}"${finalContent ? ' và bình luận' : ''}`
+              : `${commenter.username} đã cập nhật bình luận về bài hát "${song.title}"`;
+
+            await NotificationModel.upsertCommentNotification(
+              artist.user_id,
+              'new_comment',
+              finalRating ? 'Cập nhật đánh giá' : 'Cập nhật bình luận',
+              message,
+              {
+                comment_id: id,
+                song_id: song.song_id,
+                song_title: song.title,
+                artist_id: song.artist_id,
+                commenter_id: userId,
+                commenter_username: commenter.username,
+                rating: finalRating || null,
+                has_content: !!finalContent,
+                updated: true
+              }
+            );
+          }
+        }
+      } catch (notifyError) {
+        console.error('Notify update comment error:', notifyError);
       }
 
       res.json({

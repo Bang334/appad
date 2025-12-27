@@ -28,6 +28,8 @@ const ArtistEditProfileScreen = ({ route, navigation }) => {
     bio: '',
     country: '',
     image_url: '',
+    membership_price: '0',
+    membership_duration_days: '30',
   });
   const [selectedImage, setSelectedImage] = useState(null);
 
@@ -46,6 +48,8 @@ const ArtistEditProfileScreen = ({ route, navigation }) => {
           bio: response.data.bio || '',
           country: response.data.country || '',
           image_url: response.data.image_url || '',
+          membership_price: String(response.data.membership_price || 0),
+          membership_duration_days: String(response.data.membership_duration_days || 30),
         });
       }
     } catch (error) {
@@ -110,6 +114,8 @@ const ArtistEditProfileScreen = ({ route, navigation }) => {
         bio: formData.bio.trim() || null,
         country: formData.country.trim() || null,
         image_url: imageUrl || null,
+        membership_price: parseFloat(formData.membership_price) || 0,
+        membership_duration_days: parseInt(formData.membership_duration_days) || 30,
       };
 
       console.log('[EditProfile] Sending JSON update:', updateData);
@@ -222,6 +228,32 @@ const ArtistEditProfileScreen = ({ route, navigation }) => {
               textAlignVertical="top"
             />
           </View>
+
+          <View style={styles.membershipRow}>
+            <View style={[styles.inputGroup, { flex: 1 }]}>
+              <Text style={styles.label}>Giá hội viên (VNĐ)</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.membership_price}
+                onChangeText={(text) => setFormData(prev => ({ ...prev, membership_price: text.replace(/[^0-9]/g, '') }))}
+                placeholder="Ví dụ: 50000"
+                placeholderTextColor={COLORS.textSecondary}
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={[styles.inputGroup, { flex: 1 }]}>
+              <Text style={styles.label}>Số ngày hiệu lực</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.membership_duration_days}
+                onChangeText={(text) => setFormData(prev => ({ ...prev, membership_duration_days: text.replace(/[^0-9]/g, '') }))}
+                placeholder="Ví dụ: 30"
+                placeholderTextColor={COLORS.textSecondary}
+                keyboardType="numeric"
+              />
+            </View>
+          </View>
         </View>
       </ScrollView>
 
@@ -248,6 +280,7 @@ const ArtistEditProfileScreen = ({ route, navigation }) => {
 
 const styles = StyleSheet.create({
   container: {
+    paddingTop: 30,
     flex: 1,
     backgroundColor: COLORS.background,
   },
@@ -325,6 +358,10 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: 20,
+  },
+  membershipRow: {
+    flexDirection: 'row',
+    gap: 16,
   },
   inputGroup: {
     marginBottom: 16,

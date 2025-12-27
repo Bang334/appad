@@ -1,4 +1,5 @@
 const ArtistMembershipModel = require('../models/artist-membership.model');
+const UserModel = require('../models/user.model');
 
 /**
  * Artist Membership Expiring Job
@@ -11,19 +12,25 @@ class ArtistMembershipExpiringJob {
    */
   static async updateExpired() {
     try {
-      console.log('[Artist Membership Expiring Job] Checking for expired memberships...');
+      console.log('[Membership Expiry Job] Checking for expired memberships and premium...');
 
-      const updatedCount = await ArtistMembershipModel.updateExpiredMemberships();
+      const [artistUpdated, premiumUpdated] = await Promise.all([
+        ArtistMembershipModel.updateExpiredMemberships(),
+        UserModel.updateExpiredPremium()
+      ]);
 
-      console.log(`[Artist Membership Expiring Job] Updated ${updatedCount} expired memberships`);
+      if (artistUpdated > 0 || premiumUpdated > 0) {
+        console.log(`[Membership Expiry Job] Updated: ${artistUpdated} artist memberships, ${premiumUpdated} site-wide premiums`);
+      }
 
       return {
         success: true,
-        updated: updatedCount,
+        artist_updated: artistUpdated,
+        premium_updated: premiumUpdated,
         timestamp: new Date().toISOString()
       };
     } catch (error) {
-      console.error('[Artist Membership Expiring Job] Error:', error);
+      console.error('[Membership Expiry Job] Error:', error);
       return {
         success: false,
         error: error.message,

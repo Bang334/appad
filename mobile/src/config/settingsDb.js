@@ -2,35 +2,48 @@ import * as SQLite from 'expo-sqlite';
 
 const DATABASE_NAME = 'appad_settings.db';
 
+let dbInstance = null;
+
+const getDb = async () => {
+  if (!dbInstance) {
+    dbInstance = await SQLite.openDatabaseAsync(DATABASE_NAME);
+  }
+  return dbInstance;
+};
+
 export const settingsDatabase = {
   init: async () => {
-    const db = await SQLite.openDatabaseAsync(DATABASE_NAME);
-    await db.execAsync(`
-      CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT
-      );
-    `);
-    
-    // Initialize default values if not exists
-    const defaultSettings = [
-      { key: 'notifications', value: 'true' },
-      { key: 'highQuality', value: 'true' },
-      { key: 'downloadOnWifi', value: 'true' },
-      { key: 'darkMode', value: 'true' }
-    ];
+    try {
+      const db = await getDb();
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS settings (
+          key TEXT PRIMARY KEY,
+          value TEXT
+        );
+      `);
+      
+      // Initialize default values if not exists
+      const defaultSettings = [
+        { key: 'notifications', value: 'true' },
+        { key: 'highQuality', value: 'true' },
+        { key: 'downloadOnWifi', value: 'true' },
+        { key: 'darkMode', value: 'true' }
+      ];
 
-    for (const setting of defaultSettings) {
-      await db.runAsync(
-        'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)',
-        [setting.key, setting.value]
-      );
+      for (const setting of defaultSettings) {
+        await db.runAsync(
+          'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)',
+          [setting.key, setting.value]
+        );
+      }
+    } catch (error) {
+      console.error('Error initializing settings database:', error);
     }
   },
 
   getSetting: async (key, defaultValue) => {
     try {
-      const db = await SQLite.openDatabaseAsync(DATABASE_NAME);
+      const db = await getDb();
       const row = await db.getFirstAsync('SELECT value FROM settings WHERE key = ?', [key]);
       if (row) {
         // Handle boolean values stored as strings
@@ -47,7 +60,7 @@ export const settingsDatabase = {
 
   updateSetting: async (key, value) => {
     try {
-      const db = await SQLite.openDatabaseAsync(DATABASE_NAME);
+      const db = await getDb();
       const stringValue = String(value);
       await db.runAsync(
         'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
@@ -62,7 +75,7 @@ export const settingsDatabase = {
 
   getAllSettings: async () => {
     try {
-      const db = await SQLite.openDatabaseAsync(DATABASE_NAME);
+      const db = await getDb();
       const rows = await db.getAllAsync('SELECT * FROM settings');
       const settings = {};
       rows.forEach(row => {

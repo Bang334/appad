@@ -3,10 +3,18 @@ const db = require('../config/database');
 class ArtistModel {
   // Create artist
   static async create(artistData) {
-    const { name, bio, image_url, country, user_id } = artistData;
+    const { name, bio, image_url, country, user_id, membership_price, membership_duration_days } = artistData;
     const [result] = await db.execute(
-      'INSERT INTO artists (name, bio, image_url, country, user_id) VALUES (?, ?, ?, ?, ?)',
-      [name, bio || null, image_url || null, country || null, user_id || null]
+      'INSERT INTO artists (name, bio, image_url, country, user_id, membership_price, membership_duration_days) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [
+        name, 
+        bio || null, 
+        image_url || null, 
+        country || null, 
+        user_id || null,
+        membership_price || 0,
+        membership_duration_days || 30
+      ]
     );
     return result.insertId;
   }

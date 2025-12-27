@@ -97,6 +97,44 @@ class NotificationModel {
     return result.affectedRows;
   }
 
+  // Delete all notifications
+  static async deleteAll(userId) {
+    const [result] = await db.execute(
+      'DELETE FROM notifications WHERE user_id = ?',
+      [userId]
+    );
+    return result.affectedRows;
+  }
+
+  // Upsert comment/rating notification: update if exists for this comment_id, or create new
+  static async upsertCommentNotification(userId, type, title, message, data) {
+    const commentId = data.comment_id;
+    
+    // Check if a notification for this comment already exists
+    // Using LIKE for portability or JSON_EXTRACT if MySQL 5.7+
+    const [existing] = await db.execute(
+      `SELECT notification_id FROM notifications 
+       WHERE user_id = ? AND type = ? AND data LIKE ?`,
+      [userId, type, `%"comment_id":${commentId}%`]
+    );
+
+    if (existing.length > 0) {
+      // Update existing notification
+      const notificationId = existing[0].notification_id;
+      const dataJson = JSON.stringify(data);
+      await db.execute(
+        `UPDATE notifications 
+         SET title = ?, message = ?, data = ?, is_read = 0, created_at = CURRENT_TIMESTAMP 
+         WHERE notification_id = ?`,
+        [title, message, dataJson, notificationId]
+      );
+      return notificationId;
+    } else {
+      // Create new notification
+      return this.create({ user_id: userId, type, title, message, data });
+    }
+  }
+
   // Get recent notifications (for badge)
   static async getRecent(userId, limit = 5) {
     const limitNum = Math.max(1, Math.min(parseInt(limit) || 5, 100));
