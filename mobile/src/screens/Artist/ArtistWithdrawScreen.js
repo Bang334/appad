@@ -12,8 +12,10 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../config/theme';
 import { artistService } from '../../services/artistService';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const ArtistWithdrawScreen = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { artistId, wallet } = route.params;
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
@@ -93,7 +95,7 @@ const ArtistWithdrawScreen = ({ route, navigation }) => {
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={{ paddingTop: insets.top, paddingBottom: insets.bottom }}>
       <View style={styles.content}>
         {/* Balance Display */}
         <View style={styles.balanceCard}>
@@ -233,6 +235,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 20,
+    paddingTop: 60,
   },
   balanceCard: {
     backgroundColor: COLORS.primary,

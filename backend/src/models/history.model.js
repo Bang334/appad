@@ -20,9 +20,7 @@ class HistoryModel {
       increment_count = true
     } = options;
     
-    // Get current time in Vietnam timezone (UTC+7)
     const now = new Date();
-    // Format: YYYY-MM-DD HH:mm:ss
     const vietnamTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
     
     const year = vietnamTime.getFullYear();
@@ -32,44 +30,48 @@ class HistoryModel {
     const minutes = String(vietnamTime.getMinutes()).padStart(2, '0');
     const seconds = String(vietnamTime.getSeconds()).padStart(2, '0');
     
-    const todayPrefix = `${year}-${month}-${day}`; // YYYY-MM-DD
-    const fullDateTime = `${todayPrefix} ${hours}:${minutes}:${seconds}`; // YYYY-MM-DD HH:mm:ss
+    const todayPrefix = `${year}-${month}-${day}`;
+    const fullDateTime = `${todayPrefix} ${hours}:${minutes}:${seconds}`;
     
     try {
-      // Check if record exists for today (using LIKE to match YYYY-MM-DD%)
+      // Only aggregate if a record for the same song was created in the last 30 minutes.
+      // This prevents aggregating listens from different sessions (e.g. morning and evening)
+      // which is crucial for accurate payout calculations.
       const [existing] = await db.execute(
         `SELECT * FROM listening_history 
-         WHERE user_id = ? AND song_id = ? AND day LIKE ?
-         LIMIT 1`,
-        [userId, songId, `${todayPrefix}%`]
+         WHERE user_id = ? AND song_id = ? 
+         AND day >= DATE_SUB(?, INTERVAL 30 MINUTE)
+         ORDER BY day DESC LIMIT 1`,
+        [userId, songId, fullDateTime]
       );
       
       if (existing.length > 0) {
         const oldRecord = existing[0];
         
-        // Calculate new values
         const newCount = (parseInt(oldRecord.count) || 0) + (increment_count ? 1 : 0);
         const newDuration = (parseInt(oldRecord.total_duration) || 0) + duration_listened;
         const newCompleted = (parseInt(oldRecord.completed_count) || 0) + (is_completed ? 1 : 0);
         const newIsPremium = oldRecord.is_premium_stream || is_premium_stream ? 1 : 0;
         const newArtistId = artist_id || oldRecord.artist_id;
 
-        // DELETE old record to remove it from old position
+        // Update the record but keep the original 'day' (timestamp of first listen in this session)
+        // to maintain temporal accuracy for payouts.
+        // We also delete and re-insert if we want to move it to the top of "Recently Played",
+        // but let's use UPDATE for simplicity and safer data integrity here.
+        // If we want it at the top, we should use an 'updated_at' column, but lacking it,
+        // we'll stick to the original 'day' for payout precision.
         await db.execute(
-          'DELETE FROM listening_history WHERE history_id = ?',
-          [oldRecord.history_id]
-        );
-
-        // INSERT new record with updated time (fullDateTime) and accumulated values
-        // This ensures it gets a new history_id (highest) and appears at the top
-        await db.execute(
-          `INSERT INTO listening_history 
-           (user_id, song_id, artist_id, day, count, total_duration, completed_count, is_premium_stream) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [userId, songId, newArtistId, fullDateTime, newCount, newDuration, newCompleted, newIsPremium]
+          `UPDATE listening_history 
+           SET count = ?, 
+               total_duration = ?, 
+               completed_count = ?, 
+               is_premium_stream = ?,
+               artist_id = ?
+           WHERE history_id = ?`,
+          [newCount, newDuration, newCompleted, newIsPremium, newArtistId, oldRecord.history_id]
         );
       } else {
-        // Insert new record
+        // Insert new record (starts a new session)
         await db.execute(
           `INSERT INTO listening_history 
            (user_id, song_id, artist_id, day, count, total_duration, completed_count, is_premium_stream) 
@@ -78,37 +80,15 @@ class HistoryModel {
         );
       }
     } catch (error) {
-      // Handle duplicate entry error (race condition)
       if (error.code === 'ER_DUP_ENTRY') {
-        console.warn(`[HistoryModel] Duplicate entry detected for user ${userId}, song ${songId}. Retrying with UPDATE...`);
-        
-        // Fallback: Just update existing record instead
-        try {
-          await db.execute(
-            `UPDATE listening_history 
-             SET count = count + ?,
-                 total_duration = total_duration + ?,
-                 completed_count = completed_count + ?,
-                 is_premium_stream = CASE WHEN ? = 1 THEN 1 ELSE is_premium_stream END,
-                 day = ?
-             WHERE user_id = ? AND song_id = ? AND day LIKE ?`,
-            [
-              increment_count ? 1 : 0,
-              duration_listened,
-              is_completed ? 1 : 0,
-              is_premium_stream ? 1 : 0,
-              fullDateTime,
-              userId,
-              songId,
-              `${todayPrefix}%`
-            ]
-          );
-        } catch (updateError) {
-          console.error('[HistoryModel] Fallback update also failed:', updateError.message);
-          // Don't throw - history is not critical, song should still play
-        }
+        // Highly unlikely with 30-min window and second-precision 'day', but handled for safety
+        console.warn(`[HistoryModel] Duplicate entry detected... updating.`);
+        await db.execute(
+          `UPDATE listening_history SET count = count + 1, total_duration = total_duration + ? 
+           WHERE user_id = ? AND song_id = ? AND day = ?`,
+          [duration_listened, userId, songId, fullDateTime]
+        );
       } else {
-        // Log but don't throw for non-critical history errors
         console.error('[HistoryModel] Error adding history:', error.message);
       }
     }
@@ -310,35 +290,67 @@ class HistoryModel {
   static async getStatsByPeriod(startDate, endDate) {
     const [rows] = await db.execute(
       `SELECT 
-        artist_id,
-        song_id,
-        SUM(count) as total_listens,
-        SUM(total_duration) as total_duration,
-        SUM(completed_count) as total_completed,
-        COUNT(DISTINCT user_id) as unique_listeners
-       FROM listening_history
-       WHERE is_premium_stream = 1
-         AND day BETWEEN ? AND ?
-       GROUP BY artist_id, song_id`,
+        lh.artist_id,
+        lh.song_id,
+        SUM(lh.count) as total_listens,
+        SUM(lh.total_duration) as total_duration,
+        SUM(lh.completed_count) as total_completed,
+        COUNT(DISTINCT lh.user_id) as unique_listeners
+       FROM listening_history lh
+       JOIN songs s ON lh.song_id = s.song_id
+       LEFT JOIN albums al ON s.album_id = al.album_id
+       WHERE (lh.is_premium_stream = 1 OR s.is_premium = 1 OR al.is_premium = 1)
+         AND (lh.day >= ? AND lh.day <= ?)
+       GROUP BY lh.artist_id, lh.song_id`,
       [startDate, endDate]
     );
     return rows;
+  }
+
+  /**
+   * Lấy tổng hợp stats của 1 artist trong 1 khoảng thời gian
+   */
+  static async getArtistSummaryByPeriod(artistId, startDate, endDate) {
+    const [rows] = await db.execute(
+      `SELECT 
+        SUM(lh.count) as total_streams,
+        SUM(lh.total_duration) as total_duration,
+        SUM(lh.completed_count) as total_completed,
+        COUNT(DISTINCT lh.song_id) as total_songs,
+        COUNT(DISTINCT lh.user_id) as unique_listeners
+       FROM listening_history lh
+       JOIN songs s ON lh.song_id = s.song_id
+       LEFT JOIN albums al ON s.album_id = al.album_id
+       WHERE lh.artist_id = ? 
+         AND (lh.is_premium_stream = 1 OR s.is_premium = 1 OR al.is_premium = 1)
+         AND (lh.day >= ? AND lh.day <= ?)`,
+      [artistId, startDate, endDate]
+    );
+    return rows[0] || {
+      total_streams: 0,
+      total_duration: 0,
+      total_completed: 0,
+      total_songs: 0,
+      unique_listeners: 0
+    };
   }
 
   // Get stats by artist and period (replaces PremiumListeningStatsModel.getStatsByArtist)
   static async getStatsByArtist(artistId, startDate, endDate) {
     const [rows] = await db.execute(
       `SELECT 
-        song_id,
-        SUM(count) as total_listens,
-        SUM(total_duration) as total_duration,
-        SUM(completed_count) as total_completed,
-        COUNT(DISTINCT user_id) as unique_listeners
-       FROM listening_history
-       WHERE artist_id = ? 
-         AND is_premium_stream = 1
-         AND day BETWEEN ? AND ?
-       GROUP BY song_id
+        lh.song_id,
+        SUM(lh.count) as total_listens,
+        SUM(lh.total_duration) as total_duration,
+        SUM(lh.completed_count) as total_completed,
+        COUNT(DISTINCT lh.user_id) as unique_listeners
+       FROM listening_history lh
+       JOIN songs s ON lh.song_id = s.song_id
+       LEFT JOIN albums al ON s.album_id = al.album_id
+       WHERE lh.artist_id = ? 
+         AND (lh.is_premium_stream = 1 OR s.is_premium = 1 OR al.is_premium = 1)
+         AND (lh.day >= ? AND lh.day <= ?)
+       GROUP BY lh.song_id
        ORDER BY total_listens DESC`,
       [artistId, startDate, endDate]
     );
@@ -349,12 +361,16 @@ class HistoryModel {
   static async getTotalStreamsByPeriod(startDate, endDate) {
     const [rows] = await db.execute(
       `SELECT 
-        artist_id,
-        SUM(count) as total_streams
-       FROM listening_history
-       WHERE is_premium_stream = 1
-         AND day BETWEEN ? AND ?
-       GROUP BY artist_id`,
+        lh.artist_id,
+        SUM(lh.count) as total_streams,
+        SUM(lh.total_duration) as total_duration,
+        SUM(lh.completed_count) as total_completed
+       FROM listening_history lh
+       JOIN songs s ON lh.song_id = s.song_id
+       LEFT JOIN albums al ON s.album_id = al.album_id
+       WHERE (lh.is_premium_stream = 1 OR s.is_premium = 1 OR al.is_premium = 1)
+         AND (lh.day >= ? AND lh.day <= ?)
+       GROUP BY lh.artist_id`,
       [startDate, endDate]
     );
     return rows;

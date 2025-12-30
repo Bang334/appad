@@ -42,13 +42,6 @@ export const userService = {
     return response.data;
   },
 
-  // Update background video URL
-  updateBackgroundVideo: async (videoUrl) => {
-    const response = await api.put('/users/background-video', {
-      background_video_url: videoUrl
-    });
-    return response.data;
-  },
 
   // Get user statistics
   getUserStats: async () => {

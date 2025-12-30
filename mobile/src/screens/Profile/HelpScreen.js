@@ -11,8 +11,10 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../../config/theme';
 import MiniPlayer from '../../components/Player/MiniPlayer';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const HelpScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [expandedItems, setExpandedItems] = useState({});
 
   const toggleExpanded = (index) => {
@@ -114,7 +116,7 @@ const HelpScreen = ({ navigation }) => {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
       >
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 20) }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
@@ -174,7 +176,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SIZES.padding,
-    paddingTop: 60,
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,

@@ -12,11 +12,13 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SIZES } from '../../config/theme';
 import { userService } from '../../services/userService';
 import { useAuth } from '../../context/AuthContext';
 
 const RegisterArtistScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [formData, setFormData] = useState({
     artist_name: user?.full_name || user?.username || '',
@@ -67,7 +69,7 @@ const RegisterArtistScreen = ({ navigation }) => {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 16) }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
@@ -192,7 +194,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 60,
     paddingHorizontal: SIZES.padding,
     paddingBottom: 16,
     borderBottomWidth: 1,

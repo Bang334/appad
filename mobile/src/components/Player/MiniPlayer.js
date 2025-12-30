@@ -128,11 +128,19 @@ const MiniPlayer = ({ bottomOffset }) => {
   if (isCollapsed) {
     return (
       <TouchableOpacity
-        style={[styles.collapsedContainer, { bottom: calculatedBottom + 20 }]}
+        style={[
+          styles.collapsedContainer, 
+          { bottom: calculatedBottom + 20 },
+          isPremiumContent && {
+            borderColor: COLORS.warning,
+            backgroundColor: '#2d2201',
+            borderWidth: 1.5,
+          }
+        ]}
         onPress={handleExpand}
         activeOpacity={0.8}
       >
-        <Ionicons name="chevron-back" size={24} color={COLORS.primary} />
+        <Ionicons name="chevron-back" size={24} color={isPremiumContent ? COLORS.warning : COLORS.primary} />
         <LinearGradient
             colors={['transparent', 'rgba(0,0,0,0.2)']}
             style={StyleSheet.absoluteFillObject}
@@ -223,7 +231,7 @@ const MiniPlayer = ({ bottomOffset }) => {
 
           <TouchableOpacity onPress={togglePlayPause} style={styles.playButton} hitSlop={{top: 5, bottom: 5, left: 5, right: 5}}>
             <LinearGradient
-              colors={isPremiumContent ? ['#f59e0b', '#fde68a', '#fbbf24'] : ['#8b5cf6', '#d8b4fe', '#ec4899']}
+              colors={isPremiumContent ? ['#ea580c', '#fdba74', '#f97316'] : ['#8b5cf6', '#d8b4fe', '#ec4899']}
               style={[styles.playButtonGradient, isPremiumContent && styles.premiumPlayButton]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}

@@ -8,6 +8,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../config/theme';
 import { notificationService } from '../services/notificationService';
+import { useAuth } from '../context/AuthContext';
 
 // Screens
 
@@ -43,6 +44,11 @@ import AdminAnalyticsScreen from '../screens/Admin/AdminAnalyticsScreen';
 import AdminEditSongScreen from '../screens/Admin/AdminEditSongScreen';
 import AdminWithdrawalsScreen from '../screens/Admin/AdminWithdrawalsScreen';
 import AdminTransactionsScreen from '../screens/Admin/AdminTransactionsScreen';
+import AdminArtistReviewsScreen from '../screens/Admin/AdminArtistReviewsScreen';
+import AdminReviewsMainScreen from '../screens/Admin/AdminReviewsMainScreen';
+import AdminAllReviewsScreen from '../screens/Admin/AdminAllReviewsScreen';
+import AdminPremiumPayoutScreen from '../screens/Admin/AdminPremiumPayoutScreen';
+import AdminPayoutHistoryScreen from '../screens/Admin/AdminPayoutHistoryScreen';
 
 // Premium Screens
 import PremiumScreen from '../screens/Premium/PremiumScreen';
@@ -64,6 +70,7 @@ import ArtistBankInfoScreen from '../screens/Artist/ArtistBankInfoScreen';
 import ArtistSongsScreen from '../screens/Artist/ArtistSongsScreen';
 import ArtistAlbumsScreen from '../screens/Artist/ArtistAlbumsScreen';
 import ArtistMembershipScreen from '../screens/Artist/ArtistMembershipScreen';
+import ArtistReviewsScreen from '../screens/Artist/ArtistReviewsScreen';
 
 import ArtistEditSongScreen from '../screens/Artist/ArtistEditSongScreen';
 import ArtistEditAlbumScreen from '../screens/Artist/ArtistEditAlbumScreen';
@@ -76,6 +83,8 @@ const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
 const TabNavigator = () => {
+  const { user } = useAuth();
+  const isPremium = user?.is_premium == 1;
   const [unreadCount, setUnreadCount] = useState(0);
   const insets = useSafeAreaInsets();
 
@@ -145,11 +154,11 @@ const TabNavigator = () => {
 
             return <Ionicons name={iconName} size={size} color={color} />;
           },
-          tabBarActiveTintColor: COLORS.primary,
+          tabBarActiveTintColor: isPremium ? COLORS.warning : COLORS.primary,
           tabBarInactiveTintColor: COLORS.textSecondary,
           tabBarStyle: {
             backgroundColor: '#050505',
-            borderTopColor: 'rgba(255,255,255,0.08)',
+            borderTopColor: isPremium ? COLORS.warning : 'rgba(255,255,255,0.08)',
             borderTopWidth: 1,
             height: tabBarHeight,
             paddingBottom: bottomPadding,
@@ -157,27 +166,53 @@ const TabNavigator = () => {
             elevation: 8,
             borderBottomWidth: 0,
           },
+          headerTitleAlign: 'center',
+          headerTitle: ({ children }) => (
+            <View style={{ alignItems: 'center', justifyContent: 'center', minHeight: 40 }}>
+              <Text 
+                numberOfLines={1}
+                allowFontScaling={false}
+                style={{ 
+                  fontSize: 16, 
+                  fontWeight: '700', 
+                  color: isPremium ? COLORS.warning : COLORS.text, 
+                  textTransform: 'uppercase',
+                  letterSpacing: 2,
+                  textShadowColor: isPremium ? 'rgba(245, 158, 11, 0.5)' : undefined,
+                  textShadowOffset: isPremium ? { width: 0, height: 0 } : undefined,
+                  textShadowRadius: isPremium ? 10 : 0,
+              }}>
+                {children}
+              </Text>
+              {isPremium && (
+                <View style={{ 
+                  marginTop: 4,
+                  width: 24,
+                  height: 2,
+                  backgroundColor: COLORS.warning,
+                  borderRadius: 1,
+                  shadowColor: COLORS.warning,
+                  shadowOffset: { width: 0, height: 0 },
+                  shadowOpacity: 0.8,
+                  shadowRadius: 5,
+                }} />
+              )}
+            </View>
+          ),
           headerStyle: {
             backgroundColor: COLORS.background,
             elevation: 0,
             shadowOpacity: 0,
             borderBottomWidth: 0,
+            height: Platform.OS === 'android' ? 60 : 100,
           },
-          headerTintColor: COLORS.text,
+          headerTintColor: isPremium ? COLORS.warning : COLORS.text,
         })}
       >
         <Tab.Screen 
           name="Home" 
           options={({ navigation }) => ({ 
             title: 'Trang chủ',
-            headerRight: () => (
-              <TouchableOpacity 
-                style={{ marginRight: 16, padding: 8 }}
-                onPress={() => navigation.setParams({ shouldRefresh: Date.now() })}
-              >
-                <Ionicons name="refresh-outline" size={22} color={COLORS.text} />
-              </TouchableOpacity>
-            ),
           })}
         >
           {(props) => <HomeScreen {...props} />}
@@ -394,6 +429,14 @@ const MainTabNavigator = () => {
         <Stack.Screen
           name="AdminEditSong"
           component={AdminEditSongScreen}
+          options={{
+            presentation: 'card',
+            gestureEnabled: true,
+          }}
+        />
+        <Stack.Screen
+          name="AdminMembership"
+          component={AdminMembershipScreen}
           options={{
             presentation: 'card',
             gestureEnabled: true,
@@ -617,6 +660,15 @@ const MainTabNavigator = () => {
           }}
         />
         <Stack.Screen
+          name="ArtistReviews"
+          component={ArtistReviewsScreen}
+          options={{
+            presentation: 'card',
+            gestureEnabled: true,
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
           name="AdminWithdrawals"
           component={AdminWithdrawalsScreen}
           options={{
@@ -642,6 +694,51 @@ const MainTabNavigator = () => {
             },
             headerTintColor: COLORS.text,
             title: 'Quản lý nạp tiền',
+          }}
+        />
+        <Stack.Screen
+          name="AdminArtistReviews"
+          component={AdminArtistReviewsScreen}
+          options={{
+            presentation: 'card',
+            gestureEnabled: true,
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="AdminReviewsMain"
+          component={AdminReviewsMainScreen}
+          options={{
+            presentation: 'card',
+            gestureEnabled: true,
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="AdminAllReviews"
+          component={AdminAllReviewsScreen}
+          options={{
+            presentation: 'card',
+            gestureEnabled: true,
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="AdminPremiumPayout"
+          component={AdminPremiumPayoutScreen}
+          options={{
+            presentation: 'card',
+            gestureEnabled: true,
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="AdminPayoutHistory"
+          component={AdminPayoutHistoryScreen}
+          options={{
+            presentation: 'card',
+            gestureEnabled: true,
+            headerShown: false,
           }}
         />
 

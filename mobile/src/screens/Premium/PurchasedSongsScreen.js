@@ -14,8 +14,10 @@ import { COLORS } from '../../config/theme';
 import { premiumService } from '../../services/premiumService';
 import { usePlayer } from '../../context/PlayerContext';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const PurchasedSongsScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [songs, setSongs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -135,7 +137,7 @@ const PurchasedSongsScreen = ({ navigation }) => {
 
   if (songs.length === 0) {
     return (
-      <View style={styles.emptyContainer}>
+      <View style={[styles.emptyContainer, { paddingTop: insets.top }]}>
         <Ionicons name="musical-notes-outline" size={80} color={COLORS.textSecondary} />
         <Text style={styles.emptyText}>Bạn chưa mua bài hát nào</Text>
         <TouchableOpacity
@@ -149,7 +151,7 @@ const PurchasedSongsScreen = ({ navigation }) => {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <FlatList
         data={songs}
         renderItem={renderSongItem}

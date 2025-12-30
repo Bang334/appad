@@ -16,9 +16,11 @@ import { COLORS, SIZES } from '../../config/theme';
 import { artistService } from '../../services/artistService';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAlert } from '../../context/AlertContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MiniPlayer from '../../components/Player/MiniPlayer';
 
 const ArtistMembershipScreen = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { artistId } = route.params;
   const { showSuccess, showError } = useAlert();
   
@@ -156,7 +158,7 @@ const ArtistMembershipScreen = ({ route, navigation }) => {
         }
       >
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: Math.max(insets.top + 20, 60) }]}>
           <TouchableOpacity
             style={styles.backButton}
             onPress={() => navigation.goBack()}
@@ -347,7 +349,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SIZES.padding,
-    paddingTop: 60,
     paddingBottom: 20,
   },
   backButton: {

@@ -199,6 +199,19 @@ class NotificationModel {
       inserted_id: result.insertId
     };
   }
+  // Delete notifications by type and related entity ID in data
+  static async deleteByRelatedEntity(type, entityIdKey, entityIdValue) {
+    // entityIdKey e.g. "song_id", entityIdValue e.g. 123
+    // Basic pattern matching for JSON string
+    const pattern = `%"${entityIdKey}":${entityIdValue}%`;
+    const patternNoQuote = `%"${entityIdKey}": ${entityIdValue}%`; // Handle space
+    
+    const [result] = await db.execute(
+      'DELETE FROM notifications WHERE type = ? AND (data LIKE ? OR data LIKE ?)',
+      [type, pattern, patternNoQuote]
+    );
+    return result.affectedRows;
+  }
 }
 
 module.exports = NotificationModel;

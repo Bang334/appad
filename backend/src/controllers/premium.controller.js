@@ -7,6 +7,7 @@ const TransactionModel = require('../models/transaction.model');
 const RevenueSharingModel = require('../models/revenue-sharing.model');
 const ArtistModel = require('../models/artist.model');
 const NotificationModel = require('../models/notification.model');
+const db = require('../config/database');
 
 class PremiumController {
   // Subscribe to premium
@@ -61,6 +62,56 @@ class PremiumController {
         status: 'completed',
         description: `Đăng ký Premium ${duration_days} ngày`
       });
+
+      // Calculate revenue sharing (70% artist pool, 30% platform)
+      // Note: Individual subscription goes to platform, will be distributed to artists monthly
+      const artistPool = price * 0.70;
+      const platformShare = price * 0.30;
+
+      // Create revenue sharing record for premium subscription
+      // This will be used for monthly distribution to artists based on streams
+      await RevenueSharingModel.create({
+        transaction_id: transactionId,
+        user_id: userId,
+        share_type: 'premium_subscription',
+        total_amount: price,
+        artist_share: artistPool,
+        platform_share: platformShare,
+      });
+
+      // Add platform share to admins
+      const admins = await UserModel.findAdmins();
+      if (admins && admins.length > 0) {
+        const sharePerAdmin = platformShare / admins.length;
+        for (const admin of admins) {
+          await UserModel.addBalance(admin.user_id, sharePerAdmin);
+          await TransactionModel.create({
+            user_id: admin.user_id,
+            type: 'revenue',
+            amount: sharePerAdmin,
+            status: 'completed',
+            description: `Phí nền tảng (30%) từ đăng ký Premium ${duration_days} ngày`
+          });
+
+          // Create revenue notification for admin
+          await NotificationModel.create({
+            user_id: admin.user_id,
+            type: 'revenue',
+            title: 'Nhận phí nền tảng từ Premium',
+            message: `Bạn đã nhận ${sharePerAdmin.toLocaleString('vi-VN')}đ từ phí nền tảng (30%) khi người dùng đăng ký Premium ${duration_days} ngày (tổng: ${price.toLocaleString('vi-VN')}đ)`,
+            data: {
+              transaction_id: transactionId,
+              user_id: userId,
+              amount: sharePerAdmin,
+              total_amount: price,
+              platform_share: platformShare,
+              share_type: 'premium_subscription',
+              share_percentage: 30,
+              duration_days: duration_days
+            }
+          });
+        }
+      }
 
       // Get updated user info
       const expiryDate = await UserModel.getPremiumExpiry(userId);
@@ -251,8 +302,10 @@ class PremiumController {
     try {
       const userId = req.user.user_id;
       const { song_id } = req.body;
+      console.log(`[purchaseSong] Request received for song_id: ${song_id} from user: ${userId}`);
 
       if (!song_id) {
+        console.error('[purchaseSong] Missing song_id');
         return res.status(400).json({
           success: false,
           message: 'Song ID is required'
@@ -262,14 +315,17 @@ class PremiumController {
       // Get song details
       const song = await SongModel.findById(song_id);
       if (!song) {
+        console.error(`[purchaseSong] Song not found: ${song_id}`);
         return res.status(404).json({
           success: false,
           message: 'Song not found'
         });
       }
+      console.log(`[purchaseSong] Found song: ${song.title}, Price: ${song.price}, IsPremium: ${song.is_premium}`);
 
       // Check if song is premium
       if (!song.is_premium) {
+        console.error(`[purchaseSong] Song is not premium: ${song_id}`);
         return res.status(400).json({
           success: false,
           message: 'This song is not a premium song'
@@ -279,6 +335,7 @@ class PremiumController {
       // Check if already purchased
       const alreadyPurchased = await PurchasedSongModel.hasPurchased(userId, song_id);
       if (alreadyPurchased) {
+        console.error(`[purchaseSong] Already purchased: ${song_id}`);
         return res.status(400).json({
           success: false,
           message: 'You have already purchased this song'
@@ -289,7 +346,10 @@ class PremiumController {
 
       // Check user balance
       const balance = await UserModel.getBalance(userId);
+      console.log(`[purchaseSong] Balance check - User: ${userId}, Balance: ${balance}, Price: ${price}`);
+      
       if (balance < price) {
+        console.error(`[purchaseSong] Insufficient balance. User: ${userId}, Balance: ${balance}, Required: ${price}`);
         return res.status(400).json({
           success: false,
           message: 'Insufficient balance',
@@ -332,71 +392,143 @@ class PremiumController {
       });
 
       // ===== REVENUE SHARING: 70% artist, 30% platform =====
-      const artistShare = price * 0.70;
-      const platformShare = price * 0.30;
+      // Wrap in try-catch so purchase succeeds even if revenue sharing fails
+      try {
+        const artistShare = price * 0.70;
+        const platformShare = price * 0.30;
 
-      // Only create revenue sharing if song has an artist
-      if (song.artist_id) {
-        // Create revenue sharing record
-        await RevenueSharingModel.create({
-          transaction_id: transactionId || null,
-          purchase_id: purchaseId || null,
-          artist_id: song.artist_id,
-          user_id: userId,
-          song_id: song_id,
-          share_type: 'direct_purchase',
-          total_amount: price,
-          artist_share: artistShare,
-          platform_share: platformShare,
-          is_paid_to_artist: 1, // Direct purchase: trả ngay
-        });
+        // Find all admins to credit platform share
+        const admins = await UserModel.findAdmins();
 
-        // Add money to artist's user balance
-        // Get artist's user_id
-        const artist = await ArtistModel.findById(song.artist_id);
-        if (artist && artist.user_id) {
-          await UserModel.addBalance(artist.user_id, artistShare);
-          
-          // Create revenue transaction record
-          await TransactionModel.create({
-            user_id: artist.user_id,
-            type: 'revenue',
-            amount: artistShare,
-            status: 'completed',
-            description: `Doanh thu từ bài hát: ${song.title}`
+        // Only create revenue sharing if song has an artist
+        if (song.artist_id) {
+          // Create revenue sharing record
+          await RevenueSharingModel.create({
+            transaction_id: transactionId || null,
+            purchase_id: purchaseId || null,
+            artist_id: song.artist_id,
+            user_id: userId,
+            song_id: song_id,
+            share_type: 'direct_purchase',
+            total_amount: price,
+            artist_share: artistShare,
+            platform_share: platformShare,
           });
 
-          // Create revenue notification for artist
-          await NotificationModel.create({
-            user_id: artist.user_id,
-            type: 'revenue',
-            title: 'Nhận lương từ bài hát',
-            message: `Bạn đã nhận ${artistShare.toLocaleString('vi-VN')}đ từ việc bán bài hát "${song.title}" (70% doanh thu từ ${price.toLocaleString('vi-VN')}đ)`,
-            data: {
-              song_id: song_id,
-              song_title: song.title,
-              artist_id: song.artist_id,
+          // Add money to artist's user balance
+          // Get artist's user_id
+          const artist = await ArtistModel.findById(song.artist_id);
+          if (artist && artist.user_id) {
+            await UserModel.addBalance(artist.user_id, artistShare);
+            
+            // Create revenue transaction record
+            await TransactionModel.create({
+              user_id: artist.user_id,
+              type: 'revenue',
               amount: artistShare,
-              total_amount: price,
-              share_type: 'direct_purchase',
-              share_percentage: 70
+              status: 'completed',
+              description: `Doanh thu từ bài hát: ${song.title}`
+            });
+
+            // Create revenue notification for artist
+            await NotificationModel.create({
+              user_id: artist.user_id,
+              type: 'revenue',
+              title: 'Nhận lương từ bài hát',
+              message: `Bạn đã nhận ${artistShare.toLocaleString('vi-VN')}đ từ việc bán bài hát "${song.title}" (70% doanh thu từ ${price.toLocaleString('vi-VN')}đ)`,
+              data: {
+                song_id: song_id,
+                song_title: song.title,
+                artist_id: song.artist_id,
+                amount: artistShare,
+                total_amount: price,
+                share_type: 'direct_purchase',
+                share_percentage: 70
+              }
+            });
+          }
+
+          // Add platform share to admins
+          if (admins && admins.length > 0) {
+            const sharePerAdmin = platformShare / admins.length;
+            for (const admin of admins) {
+              await UserModel.addBalance(admin.user_id, sharePerAdmin);
+              await TransactionModel.create({
+                user_id: admin.user_id,
+                type: 'revenue',
+                amount: sharePerAdmin,
+                status: 'completed',
+                description: `Phí nền tảng (30%) từ bài hát: ${song.title}`
+              });
+
+              // Create revenue notification for admin
+              await NotificationModel.create({
+                user_id: admin.user_id,
+                type: 'revenue',
+                title: 'Nhận phí nền tảng từ bài hát',
+                message: `Bạn đã nhận ${sharePerAdmin.toLocaleString('vi-VN')}đ từ phí nền tảng (30%) khi người dùng mua bài hát "${song.title}" (tổng: ${price.toLocaleString('vi-VN')}đ)`,
+                data: {
+                  song_id: song_id,
+                  song_title: song.title,
+                  artist_id: song.artist_id,
+                  amount: sharePerAdmin,
+                  total_amount: price,
+                  platform_share: platformShare,
+                  share_type: 'direct_purchase',
+                  share_percentage: 30
+                }
+              });
             }
+          }
+        } else {
+          // If no artist, platform gets 100%
+          await RevenueSharingModel.create({
+            transaction_id: transactionId || null,
+            purchase_id: purchaseId || null,
+            artist_id: null,
+            user_id: userId,
+            song_id: song_id,
+            share_type: 'direct_purchase',
+            total_amount: price,
+            artist_share: 0,
+            platform_share: price, // Platform gets all if no artist
           });
+
+          // Add 100% to admins
+          if (admins && admins.length > 0) {
+            const sharePerAdmin = price / admins.length;
+            for (const admin of admins) {
+              await UserModel.addBalance(admin.user_id, sharePerAdmin);
+              await TransactionModel.create({
+                user_id: admin.user_id,
+                type: 'revenue',
+                amount: sharePerAdmin,
+                status: 'completed',
+                description: `Doanh thu 100% từ bài hát không nghệ sĩ: ${song.title}`
+              });
+
+              // Create revenue notification for admin
+              await NotificationModel.create({
+                user_id: admin.user_id,
+                type: 'revenue',
+                title: 'Nhận doanh thu từ bài hát',
+                message: `Bạn đã nhận ${sharePerAdmin.toLocaleString('vi-VN')}đ từ doanh thu 100% khi người dùng mua bài hát "${song.title}" (không có nghệ sĩ, tổng: ${price.toLocaleString('vi-VN')}đ)`,
+                data: {
+                  song_id: song_id,
+                  song_title: song.title,
+                  artist_id: null,
+                  amount: sharePerAdmin,
+                  total_amount: price,
+                  share_type: 'direct_purchase',
+                  share_percentage: 100
+                }
+              });
+            }
+          }
         }
-      } else {
-        // If no artist, platform gets 100%
-        await RevenueSharingModel.create({
-          transaction_id: transactionId || null,
-          purchase_id: purchaseId || null,
-          artist_id: null,
-          user_id: userId,
-          song_id: song_id,
-          share_type: 'direct_purchase',
-          total_amount: price,
-          artist_share: 0,
-          platform_share: price, // Platform gets all if no artist
-          is_paid_to_artist: 0,
-        });
+      } catch (revError) {
+        console.error('⚠️ [purchaseSong] Revenue Sharing Error:', revError);
+        // Continue flow, do not fail the purchase
       }
 
       const newBalance = await UserModel.getBalance(userId);
@@ -527,6 +659,9 @@ class PremiumController {
       const artistShare = price * 0.70;
       const platformShare = price * 0.30;
 
+      // Find all admins to credit platform share
+      const admins = await UserModel.findAdmins();
+
       // Only create revenue sharing if album has an artist
       if (album.artist_id) {
         // Create revenue sharing record
@@ -542,7 +677,6 @@ class PremiumController {
           total_amount: price,
           artist_share: artistShare,
           platform_share: platformShare,
-          is_paid_to_artist: 1,
         });
 
         // Add money to artist's user balance
@@ -576,6 +710,39 @@ class PremiumController {
             }
           });
         }
+
+        // Add platform share to admins
+        if (admins.length > 0) {
+          const sharePerAdmin = platformShare / admins.length;
+          for (const admin of admins) {
+            await UserModel.addBalance(admin.user_id, sharePerAdmin);
+            await TransactionModel.create({
+              user_id: admin.user_id,
+              type: 'revenue',
+              amount: sharePerAdmin,
+              status: 'completed',
+              description: `Phí nền tảng (30%) từ album: ${album.title}`
+            });
+
+            // Create revenue notification for admin
+            await NotificationModel.create({
+              user_id: admin.user_id,
+              type: 'revenue',
+              title: 'Nhận phí nền tảng từ album',
+              message: `Bạn đã nhận ${sharePerAdmin.toLocaleString('vi-VN')}đ từ phí nền tảng (30%) khi người dùng mua album "${album.title}" (tổng: ${price.toLocaleString('vi-VN')}đ)`,
+              data: {
+                album_id: album_id,
+                album_title: album.title,
+                artist_id: album.artist_id,
+                amount: sharePerAdmin,
+                total_amount: price,
+                platform_share: platformShare,
+                share_type: 'album_purchase',
+                share_percentage: 30
+              }
+            });
+          }
+        }
       } else {
         // Platform gets 100%
          await RevenueSharingModel.create({
@@ -589,8 +756,39 @@ class PremiumController {
           total_amount: price,
           artist_share: 0,
           platform_share: price,
-          is_paid_to_artist: 0,
         });
+
+        // Add 100% to admins
+        if (admins.length > 0) {
+          const sharePerAdmin = price / admins.length;
+          for (const admin of admins) {
+            await UserModel.addBalance(admin.user_id, sharePerAdmin);
+            await TransactionModel.create({
+              user_id: admin.user_id,
+              type: 'revenue',
+              amount: sharePerAdmin,
+              status: 'completed',
+              description: `Doanh thu 100% từ album không nghệ sĩ: ${album.title}`
+            });
+
+            // Create revenue notification for admin
+            await NotificationModel.create({
+              user_id: admin.user_id,
+              type: 'revenue',
+              title: 'Nhận doanh thu từ album',
+              message: `Bạn đã nhận ${sharePerAdmin.toLocaleString('vi-VN')}đ từ doanh thu 100% khi người dùng mua album "${album.title}" (không có nghệ sĩ, tổng: ${price.toLocaleString('vi-VN')}đ)`,
+              data: {
+                album_id: album_id,
+                album_title: album.title,
+                artist_id: null,
+                amount: sharePerAdmin,
+                total_amount: price,
+                share_type: 'album_purchase',
+                share_percentage: 100
+              }
+            });
+          }
+        }
       }
 
       const newBalance = await UserModel.getBalance(userId);
@@ -678,15 +876,81 @@ class PremiumController {
       const userId = req.user.user_id;
       const { limit = 50, offset = 0 } = req.query;
 
-      const history = await PurchasedSongModel.getPurchaseHistory(
-        userId,
-        parseInt(limit),
-        parseInt(offset)
-      );
+      // Get all purchase history: songs, albums, and premium subscriptions
+      const [songs, albums, subscriptions] = await Promise.all([
+        PurchasedSongModel.getPurchaseHistory(userId, 1000, 0), // Get all, we'll sort and limit later
+        PurchasedAlbumModel.findByUser(userId),
+        RevenueSharingModel.getPurchaseHistoryByUser(userId, 1000, 0)
+      ]);
+
+      // Combine and format all purchases
+      const allPurchases = [];
+
+      // Add purchased songs
+      songs.forEach(song => {
+        allPurchases.push({
+          type: 'song',
+          purchase_id: song.purchase_id,
+          purchase_date: song.purchase_date,
+          price_paid: parseFloat(song.price_paid || 0),
+          song_id: song.song_id,
+          title: song.title,
+          artist_name: song.artist_name,
+          album_title: song.album_title,
+          cover_url: song.cover_url,
+          genre_name: song.genre_name,
+          duration: song.duration,
+          is_premium: song.is_premium
+        });
+      });
+
+      // Add purchased albums
+      albums.forEach(album => {
+        allPurchases.push({
+          type: 'album',
+          purchase_id: album.purchase_id,
+          purchase_date: album.purchase_date,
+          price_paid: parseFloat(album.price_paid || 0),
+          album_id: album.album_id,
+          title: album.title,
+          artist_name: album.artist_name,
+          cover_url: album.cover_url,
+          song_count: album.song_count
+        });
+      });
+
+      // Add premium subscriptions
+      subscriptions.forEach(sub => {
+        allPurchases.push({
+          type: 'premium_subscription',
+          sharing_id: sub.sharing_id,
+          purchase_date: sub.purchase_date || sub.created_at,
+          price_paid: parseFloat(sub.total_amount || 0),
+          transaction_id: sub.transaction_id,
+          description: sub.description || 'Đăng ký Premium',
+          total_amount: parseFloat(sub.total_amount || 0),
+          artist_share: parseFloat(sub.artist_share || 0),
+          platform_share: parseFloat(sub.platform_share || 0),
+          share_type: sub.share_type
+        });
+      });
+
+      // Sort by purchase date (newest first)
+      allPurchases.sort((a, b) => {
+        const dateA = new Date(a.purchase_date);
+        const dateB = new Date(b.purchase_date);
+        return dateB - dateA;
+      });
+
+      // Apply limit and offset
+      const limitNum = parseInt(limit) || 50;
+      const offsetNum = parseInt(offset) || 0;
+      const paginatedPurchases = allPurchases.slice(offsetNum, offsetNum + limitNum);
 
       res.json({
         success: true,
-        data: history
+        data: paginatedPurchases,
+        total: allPurchases.length
       });
     } catch (error) {
       console.error('Get purchase history error:', error);
@@ -747,12 +1011,27 @@ class PremiumController {
     try {
       const userId = req.user.user_id;
       
-      const totalSpent = await PurchasedSongModel.getTotalSpent(userId);
+      // Get total from songs, albums, and premium subscriptions
+      const [songTotal, albumRows, subscriptions] = await Promise.all([
+        PurchasedSongModel.getTotalSpent(userId),
+        db.execute('SELECT SUM(price_paid) as total FROM purchased_albums WHERE user_id = ?', [userId]),
+        RevenueSharingModel.getPurchaseHistoryByUser(userId, 1000, 0)
+      ]);
+
+      const albumTotal = albumRows[0]?.[0]?.total || 0;
+      const subscriptionTotal = subscriptions.reduce((sum, sub) => sum + parseFloat(sub.total_amount || 0), 0);
+
+      const totalSpent = parseFloat(songTotal || 0) + parseFloat(albumTotal || 0) + parseFloat(subscriptionTotal || 0);
 
       res.json({
         success: true,
         data: {
-          total_spent: totalSpent
+          total_spent: totalSpent,
+          breakdown: {
+            songs: parseFloat(songTotal || 0),
+            albums: parseFloat(albumTotal || 0),
+            subscriptions: parseFloat(subscriptionTotal || 0)
+          }
         }
       });
     } catch (error) {

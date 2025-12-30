@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,13 +9,16 @@ import {
   RefreshControl,
   ActivityIndicator,
   Image,
+  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SIZES } from '../../config/theme';
+import { COLORS, SIZES, SHADOWS } from '../../config/theme';
 import { adminService } from '../../services/adminService';
 import MiniPlayer from '../../components/Player/MiniPlayer';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const AdminAlbumsScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [albums, setAlbums] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -27,7 +30,7 @@ const AdminAlbumsScreen = ({ navigation }) => {
   const loadAlbums = async () => {
     setLoading(true);
     try {
-      const response = await adminService.getAllAlbums(50, 0);
+      const response = await adminService.getAllAlbums(100, 0);
       setAlbums(response.data || []);
     } catch (error) {
       console.error('Error loading albums:', error);
@@ -35,27 +38,19 @@ const AdminAlbumsScreen = ({ navigation }) => {
       setAlbums([]);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  const onRefresh = async () => {
+  const onRefresh = () => {
     setRefreshing(true);
-    await loadAlbums();
-    setRefreshing(false);
-  };
-
-  const handleViewAlbum = (album) => {
-    navigation.navigate('AdminAlbumDetail', { album });
-  };
-
-  const handleEditAlbum = (album) => {
-    navigation.navigate('AdminEditAlbum', { album });
+    loadAlbums();
   };
 
   const handleDeleteAlbum = async (album) => {
     Alert.alert(
       'Xóa album',
-      `Bạn có chắc muốn xóa album "${album.title}"? Hành động này không thể hoàn tác.`,
+      `Xóa album "${album.title}"?`,
       [
         { text: 'Hủy', style: 'cancel' },
         {
@@ -64,7 +59,6 @@ const AdminAlbumsScreen = ({ navigation }) => {
           onPress: async () => {
             try {
               await adminService.deleteAlbum(album.album_id);
-              Alert.alert('Thành công', 'Đã xóa album');
               loadAlbums();
             } catch (error) {
               Alert.alert('Lỗi', 'Không thể xóa album');
@@ -76,105 +70,92 @@ const AdminAlbumsScreen = ({ navigation }) => {
   };
 
   const renderAlbumItem = ({ item }) => (
-    <View style={styles.albumItem}>
-      <View style={styles.albumCover}>
-        {item.cover_url ? (
-          <Image source={{ uri: item.cover_url }} style={styles.albumImage} />
-        ) : (
-          <Ionicons name="musical-notes" size={32} color={COLORS.primary} />
-        )}
-      </View>
+    <TouchableOpacity 
+      style={styles.albumCard}
+      onPress={() => navigation.navigate('AdminAlbumDetail', { album: item })}
+      activeOpacity={0.7}
+    >
+      <Image
+        source={{ uri: item.cover_url || 'https://via.placeholder.com/300' }}
+        style={styles.cover}
+      />
       <View style={styles.albumInfo}>
-        <Text style={styles.albumName} numberOfLines={1}>
-          {item.title}
-        </Text>
-        <Text style={styles.albumArtist} numberOfLines={1}>
-          🎤 {item.artist_name || 'Unknown Artist'}
-        </Text>
-        <Text style={styles.albumStats}>
-          🎵 {item.song_count || 0} bài hát • 📅 {new Date(item.release_date).getFullYear()}
-        </Text>
-        {item.description && (
-          <Text style={styles.albumDescription} numberOfLines={2}>
-            {item.description}
+        <Text style={styles.albumTitle} numberOfLines={1}>{item.title}</Text>
+        <Text style={styles.artistName} numberOfLines={1}>Nghệ sĩ: {item.artist_name || 'N/A'}</Text>
+        <View style={styles.metaRow}>
+          <View style={styles.tag}>
+            <Text style={styles.tagText}>{item.song_count || 0} bài hát</Text>
+          </View>
+          <Text style={styles.dateText}>
+            {item.release_date ? new Date(item.release_date).getFullYear() : 'N/A'}
           </Text>
-        )}
+        </View>
       </View>
-      <View style={styles.albumActions}>
-        <TouchableOpacity
-          style={[styles.actionButton, styles.viewButton]}
-          onPress={() => handleViewAlbum(item)}
+      <View style={styles.actions}>
+        <TouchableOpacity 
+          style={[styles.iconBtn, { backgroundColor: COLORS.primary + '15' }]}
+          onPress={() => navigation.navigate('AdminEditAlbum', { album: item })}
         >
-          <Ionicons name="eye" size={20} color={COLORS.primary} />
+          <Ionicons name="create-outline" size={20} color={COLORS.primary} />
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.actionButton, styles.editButton]}
-          onPress={() => handleEditAlbum(item)}
-        >
-          <Ionicons name="create" size={20} color={COLORS.warning} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.actionButton, styles.deleteButton]}
+        <TouchableOpacity 
+          style={[styles.iconBtn, { backgroundColor: COLORS.error + '10' }]}
           onPress={() => handleDeleteAlbum(item)}
         >
-          <Ionicons name="trash" size={20} color={COLORS.error} />
+          <Ionicons name="trash-outline" size={20} color={COLORS.error} />
         </TouchableOpacity>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color={COLORS.text} />
-        </TouchableOpacity>
-        <Text style={styles.title}>Quản lý album</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => navigation.navigate('AdminEditAlbum', { album: null })}
-        >
-          <Ionicons name="add" size={24} color={COLORS.primary} />
-        </TouchableOpacity>
-      </View>
+      <StatusBar barStyle="light-content" />
+      
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+        <View style={styles.headerTop}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <Ionicons name="chevron-back" size={28} color="#FFF" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>DANH SÁCH ALBUM</Text>
+          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.navigate('AdminEditAlbum', { album: null })}>
+            <Ionicons name="add" size={28} color={COLORS.primary} />
+          </TouchableOpacity>
+        </View>
 
-      <View style={styles.statsContainer}>
-        <View style={styles.statCard}>
-          <Text style={styles.statNumber}>{albums.length}</Text>
-          <Text style={styles.statLabel}>Tổng album</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statNumber}>
-            {albums.reduce((sum, a) => sum + (a.song_count || 0), 0)}
-          </Text>
-          <Text style={styles.statLabel}>Tổng bài hát</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statNumber}>
-            {new Set(albums.map(a => a.artist_id)).size}
-          </Text>
-          <Text style={styles.statLabel}>Nghệ sĩ</Text>
+        <View style={styles.statsSummary}>
+          <View style={styles.summaryBox}>
+            <Text style={styles.summaryValue}>{albums.length}</Text>
+            <Text style={styles.summaryLabel}>Album</Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryBox}>
+            <Text style={styles.summaryValue}>
+              {albums.reduce((sum, a) => sum + (a.song_count || 0), 0)}
+            </Text>
+            <Text style={styles.summaryLabel}>Tổng bài hát</Text>
+          </View>
         </View>
       </View>
 
       {loading && albums.length === 0 ? (
-        <View style={styles.loadingContainer}>
+        <View style={styles.center}>
           <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Đang tải...</Text>
         </View>
       ) : (
         <FlatList
           data={albums}
           renderItem={renderAlbumItem}
           keyExtractor={(item) => item.album_id.toString()}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
-          contentContainerStyle={[styles.listContainer, { paddingBottom: 100 }]}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
+          contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]}
           showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Ionicons name="albums-outline" size={60} color={COLORS.textDisabled} />
+              <Text style={styles.emptyText}>Chưa có album nào</Text>
+            </View>
+          }
         />
       )}
       <MiniPlayer bottomOffset={0} />
@@ -188,140 +169,136 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   header: {
+    backgroundColor: COLORS.backgroundSecondary,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.divider,
+    paddingBottom: 20,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+  },
+  headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 60,
-    paddingHorizontal: SIZES.padding,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    paddingHorizontal: 16,
+    marginBottom: 20,
   },
-  backButton: {
-    width: 40,
-    height: 40,
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#FFF',
+    letterSpacing: 1.2,
+  },
+  backBtn: {
+    width: 44,
+    height: 44,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  title: {
-    color: COLORS.text,
-    fontSize: SIZES.lg,
-    fontWeight: '600',
-    flex: 1,
-    textAlign: 'center',
-  },
-  addButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  statsContainer: {
+  statsSummary: {
     flexDirection: 'row',
-    paddingHorizontal: SIZES.padding,
-    paddingVertical: 16,
-    gap: 12,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: COLORS.surface,
-    borderRadius: SIZES.borderRadius,
-    padding: 16,
+    justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    paddingHorizontal: 20,
   },
-  statNumber: {
-    color: COLORS.text,
-    fontSize: SIZES.xl,
+  summaryBox: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  summaryValue: {
+    fontSize: 22,
     fontWeight: 'bold',
-    marginBottom: 4,
+    color: '#FFF',
   },
-  statLabel: {
+  summaryLabel: {
+    fontSize: 12,
     color: COLORS.textSecondary,
-    fontSize: SIZES.xs,
-    textAlign: 'center',
+    marginTop: 2,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+  summaryDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: COLORS.divider,
   },
-  loadingText: {
-    color: COLORS.textSecondary,
-    fontSize: SIZES.md,
-    marginTop: 16,
+  list: {
+    padding: 16,
+    paddingTop: 24,
   },
-  listContainer: {
-    padding: SIZES.padding,
-  },
-  albumItem: {
+  albumCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.surface,
-    borderRadius: SIZES.borderRadius,
-    padding: 16,
-    marginBottom: 12,
+    padding: 12,
+    borderRadius: 20,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.divider,
+    ...SHADOWS.small,
   },
-  albumCover: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-    backgroundColor: COLORS.primary + '20',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  albumImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
+  cover: {
+    width: 70,
+    height: 70,
+    borderRadius: 12,
+    marginRight: 16,
   },
   albumInfo: {
     flex: 1,
   },
-  albumName: {
-    color: COLORS.text,
-    fontSize: SIZES.md,
-    fontWeight: '600',
+  albumTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFF',
     marginBottom: 4,
   },
-  albumArtist: {
+  artistName: {
+    fontSize: 13,
     color: COLORS.textSecondary,
-    fontSize: SIZES.sm,
-    marginBottom: 4,
-  },
-  albumStats: {
-    color: COLORS.textSecondary,
-    fontSize: SIZES.xs,
     marginBottom: 8,
   },
-  albumDescription: {
-    color: COLORS.textMuted,
-    fontSize: SIZES.xs,
-    fontStyle: 'italic',
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
-  albumActions: {
+  tag: {
+    backgroundColor: COLORS.primary + '15',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  tagText: {
+    fontSize: 11,
+    color: COLORS.primary,
+    fontWeight: 'bold',
+  },
+  dateText: {
+    fontSize: 12,
+    color: COLORS.textDisabled,
+  },
+  actions: {
     flexDirection: 'row',
     gap: 8,
   },
-  actionButton: {
+  iconBtn: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  viewButton: {
-    backgroundColor: COLORS.primary + '20',
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  editButton: {
-    backgroundColor: COLORS.warning + '20',
+  empty: {
+    marginTop: 100,
+    alignItems: 'center',
   },
-  deleteButton: {
-    backgroundColor: COLORS.error + '20',
+  emptyText: {
+    marginTop: 16,
+    color: COLORS.textDisabled,
+    fontSize: 14,
   },
 });
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,118 +10,85 @@ import {
   RefreshControl,
   ActivityIndicator,
   Image,
+  StatusBar,
+  Dimensions,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SIZES } from '../../config/theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import { COLORS, SIZES, SHADOWS } from '../../config/theme';
 import { adminService } from '../../services/adminService';
 import MiniPlayer from '../../components/Player/MiniPlayer';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const AdminUsersScreen = ({ navigation }) => {
+const AdminUsersScreen = ({ navigation, route }) => {
+  const insets = useSafeAreaInsets();
   const [users, setUsers] = useState([]);
+  const [stats, setStats] = useState({ total: 0, artists: 0, pending: 0 });
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [page, setPage] = useState(1);
-  const [filter, setFilter] = useState('all'); // 'all', 'pending_artist'
+  const [filter, setFilter] = useState(route.params?.filter || 'all'); // 'all', 'pending_artist', 'artist'
+
+  const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
   useEffect(() => {
     loadUsers();
   }, []);
 
   const loadUsers = async (reset = true) => {
-    if (reset) setPage(1);
     setLoading(true);
     try {
-      // Use admin API for real data
-      const response = await adminService.getAllUsers(100, 0, searchQuery); // Load more to filter client-side
-      if (reset) {
-        setUsers(response.data || []);
-      } else {
-        setUsers(prev => [...prev, ...(response.data || [])]);
-      }
+      const response = await adminService.getAllUsers(100, 0, searchQuery);
+      const allUsers = response.data || [];
+      setUsers(allUsers);
+      
+      // Calculate basic stats for the display
+      setStats({
+        total: allUsers.length,
+        artists: allUsers.filter(u => u.role === 'artist').length,
+        pending: allUsers.filter(u => u.is_banned === 2).length,
+      });
     } catch (error) {
       console.error('Error loading users:', error);
-      // Fallback to mock data if API fails
-      const mockUsers = [
-        {
-          user_id: 1,
-          username: 'admin_user',
-          email: 'admin@example.com',
-          role: 'admin',
-          is_banned: 0,
-        },
-        {
-          user_id: 2,
-          username: 'john_doe',
-          email: 'john@example.com',
-          role: 'user',
-          is_banned: 0,
-        },
-        {
-          user_id: 3,
-          username: 'jane_smith',
-          email: 'jane@example.com',
-          role: 'user',
-          is_banned: 1,
-        },
-        {
-          user_id: 4,
-          username: 'artist_wannabe',
-          email: 'artist@example.com',
-          role: 'user',
-          is_banned: 2, // Pending artist
-        },
-      ];
-
-      // Filter by search query if provided
-      const filteredUsers = searchQuery 
-        ? mockUsers.filter(user => 
-            user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            user.email.toLowerCase().includes(searchQuery.toLowerCase())
-          )
-        : mockUsers;
-
-      if (reset) {
-        setUsers(filteredUsers);
-      } else {
-        setUsers(prev => [...prev, ...filteredUsers]);
-      }
+      Alert.alert('Lỗi', 'Không thể tải danh sách người dùng');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  const onRefresh = async () => {
+  const onRefresh = () => {
     setRefreshing(true);
-    await loadUsers();
-    setRefreshing(false);
+    loadUsers();
   };
 
   const handleSearch = (query) => {
     setSearchQuery(query);
-    setTimeout(() => loadUsers(), 500); // Debounce search
   };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadUsers();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const handleBanUser = async (user) => {
     const isPendingArtist = user.is_banned === 2;
-    const title = isPendingArtist ? 'Từ chối yêu cầu' : 'Cấm người dùng';
-    const message = isPendingArtist 
-      ? `Bạn có chắc muốn từ chối yêu cầu làm nghệ sĩ của "${user.username}"? Tài khoản sẽ trở về trạng thái người dùng bình thường.`
-      : `Bạn có chắc muốn cấm người dùng "${user.username}"?`;
-    const confirmText = isPendingArtist ? 'Từ chối' : 'Cấm';
-
     Alert.alert(
-      title,
-      message,
+      isPendingArtist ? 'Từ chối yêu cầu' : 'Cấm người dùng',
+      isPendingArtist 
+        ? `Từ chối yêu cầu làm nghệ sĩ của "${user.username}"?`
+        : `Bạn có chắc muốn cấm người dùng "${user.username}"?`,
       [
         { text: 'Hủy', style: 'cancel' },
         {
-          text: confirmText,
+          text: isPendingArtist ? 'Từ chối' : 'Cấm',
           style: 'destructive',
           onPress: async () => {
             try {
               await adminService.banUser(user.user_id);
-              Alert.alert('Thành công', isPendingArtist ? 'Đã từ chối yêu cầu' : 'Đã cấm người dùng');
               loadUsers();
             } catch (error) {
               Alert.alert('Lỗi', 'Thao tác thất bại');
@@ -134,23 +101,18 @@ const AdminUsersScreen = ({ navigation }) => {
 
   const handleUnbanUser = async (user) => {
     const isPendingArtist = user.is_banned === 2;
-    const title = isPendingArtist ? 'Chấp nhận yêu cầu' : 'Bỏ cấm người dùng';
-    const message = isPendingArtist
-      ? `Chấp nhận yêu cầu làm nghệ sĩ của "${user.username}"?`
-      : `Bạn có chắc muốn bỏ cấm người dùng "${user.username}"?`;
-    const confirmText = isPendingArtist ? 'Chấp nhận' : 'Bỏ cấm';
-
     Alert.alert(
-      title,
-      message,
+      isPendingArtist ? 'Chấp nhận nghệ sĩ' : 'Bỏ cấm người dùng',
+      isPendingArtist
+        ? `Chấp nhận yêu cầu làm nghệ sĩ của "${user.username}"?`
+        : `Bỏ cấm cho "${user.username}"?`,
       [
         { text: 'Hủy', style: 'cancel' },
         {
-          text: confirmText,
+          text: isPendingArtist ? 'Chấp nhận' : 'Bỏ cấm',
           onPress: async () => {
             try {
               await adminService.unbanUser(user.user_id);
-              Alert.alert('Thành công', isPendingArtist ? 'Đã chấp nhận yêu cầu' : 'Đã bỏ cấm người dùng');
               loadUsers();
             } catch (error) {
               Alert.alert('Lỗi', 'Thao tác thất bại');
@@ -163,8 +125,8 @@ const AdminUsersScreen = ({ navigation }) => {
 
   const handleDeleteUser = async (user) => {
     Alert.alert(
-      'Xóa người dùng',
-      `Bạn có chắc muốn xóa người dùng "${user.username}"? Hành động này không thể hoàn tác.`,
+      'Xóa vĩnh viễn',
+      `Xóa tài khoản "${user.username}"? Mọi dữ liệu sẽ biến mất.`,
       [
         { text: 'Hủy', style: 'cancel' },
         {
@@ -173,7 +135,6 @@ const AdminUsersScreen = ({ navigation }) => {
           onPress: async () => {
             try {
               await adminService.deleteUser(user.user_id);
-              Alert.alert('Thành công', 'Đã xóa người dùng');
               loadUsers();
             } catch (error) {
               Alert.alert('Lỗi', 'Không thể xóa người dùng');
@@ -188,179 +149,257 @@ const AdminUsersScreen = ({ navigation }) => {
     if (filter === 'pending_artist') {
       return users.filter(u => u.is_banned === 2);
     }
+    if (filter === 'artist') {
+      return users.filter(u => u.role === 'artist');
+    }
+    if (filter === 'banned') {
+      return users.filter(u => u.is_banned === 1);
+    }
     return users;
   };
 
   const renderUserItem = ({ item }) => {
     const isPendingArtist = item.is_banned === 2;
+    const isBanned = item.is_banned === 1;
+    const isArtist = item.role === 'artist';
+    const isAdmin = item.role === 'admin';
     
     return (
-      <View style={styles.userItem}>
-        <View style={styles.userInfo}>
-          <View style={styles.avatarContainer}>
-            {item.avatar_url ? (
-              <Image 
-                source={{ uri: item.avatar_url }} 
-                style={styles.userAvatar}
-              />
-            ) : (
-              <View style={styles.userAvatar}>
-                <Text style={styles.userAvatarText}>
-                  {item.username?.charAt(0).toUpperCase() || 'U'}
-                </Text>
-              </View>
-            )}
-            {item.artist_id && (
-              <View style={styles.artistBadge}>
-                <Ionicons name="musical-notes" size={12} color={COLORS.white} />
+      <View style={styles.userCard}>
+        <View style={styles.userMain}>
+          <View style={styles.avatarWrapper}>
+            <LinearGradient
+              colors={isArtist ? ['#8B5CF6', '#7C3AED'] : isAdmin ? ['#F59E0B', '#D97706'] : ['#3B82F6', '#2563EB']}
+              style={styles.avatarGradient}
+            >
+              {item.avatar_url ? (
+                <Image source={{ uri: item.avatar_url }} style={styles.avatar} />
+              ) : (
+                <Text style={styles.avatarText}>{item.username?.charAt(0).toUpperCase()}</Text>
+              )}
+            </LinearGradient>
+            {(isAdmin || isArtist) && (
+              <View style={[styles.roleBadge, { backgroundColor: isAdmin ? COLORS.warning : COLORS.primary }]}>
+                <Ionicons name={isAdmin ? "shield-checkmark" : "musical-notes"} size={10} color="#FFF" />
               </View>
             )}
           </View>
-          <View style={styles.userDetails}>
-            <View style={styles.userNameRow}>
-              <Text style={styles.userName}>{item.username}</Text>
-              {item.role === 'admin' && (
-                <View style={styles.adminBadge}>
-                  <Ionicons name="shield" size={12} color={COLORS.warning} />
-                  <Text style={styles.adminBadgeText}>Admin</Text>
-                </View>
-              )}
-              {item.artist_id && (
-                <View style={styles.artistLabel}>
-                  <Ionicons name="musical-notes" size={12} color={COLORS.primary} />
-                  <Text style={styles.artistLabelText}>Artist</Text>
-                </View>
-              )}
-              {isPendingArtist && (
-                <View style={styles.pendingBadge}>
-                  <Ionicons name="time" size={12} color={COLORS.info} />
-                  <Text style={styles.pendingBadgeText}>Chờ duyệt</Text>
+          
+          <View style={styles.userMeta}>
+            <View style={styles.nameRow}>
+              <Text style={styles.userName} numberOfLines={1}>{item.username}</Text>
+              {isBanned && (
+                <View style={styles.bannedTag}>
+                  <Text style={styles.tagText}>Banned</Text>
                 </View>
               )}
             </View>
-            <Text style={styles.userEmail}>{item.email}</Text>
-            <View style={styles.userMeta}>
-              <Text style={styles.userRole}>
-                {item.role === 'admin' ? '👑 Admin' : item.role === 'artist' ? '🎵 Artist' : '👤 User'}
-              </Text>
-              <Text style={[
-                styles.userStatus,
-                { color: item.is_banned === 1 ? COLORS.error : item.is_banned === 2 ? COLORS.info : COLORS.success }
+            <Text style={styles.userEmail} numberOfLines={1}>{item.email}</Text>
+            
+            <View style={styles.infoRow}>
+              <View style={[styles.typeBadge, { backgroundColor: COLORS.surface }]}>
+                <Ionicons 
+                  name={isAdmin ? "shield-outline" : isArtist ? "mic-outline" : "person-outline"} 
+                  size={12} 
+                  color={COLORS.textSecondary} 
+                />
+                <Text style={styles.typeText}>
+                  {isAdmin ? 'Quản trị' : isArtist ? 'Nghệ sĩ' : 'Người dùng'}
+                </Text>
+              </View>
+              
+              <View style={[
+                styles.statusPill, 
+                { backgroundColor: (isBanned ? COLORS.error : isPendingArtist ? COLORS.info : COLORS.success) + '15' }
               ]}>
-                {item.is_banned === 1 ? '🚫 Bị cấm' : item.is_banned === 2 ? '⏳ Chờ duyệt Artist' : '✅ Hoạt động'}
-              </Text>
+                <View style={[
+                  styles.statusDot, 
+                  { backgroundColor: isBanned ? COLORS.error : isPendingArtist ? COLORS.info : COLORS.success }
+                ]} />
+                <Text style={[
+                  styles.statusLabel, 
+                  { color: isBanned ? COLORS.error : isPendingArtist ? COLORS.info : COLORS.success }
+                ]}>
+                  {isBanned ? 'Bị cấm' : isPendingArtist ? 'Yêu cầu duyệt' : 'Hoạt động'}
+                </Text>
+              </View>
             </View>
           </View>
         </View>
-        <View style={styles.userActions}>
+
+        <View style={styles.cardActions}>
           {isPendingArtist ? (
-            <>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.unbanButton]}
+            <View style={styles.pendingActions}>
+              <TouchableOpacity 
+                style={[styles.btnAction, styles.btnApprove]}
                 onPress={() => handleUnbanUser(item)}
+                activeOpacity={0.8}
               >
-                <Ionicons name="checkmark" size={20} color={COLORS.success} />
+                <Ionicons name="checkmark-circle" size={18} color="#FFF" />
+                <Text style={styles.btnActionText}>Phê duyệt</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.banButton]}
+              <TouchableOpacity 
+                style={[styles.btnAction, styles.btnReject]}
                 onPress={() => handleBanUser(item)}
+                activeOpacity={0.8}
               >
-                <Ionicons name="close" size={20} color={COLORS.warning} />
+                <Ionicons name="close-circle" size={18} color="#FFF" />
+                <Text style={styles.btnActionText}>Từ chối</Text>
               </TouchableOpacity>
-            </>
-          ) : item.is_banned ? (
-            <TouchableOpacity
-              style={[styles.actionButton, styles.unbanButton]}
-              onPress={() => handleUnbanUser(item)}
-            >
-              <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
-            </TouchableOpacity>
+            </View>
           ) : (
-            <TouchableOpacity
-              style={[styles.actionButton, styles.banButton]}
-              onPress={() => handleBanUser(item)}
-            >
-              <Ionicons name="ban" size={20} color={COLORS.warning} />
-            </TouchableOpacity>
+            <View style={styles.normalActions}>
+              {!isAdmin && (
+                <TouchableOpacity 
+                  style={[styles.actionBtn, { borderColor: isBanned ? COLORS.success : COLORS.error }]}
+                  onPress={() => isBanned ? handleUnbanUser(item) : handleBanUser(item)}
+                >
+                  <Ionicons 
+                    name={isBanned ? "unlock-outline" : "ban-outline"} 
+                    size={18} 
+                    color={isBanned ? COLORS.success : COLORS.error} 
+                  />
+                  <Text style={[styles.actionBtnText, { color: isBanned ? COLORS.success : COLORS.error }]}>
+                    {isBanned ? 'Mở khóa' : 'Khóa'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              
+              {!isAdmin && (
+                <TouchableOpacity 
+                  style={[styles.actionBtn, { borderColor: COLORS.textDisabled, borderStyle: 'dashed' }]}
+                  onPress={() => handleDeleteUser(item)}
+                >
+                  <Ionicons name="trash-outline" size={18} color={COLORS.textSecondary} />
+                  <Text style={[styles.actionBtnText, { color: COLORS.textSecondary }]}>Xóa</Text>
+                </TouchableOpacity>
+              )}
+
+              {isAdmin && (
+                <View style={styles.adminStatus}>
+                  <Ionicons name="checkmark-done" size={16} color={COLORS.success} />
+                  <Text style={styles.adminStatusText}>Tài khoản hệ thống</Text>
+                </View>
+              )}
+            </View>
           )}
-          <TouchableOpacity
-            style={[styles.actionButton, styles.deleteButton]}
-            onPress={() => handleDeleteUser(item)}
-          >
-            <Ionicons name="trash" size={20} color={COLORS.error} />
-          </TouchableOpacity>
         </View>
       </View>
     );
   };
 
+  const StatCard = ({ icon, label, value, color }) => (
+    <View style={styles.statCard}>
+      <View style={[styles.statIconBox, { backgroundColor: color + '15' }]}>
+        <Ionicons name={icon} size={20} color={color} />
+      </View>
+      <View>
+        <Text style={styles.statValue}>{value}</Text>
+        <Text style={styles.statLabel}>{label}</Text>
+      </View>
+    </View>
+  );
+
+  const renderHeaderComponent = () => (
+    <View style={styles.listHeader}>
+      <View style={styles.statsRow}>
+        <StatCard icon="people" label="Tổng số" value={stats.total} color={COLORS.info} />
+        <StatCard icon="mic" label="Nghệ sĩ" value={stats.artists} color={COLORS.primary} />
+        <StatCard icon="time" label="Chờ duyệt" value={stats.pending} color={COLORS.warning} />
+      </View>
+      
+      <View style={styles.sectionTitleRow}>
+        <Text style={styles.sectionTitle}>DANH SÁCH CHI TIẾT</Text>
+        <View style={styles.sectionBadge}>
+          <Text style={styles.sectionBadgeText}>{getFilteredUsers().length}</Text>
+        </View>
+      </View>
+    </View>
+  );
+
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color={COLORS.text} />
-        </TouchableOpacity>
-        <Text style={styles.title}>Quản lý người dùng</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => navigation.navigate('AdminAddUser')}
-        >
-          <Ionicons name="add" size={24} color={COLORS.primary} />
-        </TouchableOpacity>
-      </View>
+      <StatusBar barStyle="light-content" />
+      
+      <LinearGradient
+        colors={[COLORS.backgroundSecondary, COLORS.background]}
+        style={[styles.header, { paddingTop: insets.top + 10 }]}
+      >
+        <View style={styles.headerTop}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <Ionicons name="chevron-back" size={28} color="#FFF" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>QUẢN LÝ NGƯỜI DÙNG</Text>
+          <TouchableOpacity 
+            style={[styles.backBtn, styles.addBtn]} 
+            onPress={() => navigation.navigate('AdminAddUser')}
+          >
+            <Ionicons name="person-add" size={20} color="#FFF" />
+          </TouchableOpacity>
+        </View>
 
-      <View style={styles.searchContainer}>
-        <Ionicons name="search" size={20} color={COLORS.textSecondary} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Tìm kiếm người dùng..."
-          placeholderTextColor={COLORS.textSecondary}
-          value={searchQuery}
-          onChangeText={handleSearch}
-        />
-      </View>
-
-      <View style={styles.filterContainer}>
-        <TouchableOpacity 
-          style={[styles.filterTab, filter === 'all' && styles.activeFilterTab]}
-          onPress={() => setFilter('all')}
-        >
-          <Text style={[styles.filterText, filter === 'all' && styles.activeFilterText]}>Tất cả</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.filterTab, filter === 'pending_artist' && styles.activeFilterTab]}
-          onPress={() => setFilter('pending_artist')}
-        >
-          <Text style={[styles.filterText, filter === 'pending_artist' && styles.activeFilterText]}>
-            Yêu cầu Artist
-            {users.filter(u => u.is_banned === 2).length > 0 && (
-              <Text style={{ color: COLORS.primary }}> ({users.filter(u => u.is_banned === 2).length})</Text>
+        <View style={styles.searchSection}>
+          <View style={styles.searchBar}>
+            <Ionicons name="search" size={20} color={COLORS.textSecondary} />
+            <TextInput
+              placeholder="Tìm theo tên hoặc email..."
+              placeholderTextColor={COLORS.textDisabled}
+              style={styles.searchInput}
+              value={searchQuery}
+              onChangeText={handleSearch}
+            />
+            {searchQuery !== '' && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Ionicons name="close-circle" size={18} color={COLORS.textDisabled} />
+              </TouchableOpacity>
             )}
-          </Text>
-        </TouchableOpacity>
-      </View>
+          </View>
+        </View>
+
+        <View style={styles.tabsContainer}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
+            {[
+              { id: 'all', label: 'Tất cả' },
+              { id: 'pending_artist', label: 'Yêu cầu Artist' },
+              { id: 'artist', label: 'Nghệ sĩ' },
+              { id: 'banned', label: 'Đã khóa' },
+            ].map(t => (
+              <TouchableOpacity 
+                key={t.id}
+                style={[styles.tab, filter === t.id && styles.activeTab]}
+                onPress={() => setFilter(t.id)}
+              >
+                <Text style={[styles.tabText, filter === t.id && styles.activeTabText]}>
+                  {t.label} {t.id === 'pending_artist' && stats.pending > 0 && `(${stats.pending})`}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </LinearGradient>
 
       {loading && users.length === 0 ? (
-        <View style={styles.loadingContainer}>
+        <View style={styles.center}>
           <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Đang tải...</Text>
         </View>
       ) : (
         <FlatList
           data={getFilteredUsers()}
           renderItem={renderUserItem}
+          ListHeaderComponent={renderHeaderComponent}
           keyExtractor={(item) => item.user_id.toString()}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
-          contentContainerStyle={[styles.listContainer, { paddingBottom: 100 }]}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
+          contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 120 }]}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
-            <View style={styles.emptyContainer}>
+            <View style={styles.empty}>
+              <View style={styles.emptyIconContainer}>
+                <Ionicons name="people-outline" size={60} color={COLORS.textDisabled} />
+              </View>
               <Text style={styles.emptyText}>Không tìm thấy người dùng nào</Text>
+              <TouchableOpacity style={styles.reloadBtn} onPress={onRefresh}>
+                <Text style={styles.reloadBtnText}>Tải lại danh sách</Text>
+              </TouchableOpacity>
             </View>
           }
         />
@@ -376,236 +415,364 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   header: {
+    paddingBottom: 20,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    ...SHADOWS.medium,
+  },
+  headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 60,
-    paddingHorizontal: SIZES.padding,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    paddingHorizontal: 16,
+    marginBottom: 20,
   },
-  backButton: {
-    width: 40,
-    height: 40,
+  headerTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#FFF',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+  },
+  backBtn: {
+    width: 44,
+    height: 44,
     justifyContent: 'center',
     alignItems: 'center',
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.1)',
   },
-  title: {
-    color: COLORS.text,
-    fontSize: SIZES.lg,
-    fontWeight: '600',
-    flex: 1,
-    textAlign: 'center',
+  addBtn: {
+    backgroundColor: COLORS.primary,
   },
-  addButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
+  searchSection: {
+    paddingHorizontal: 16,
+    marginBottom: 16,
   },
-  searchContainer: {
+  searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.surface,
-    margin: SIZES.padding,
-    paddingHorizontal: SIZES.padding,
-    borderRadius: SIZES.borderRadius,
-    gap: 8,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    height: 50,
+    borderWidth: 1,
+    borderColor: COLORS.divider,
   },
   searchInput: {
     flex: 1,
-    paddingVertical: 12,
-    fontSize: SIZES.md,
-    color: COLORS.text,
+    color: '#FFF',
+    paddingLeft: 10,
+    fontSize: 14,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    color: COLORS.textSecondary,
-    fontSize: SIZES.md,
-    marginTop: 16,
-  },
-  listContainer: {
-    padding: SIZES.padding,
-  },
-  userItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: COLORS.surface,
-    borderRadius: SIZES.borderRadius,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  avatarContainer: {
-    position: 'relative',
-    marginRight: 12,
-  },
-  userAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  userAvatarText: {
-    color: COLORS.white,
-    fontSize: SIZES.lg,
-    fontWeight: 'bold',
-  },
-  artistBadge: {
-    position: 'absolute',
-    bottom: -2,
-    right: -2,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.background,
-  },
-  userDetails: {
-    flex: 1,
-  },
-  userNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    marginBottom: 4,
-    gap: 8,
-  },
-  userName: {
-    color: COLORS.text,
-    fontSize: SIZES.md,
-    fontWeight: '600',
-  },
-  adminBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.warning + '20',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-    gap: 4,
-  },
-  adminBadgeText: {
-    color: COLORS.warning,
-    fontSize: SIZES.xs,
-    fontWeight: '600',
-  },
-  artistLabel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.primary + '20',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-    gap: 4,
-  },
-  artistLabelText: {
-    color: COLORS.primary,
-    fontSize: SIZES.xs,
-    fontWeight: '600',
-  },
-  userEmail: {
-    color: COLORS.textSecondary,
-    fontSize: SIZES.sm,
-    marginBottom: 8,
-  },
-  userMeta: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  userRole: {
-    color: COLORS.textSecondary,
-    fontSize: SIZES.xs,
-    fontWeight: '500',
-  },
-  userStatus: {
-    fontSize: SIZES.xs,
-    fontWeight: '500',
-  },
-  userActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  actionButton: {
-    width: 40,
+  tabsContainer: {
     height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
-  banButton: {
-    backgroundColor: COLORS.warning + '20',
-  },
-  unbanButton: {
-    backgroundColor: COLORS.success + '20',
-  },
-  deleteButton: {
-    backgroundColor: COLORS.error + '20',
-  },
-  pendingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.info + '20',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-    gap: 4,
-  },
-  pendingBadgeText: {
-    color: COLORS.info,
-    fontSize: SIZES.xs,
-    fontWeight: '600',
-  },
-  filterContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: SIZES.padding,
-    marginBottom: 8,
-    gap: 12,
-  },
-  filterTab: {
-    paddingVertical: 8,
+  tabs: {
     paddingHorizontal: 16,
+    gap: 10,
+  },
+  tab: {
+    paddingVertical: 8,
+    paddingHorizontal: 18,
     borderRadius: 20,
     backgroundColor: COLORS.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.divider,
   },
-  activeFilterTab: {
+  activeTab: {
     backgroundColor: COLORS.primary + '20',
     borderColor: COLORS.primary,
   },
-  filterText: {
+  tabText: {
+    fontSize: 13,
     color: COLORS.textSecondary,
-    fontSize: SIZES.sm,
-    fontWeight: '600',
+    fontWeight: 'bold',
   },
-  activeFilterText: {
+  activeTabText: {
     color: COLORS.primary,
   },
-  emptyContainer: {
-    padding: 32,
+  list: {
+    padding: 16,
+    paddingTop: 8,
+  },
+  listHeader: {
+    marginBottom: 20,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 24,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    padding: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.divider,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    ...SHADOWS.small,
+  },
+  statIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  emptyText: {
+  statValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFF',
+  },
+  statLabel: {
+    fontSize: 10,
     color: COLORS.textSecondary,
-    fontSize: SIZES.md,
+    fontWeight: '600',
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+    paddingLeft: 4,
+  },
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.textSecondary,
+    letterSpacing: 1.2,
+  },
+  sectionBadge: {
+    backgroundColor: COLORS.primary + '20',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  sectionBadgeText: {
+    fontSize: 10,
+    color: COLORS.primary,
+    fontWeight: 'bold',
+  },
+  userCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: COLORS.divider,
+    ...SHADOWS.small,
+  },
+  userMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  avatarWrapper: {
+    position: 'relative',
+    marginRight: 16,
+  },
+  avatarGradient: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    padding: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatar: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+  },
+  avatarText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFF',
+  },
+  roleBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: COLORS.surface,
+  },
+  userMeta: {
+    flex: 1,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  userName: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: '#FFF',
+  },
+  bannedTag: {
+    backgroundColor: COLORS.error + '15',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  tagText: {
+    fontSize: 10,
+    color: COLORS.error,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+  },
+  userEmail: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    marginBottom: 10,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  typeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.divider,
+  },
+  typeText: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusLabel: {
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  cardActions: {
+    borderTopWidth: 1,
+    borderTopColor: COLORS.divider,
+    paddingTop: 16,
+  },
+  pendingActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  btnAction: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 16,
+    gap: 8,
+  },
+  btnApprove: {
+    backgroundColor: COLORS.success,
+  },
+  btnReject: {
+    backgroundColor: COLORS.error,
+  },
+  btnActionText: {
+    color: '#FFF',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  normalActions: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
+  },
+  actionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 8,
+  },
+  actionBtnText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  adminStatus: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    backgroundColor: COLORS.success + '10',
+    borderRadius: 14,
+  },
+  adminStatusText: {
+    color: COLORS.success,
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  empty: {
+    marginTop: 60,
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  emptyIconContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: COLORS.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: COLORS.divider,
+  },
+  emptyText: {
+    color: COLORS.textDisabled,
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  reloadBtn: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 20,
+    backgroundColor: COLORS.primary,
+  },
+  reloadBtnText: {
+    color: '#FFF',
+    fontWeight: 'bold',
   },
 });
 

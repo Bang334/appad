@@ -82,9 +82,6 @@ class MonthlyRevenueJob {
             total_amount: revenueAmount / 0.70, // Reverse calculate
             artist_share: revenueAmount,
             platform_share: (revenueAmount / 0.70) * 0.30,
-            calculation_period: period,
-            stream_count: streams,
-            is_paid_to_artist: 0, // Waiting for admin approval
           });
 
           successCount++;
@@ -126,8 +123,7 @@ class MonthlyRevenueJob {
       const [unpaidRecords] = await db.execute(
         `SELECT DISTINCT artist_id 
          FROM revenue_sharing 
-         WHERE is_paid_to_artist = 0 
-         AND share_type = 'premium_stream'`
+         WHERE share_type = 'premium_stream'`
       );
 
       if (unpaidRecords.length === 0) {

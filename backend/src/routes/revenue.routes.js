@@ -3,21 +3,19 @@ const router = express.Router();
 const RevenueController = require('../controllers/revenue.controller');
 const { authenticateToken, isAdmin } = require('../middleware/auth.middleware');
 
-// All routes require admin authentication
+// All routes require authentication
 router.use(authenticateToken);
-router.use(isAdmin);
 
-// Calculate monthly revenue (run at end of month)
-router.post('/calculate-monthly', RevenueController.calculateMonthlyRevenue);
+// Admin only routes - protect individually with isAdmin
+router.post('/calculate-monthly', isAdmin, RevenueController.calculateMonthlyRevenue);
+router.post('/apply-monthly', isAdmin, RevenueController.applyMonthlyRevenue);
+router.post('/pay-artists', isAdmin, RevenueController.payArtists);
+router.get('/platform-stats', isAdmin, RevenueController.getPlatformStats);
+router.get('/payout-history', isAdmin, RevenueController.getPayoutHistory);
+router.get('/payout-batch', isAdmin, RevenueController.getPayoutBatchDetails);
 
-// Apply calculated revenue (create records)
-router.post('/apply-monthly', RevenueController.applyMonthlyRevenue);
-
-// Pay artists (mark as paid and add to balance)
-router.post('/pay-artists', RevenueController.payArtists);
-
-// Get platform revenue statistics
-router.get('/platform-stats', RevenueController.getPlatformStats);
+// Artist/Admin routes
+router.get('/artist-payout-history/:artist_id', RevenueController.getArtistPayoutHistory);
 
 module.exports = router;
 

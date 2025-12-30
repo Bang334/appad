@@ -14,8 +14,10 @@ import MiniPlayer from '../../components/Player/MiniPlayer';
 import { historyService } from '../../services/historyService';
 import SuccessModal from '../../components/Common/SuccessModal';
 import { settingsDatabase } from '../../config/settingsDb';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const SettingsScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [settings, setSettings] = useState({
     notifications: true,
     autoPlay: false,
@@ -124,9 +126,9 @@ const SettingsScreen = ({ navigation }) => {
     <View style={styles.container}>
       <ScrollView 
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 + insets.bottom }]}
       >
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top + 20, 60) }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}

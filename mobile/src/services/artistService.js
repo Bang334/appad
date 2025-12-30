@@ -67,6 +67,20 @@ export const artistService = {
     return response.data;
   },
 
+  // Get artist reviews
+  getReviews: async (artistId, params = {}) => {
+    const { limit = 50, offset = 0, song_id, rating, sort_by } = params;
+    const queryParams = new URLSearchParams({
+      limit,
+      offset,
+      ...(song_id && { song_id }),
+      ...(rating && { rating }),
+      ...(sort_by && { sort_by }),
+    }).toString();
+    const response = await api.get(`/artists/${artistId}/reviews?${queryParams}`);
+    return response.data;
+  },
+
   // Request withdrawal
   requestWithdrawal: async (artistId, amount, artistNote = '') => {
     const response = await api.post(`/artists/${artistId}/withdraw`, {

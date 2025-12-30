@@ -16,8 +16,10 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS, SIZES } from '../../config/theme';
 import { artistService } from '../../services/artistService';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const ArtistEditProfileScreen = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { artistId } = route.params;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -154,7 +156,7 @@ const ArtistEditProfileScreen = ({ route, navigation }) => {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top + 20, 60) }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
@@ -167,7 +169,7 @@ const ArtistEditProfileScreen = ({ route, navigation }) => {
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Profile Image */}
@@ -258,7 +260,7 @@ const ArtistEditProfileScreen = ({ route, navigation }) => {
       </ScrollView>
 
       {/* Save Button */}
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom + 16, 16) }]}>
         <TouchableOpacity
           style={[styles.saveButton, (saving || uploading) && styles.saveButtonDisabled]}
           onPress={handleSave}

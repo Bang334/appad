@@ -9,6 +9,7 @@ import {
   ScrollView,
   RefreshControl,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { songService } from '../../services/songService';
 import { albumService } from '../../services/albumService';
@@ -51,6 +52,8 @@ const HomeScreen = ({ navigation, route }) => {
   const [activeTab, setActiveTab] = useState(0); // 0: recent, 1: frequent, 2: recommended
   const [loadingFrequent, setLoadingFrequent] = useState(false);
   const [loadingRecommended, setLoadingRecommended] = useState(false);
+  const [isAtTop, setIsAtTop] = useState(true);
+  const [isDragging, setIsDragging] = useState(false);
 
   // Generate infinite lists for UI looping
   const infiniteTrendingSongs = useMemo(() => {
@@ -235,6 +238,7 @@ const HomeScreen = ({ navigation, route }) => {
   }, [activeTab]);
 
   const onRefresh = async () => {
+    console.log('🔄 [REFRESH] Triggered onRefresh...');
     setRefreshing(true);
     // Clear lazy-loaded data to force refresh
     setFrequentSongs([]);
@@ -244,6 +248,7 @@ const HomeScreen = ({ navigation, route }) => {
     if (activeTab === 1) fetchFrequentSongs();
     if (activeTab === 2) fetchRecommendedSongs();
     setRefreshing(false);
+    console.log('✅ [REFRESH] Finished refreshing');
   };
 
   const handlePlaySong = async (song, index, list) => {
@@ -752,10 +757,23 @@ const HomeScreen = ({ navigation, route }) => {
   }
 
   return (
-    <View style={GlobalStyles.container}>
+    <View style={{ flex: 1, backgroundColor: COLORS.background }}>
       <DraggableFlatList
         data={getListData()}
-        onDragEnd={({ data }) => handleUpdateList(data)}
+        onDragBegin={() => {
+           console.log('👆 [DRAG] Started');
+           setIsDragging(true);
+        }}
+        onDragEnd={({ data }) => {
+          setIsDragging(false);
+          handleUpdateList(data);
+        }}
+        onScroll={(e) => {
+          const y = e.nativeEvent.contentOffset.y;
+          setIsAtTop(y <= 5);
+        }}
+        scrollEventThrottle={16}
+        nestedScrollEnabled={true}
         keyExtractor={(item) => `home-song-${item.song_id}`}
         renderItem={renderDraggableItem}
         ListHeaderComponent={renderHeader()}
@@ -787,14 +805,13 @@ const HomeScreen = ({ navigation, route }) => {
         contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={
             <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={[COLORS.primary]}
-            tintColor={COLORS.primary}
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[COLORS.primary]}
+              tintColor={COLORS.primary}
             />
         }
       />
-
       {/* Add to Playlist Modal */}
       <AddToPlaylistModal
         visible={showPlaylistModal}
@@ -809,15 +826,13 @@ const HomeScreen = ({ navigation, route }) => {
         playSong={playSong}
         onClose={() => setShowPremiumModal(false)}
         onPurchaseSong={async () => {
-          // Handle song purchase
-          if (selectedSong) {
-            try {
-              await premiumService.purchaseSong(selectedSong.song_id);
-              setShowPremiumModal(false);
-              loadData();
-            } catch (error) {
-              console.error('Error purchasing song:', error);
-            }
+          // Purchase was already handled by PremiumAccessModal
+          // Just refresh data to update purchased songs list
+          try {
+            await loadData();
+          } catch (refreshError) {
+            // Log but don't show error to user - purchase was successful
+            console.warn('Warning: Some data refresh APIs failed after purchase:', refreshError);
           }
         }}
         onSubscribePremium={() => {

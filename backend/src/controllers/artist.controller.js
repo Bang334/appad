@@ -153,10 +153,7 @@ class ArtistController {
           COUNT(*) as total_transactions,
           SUM(artist_share) as total_revenue,
           SUM(CASE WHEN share_type = 'direct_purchase' THEN artist_share ELSE 0 END) as direct_purchase_revenue,
-          SUM(CASE WHEN share_type = 'premium_stream' THEN artist_share ELSE 0 END) as premium_stream_revenue,
-          SUM(CASE WHEN is_paid_to_artist = 1 THEN artist_share ELSE 0 END) as paid_revenue,
-          SUM(CASE WHEN is_paid_to_artist = 0 THEN artist_share ELSE 0 END) as unpaid_revenue,
-          SUM(stream_count) as total_streams
+          SUM(CASE WHEN share_type = 'premium_stream' THEN artist_share ELSE 0 END) as premium_stream_revenue
          FROM revenue_sharing rs
          WHERE rs.artist_id = ?${dateFilter}`,
         params
@@ -500,6 +497,34 @@ class ArtistController {
       });
     } catch (error) {
       console.error('Get artist songs error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Server error'
+      });
+    }
+  }
+
+  // Get artist's reviews
+  static async getReviews(req, res) {
+    try {
+      const { artist_id } = req.params;
+      const { limit = 50, offset = 0, song_id, rating, sort_by } = req.query;
+      const CommentModel = require('../models/comment.model');
+      
+      const reviews = await CommentModel.findByArtist(artist_id, {
+        limit,
+        offset,
+        songId: song_id,
+        rating: rating,
+        sortBy: sort_by
+      });
+      
+      res.json({
+        success: true,
+        data: reviews
+      });
+    } catch (error) {
+      console.error('Get artist reviews error:', error);
       res.status(500).json({
         success: false,
         message: 'Server error'
@@ -860,6 +885,13 @@ class ArtistController {
           success: false,
           message: 'Song not found'
         });
+      }
+
+      // Delete associated notifications
+      try {
+        await NotificationModel.deleteByRelatedEntity('new_song', 'song_id', song_id);
+      } catch (notifError) {
+        console.error('Error deleting song notifications:', notifError);
       }
 
       res.json({

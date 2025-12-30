@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -9,17 +10,25 @@ import {
   ScrollView,
   Image,
   ActivityIndicator,
+  StatusBar,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SIZES } from '../../config/theme';
+import { COLORS, SIZES, SHADOWS } from '../../config/theme';
 import { adminService } from '../../services/adminService';
 import { artistService } from '../../services/artistService';
+import { songService } from '../../services/songService';
 import MiniPlayer from '../../components/Player/MiniPlayer';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const AdminEditAlbumScreen = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { album } = route.params;
   const [loading, setLoading] = useState(false);
   const [artists, setArtists] = useState([]);
+  const [albumSongs, setAlbumSongs] = useState([]);
+  const [showArtistList, setShowArtistList] = useState(false);
   const [formData, setFormData] = useState({
     title: album?.title || '',
     artist_id: album?.artist_id || '',
@@ -33,439 +42,517 @@ const AdminEditAlbumScreen = ({ route, navigation }) => {
     loadArtists();
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+        if (album) {
+            loadAlbumSongs();
+        }
+    }, [album])
+  );
+
+  const loadAlbumSongs = async () => {
+    try {
+        const response = await songService.getSongsByAlbum(album.album_id);
+        if (response.success) {
+            setAlbumSongs(response.data || []);
+        }
+    } catch (error) {
+        console.error('Error loading album songs:', error);
+    }
+  };
+
   const loadArtists = async () => {
     try {
-      const response = await artistService.getAllArtists();
+      const response = await artistService.getArtists();
       setArtists(response.data || []);
     } catch (error) {
       console.error('Error loading artists:', error);
     }
   };
 
-  const handleInputChange = (field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
-  };
-
-  const validateForm = () => {
-    if (!formData.title.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập tên album');
-      return false;
-    }
-    if (!formData.artist_id) {
-      Alert.alert('Lỗi', 'Vui lòng chọn nghệ sĩ');
-      return false;
-    }
-    if (!formData.release_date) {
-      Alert.alert('Lỗi', 'Vui lòng chọn ngày phát hành');
-      return false;
-    }
-    return true;
-  };
-
   const handleSave = async () => {
-    if (!validateForm()) return;
-
+    if (!formData.title.trim() || !formData.artist_id) {
+      return Alert.alert('Lỗi', 'Vui lòng nhập đầy đủ thông tin bắt buộc');
+    }
     setLoading(true);
     try {
       if (album) {
-        // Update existing album
         await adminService.updateAlbum(album.album_id, formData);
-        Alert.alert('Thành công', 'Đã cập nhật album', [
-          { text: 'OK', onPress: () => navigation.goBack() }
-        ]);
+        Alert.alert('Thành công', 'Đã lưu thay đổi album');
       } else {
-        // Create new album
         await adminService.createAlbum(formData);
-        Alert.alert('Thành công', 'Đã tạo album mới', [
-          { text: 'OK', onPress: () => navigation.goBack() }
-        ]);
+        Alert.alert('Thành công', 'Đã tạo album mới');
       }
+      navigation.goBack();
     } catch (error) {
-      console.error('Error saving album:', error);
-      Alert.alert('Lỗi', 'Không thể lưu album');
+      Alert.alert('Lỗi', 'Không thể lưu dữ liệu');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async () => {
-    if (!album) return;
-
-    Alert.alert(
-      'Xóa album',
-      `Bạn có chắc muốn xóa album "${album.title}"? Hành động này không thể hoàn tác.`,
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Xóa',
-          style: 'destructive',
-          onPress: async () => {
-            setLoading(true);
-            try {
-              await adminService.deleteAlbum(album.album_id);
-              Alert.alert('Thành công', 'Đã xóa album', [
-                { text: 'OK', onPress: () => navigation.goBack() }
-              ]);
-            } catch (error) {
-              Alert.alert('Lỗi', 'Không thể xóa album');
-            } finally {
-              setLoading(false);
-            }
-          }
-        }
-      ]
-    );
-  };
+  const InputLabel = ({ label, required }) => (
+    <View style={styles.labelRow}>
+      <Text style={styles.labelText}>{label}</Text>
+      {required && <Text style={{ color: COLORS.error }}> *</Text>}
+    </View>
+  );
 
   return (
-    <View style={styles.container}>
-      <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-      >
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color={COLORS.text} />
+    <View style={[styles.container, { backgroundColor: COLORS.background }]}>
+      <StatusBar barStyle="light-content" />
+      
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Ionicons name="chevron-back" size={28} color="#FFF" />
         </TouchableOpacity>
-        <Text style={styles.title}>
-          {album ? 'Chỉnh sửa album' : 'Thêm album mới'}
-        </Text>
-        <View style={styles.placeholder} />
+        <Text style={styles.headerTitle}>{album ? 'CẬP NHẬT ALBUM' : 'THÊM ALBUM MỚI'}</Text>
+        <TouchableOpacity onPress={handleSave} disabled={loading} style={styles.saveBtn}>
+          {loading ? <ActivityIndicator size="small" color={COLORS.primary} /> : <Text style={styles.saveBtnText}>Lưu</Text>}
+        </TouchableOpacity>
       </View>
 
-      <View style={styles.content}>
-        {/* Album Cover */}
-        <View style={styles.coverSection}>
-          <Text style={styles.sectionTitle}>Ảnh bìa album</Text>
-          <View style={styles.coverContainer}>
-            {formData.cover_url ? (
-              <Image source={{ uri: formData.cover_url }} style={styles.coverImage} />
-            ) : (
-              <View style={styles.coverPlaceholder}>
-                <Ionicons name="musical-notes" size={48} color={COLORS.primary} />
-                <Text style={styles.coverPlaceholderText}>Chưa có ảnh bìa</Text>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <ScrollView 
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 120 }]}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Cover Preview Section */}
+          <View style={styles.coverSection}>
+            <View style={styles.coverPreview}>
+              <Image 
+                source={{ uri: formData.cover_url || 'https://via.placeholder.com/300' }} 
+                style={styles.coverImg} 
+              />
+              <View style={styles.coverBadge}>
+                <Ionicons name="camera" size={16} color="#FFF" />
+              </View>
+            </View>
+            <View style={styles.coverInputBox}>
+              <InputLabel label="URL Ảnh Bìa" />
+              <TextInput
+                style={styles.input}
+                value={formData.cover_url}
+                onChangeText={v => setFormData({ ...formData, cover_url: v })}
+                placeholder="Nhập liên kết hình ảnh..."
+                placeholderTextColor={COLORS.textDisabled}
+              />
+            </View>
+          </View>
+
+          {/* Form Fields */}
+          <View style={styles.formCard}>
+            <View style={styles.field}>
+              <InputLabel label="Tên Album" required />
+              <TextInput
+                style={styles.input}
+                value={formData.title}
+                onChangeText={v => setFormData({ ...formData, title: v })}
+                placeholder="Ví dụ: Những Bài Hát Hay Nhất..."
+                placeholderTextColor={COLORS.textDisabled}
+              />
+            </View>
+
+            <View style={styles.field}>
+              <InputLabel label="Nghệ Sĩ Sở Hữu" required />
+              <TouchableOpacity 
+                style={styles.selector} 
+                onPress={() => setShowArtistList(!showArtistList)}
+              >
+                <Text style={[styles.selectorText, !formData.artist_id && { color: COLORS.textDisabled }]}>
+                  {artists.find(a => a.artist_id === formData.artist_id)?.name || 'Chọn nghệ sĩ...'}
+                </Text>
+                <Ionicons name={showArtistList ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textDisabled} />
+              </TouchableOpacity>
+              
+              {showArtistList && (
+                <View style={styles.dropdown}>
+                  {artists.map(artist => (
+                    <TouchableOpacity 
+                      key={artist.artist_id} 
+                      style={styles.dropItem}
+                      onPress={() => {
+                        setFormData({ ...formData, artist_id: artist.artist_id });
+                        setShowArtistList(false);
+                      }}
+                    >
+                      <Text style={[styles.dropText, formData.artist_id === artist.artist_id && { color: COLORS.primary, fontWeight: 'bold' }]}>
+                        {artist.name}
+                      </Text>
+                      {formData.artist_id === artist.artist_id && <Ionicons name="checkmark" size={16} color={COLORS.primary} />}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            <View style={styles.field}>
+              <InputLabel label="Ngày Phát Hành" required />
+              <TextInput
+                style={styles.input}
+                value={formData.release_date}
+                onChangeText={v => setFormData({ ...formData, release_date: v })}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={COLORS.textDisabled}
+              />
+            </View>
+
+            <View style={styles.premiumSwitchRow}>
+              <View>
+                <Text style={styles.premiumLabel}>Album Premium</Text>
+                <Text style={styles.premiumSub}>Người dùng cần mua để nghe</Text>
+              </View>
+              <TouchableOpacity 
+                style={[styles.switch, formData.is_premium && styles.switchOn]}
+                onPress={() => setFormData({ ...formData, is_premium: !formData.is_premium })}
+              >
+                <View style={[styles.switchThumb, formData.is_premium && styles.switchThumbOn]} />
+              </TouchableOpacity>
+            </View>
+
+            {formData.is_premium && (
+              <View style={styles.field}>
+                <InputLabel label="Giá Bán (VNĐ)" />
+                <TextInput
+                  style={styles.input}
+                  value={formData.price}
+                  onChangeText={v => setFormData({ ...formData, price: v })}
+                  keyboardType="numeric"
+                  placeholder="0"
+                  placeholderTextColor={COLORS.textDisabled}
+                />
+              </View>
+            )}
+
+            {/* Integrated Songs List Section */}
+            {album && (
+              <View style={styles.integratedSongsContainer}>
+                <View style={styles.separator} />
+                <View style={[styles.sectionHeaderRow, { marginTop: 24 }]}>
+                  <View>
+                    <Text style={styles.premiumSectionTitle}>DANH SÁCH BÀI HÁT</Text>
+                    <Text style={styles.premiumSectionSub}>{albumSongs.length} bài hát trong album</Text>
+                  </View>
+                  <TouchableOpacity 
+                    style={styles.premiumAddBtn}
+                    onPress={() => navigation.navigate('AdminEditSong', { song: null, initialAlbumId: album.album_id })}
+                  >
+                    <Ionicons name="add" size={18} color="#000" />
+                    <Text style={styles.premiumAddBtnText}>Thêm</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {albumSongs.length > 0 ? (
+                  <View style={styles.premiumSongList}>
+                    {albumSongs.map((song, index) => (
+                      <TouchableOpacity 
+                        key={song.song_id} 
+                        style={styles.premiumSongItem}
+                        onPress={() => navigation.navigate('AdminEditSong', { song })}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.songRankBox}>
+                          <Text style={styles.songRankText}>{(index + 1).toString().padStart(2, '0')}</Text>
+                        </View>
+                        
+                        <View style={styles.songImageWrapper}>
+                          <Image 
+                            source={{ uri: song.cover_url || 'https://via.placeholder.com/60' }} 
+                            style={styles.premiumSongCover} 
+                          />
+                          {song.is_premium === 1 && (
+                            <View style={styles.miniPremiumBadge}>
+                              <Ionicons name="star" size={8} color="#000" />
+                            </View>
+                          )}
+                        </View>
+
+                        <View style={styles.premiumSongBody}>
+                          <Text style={styles.premiumSongTitle} numberOfLines={1}>{song.title}</Text>
+                          <View style={styles.premiumMetaRow}>
+                            <View style={styles.metaBadge}>
+                              <Ionicons name="play" size={10} color={COLORS.primary} />
+                              <Text style={styles.metaBadgeText}>{song.listen_count || 0}</Text>
+                            </View>
+                            <View style={styles.metaBadge}>
+                              <Ionicons name="time-outline" size={10} color={COLORS.textSecondary} />
+                              <Text style={styles.metaBadgeText}>
+                                {song.duration ? `${Math.floor(song.duration / 60)}:${(song.duration % 60).toString().padStart(2, '0')}` : '0:00'}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+
+                        <View style={styles.editActionCircle}>
+                          <Ionicons name="pencil" size={14} color={COLORS.primary} />
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : (
+                  <View style={styles.premiumEmptyState}>
+                    <LinearGradient
+                      colors={['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.02)']}
+                      style={styles.emptyGradient}
+                    >
+                      <Ionicons name="musical-notes-outline" size={48} color={COLORS.textDisabled} />
+                      <Text style={styles.premiumEmptyText}>Chưa có nhạc trong album</Text>
+                    </LinearGradient>
+                  </View>
+                )}
               </View>
             )}
           </View>
-          <TextInput
-            style={styles.input}
-            placeholder="URL ảnh bìa album"
-            value={formData.cover_url}
-            onChangeText={(value) => handleInputChange('cover_url', value)}
-            placeholderTextColor={COLORS.textSecondary}
-          />
-        </View>
 
-        {/* Album Title */}
-        <View style={styles.inputSection}>
-          <Text style={styles.sectionTitle}>Tên album *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Nhập tên album"
-            value={formData.title}
-            onChangeText={(value) => handleInputChange('title', value)}
-            placeholderTextColor={COLORS.textSecondary}
-          />
-        </View>
-
-        {/* Artist Selection */}
-        <View style={styles.inputSection}>
-          <Text style={styles.sectionTitle}>Nghệ sĩ *</Text>
-          <View style={styles.artistSelector}>
-            <Text style={styles.artistSelectorText}>
-              {formData.artist_id 
-                ? artists.find(a => a.artist_id == formData.artist_id)?.name || 'Chọn nghệ sĩ'
-                : 'Chọn nghệ sĩ'
-              }
-            </Text>
-            <Ionicons name="chevron-down" size={20} color={COLORS.textSecondary} />
-          </View>
-          <ScrollView style={styles.artistList} showsVerticalScrollIndicator={false}>
-            {artists.map((artist) => (
-              <TouchableOpacity
-                key={artist.artist_id}
-                style={[
-                  styles.artistItem,
-                  formData.artist_id == artist.artist_id && styles.artistItemSelected
-                ]}
-                onPress={() => handleInputChange('artist_id', artist.artist_id)}
-              >
-                <Text style={[
-                  styles.artistItemText,
-                  formData.artist_id == artist.artist_id && styles.artistItemTextSelected
-                ]}>
-                  {artist.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-
-
-
-        {/* Premium Status */}
-        <View style={styles.inputSection}>
-          <View style={styles.switchContainer}>
-            <Text style={styles.sectionTitle}>Album Premium</Text>
-            <TouchableOpacity
-              style={[styles.switch, formData.is_premium && styles.switchActive]}
-              onPress={() => handleInputChange('is_premium', !formData.is_premium)}
-            >
-              <View style={[styles.switchThumb, formData.is_premium && styles.switchThumbActive]} />
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.helperText}>
-            Album premium chỉ dành cho người dùng trả phí hoặc mua lẻ.
-          </Text>
-        </View>
-
-        {/* Price */}
-        {formData.is_premium && (
-          <View style={styles.inputSection}>
-            <Text style={styles.sectionTitle}>Giá bán (VNĐ)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="0"
-              value={formData.price}
-              onChangeText={(value) => handleInputChange('price', value)}
-              keyboardType="numeric"
-              placeholderTextColor={COLORS.textSecondary}
-            />
-          </View>
-        )}
-
-        {/* Release Date */}
-        <View style={styles.inputSection}>
-          <Text style={styles.sectionTitle}>Ngày phát hành *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="YYYY-MM-DD"
-            value={formData.release_date}
-            onChangeText={(value) => handleInputChange('release_date', value)}
-            placeholderTextColor={COLORS.textSecondary}
-          />
-        </View>
-
-        {/* Action Buttons */}
-        <View style={styles.actionsContainer}>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.saveButton]}
-            onPress={handleSave}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator size="small" color={COLORS.white} />
-            ) : (
-              <>
-                <Ionicons name="checkmark" size={20} color={COLORS.white} />
-                <Text style={styles.saveButtonText}>Lưu</Text>
-              </>
-            )}
-          </TouchableOpacity>
-
+          {/* Delete Button at the very bottom */}
           {album && (
-            <TouchableOpacity
-              style={[styles.actionButton, styles.deleteButton]}
-              onPress={handleDelete}
-              disabled={loading}
+            <TouchableOpacity 
+              style={styles.finalDeleteBtn}
+              onPress={() => Alert.alert('Xác nhận', 'Bạn muốn xóa vĩnh viễn album này?', [
+                { text: 'Hủy', style: 'cancel' },
+                { 
+                  text: 'Xóa', 
+                  style: 'destructive', 
+                  onPress: async () => {
+                    try {
+                      await adminService.deleteAlbum(album.album_id);
+                      navigation.goBack();
+                    } catch (e) { Alert.alert('Lỗi', 'Không thể xóa album'); }
+                  } 
+                }
+              ])}
             >
-              <Ionicons name="trash" size={20} color={COLORS.white} />
-              <Text style={styles.deleteButtonText}>Xóa album</Text>
+              <View style={styles.deleteDivider} />
+              <View style={styles.deleteContent}>
+                <Ionicons name="trash-outline" size={20} color={COLORS.error} />
+                <Text style={styles.deleteBtnText}>XÓA VĨNH VIỄN ALBUM NÀY</Text>
+              </View>
             </TouchableOpacity>
           )}
-        </View>
-      </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
       <MiniPlayer bottomOffset={0} />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 100, // Space for MiniPlayer
-  },
+  container: { flex: 1 },
   header: {
+    backgroundColor: COLORS.backgroundSecondary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 60,
-    paddingHorizontal: SIZES.padding,
+    paddingHorizontal: 16,
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: COLORS.divider,
   },
-  backButton: {
-    width: 40,
-    height: 40,
+  backBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+  headerTitle: { fontSize: 14, fontWeight: '900', color: '#FFF', letterSpacing: 1.2 },
+  saveBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10, backgroundColor: COLORS.surface },
+  saveBtnText: { color: COLORS.primary, fontWeight: 'bold' },
+  content: { padding: 20 },
+  coverSection: { flexDirection: 'row', gap: 20, marginBottom: 32, alignItems: 'center' },
+  coverPreview: { position: 'relative' },
+  coverImg: { width: 100, height: 100, borderRadius: 20, backgroundColor: COLORS.surface },
+  coverBadge: { position: 'absolute', bottom: -5, right: -5, width: 28, height: 28, borderRadius: 14, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center', borderWidth: 3, borderColor: COLORS.background },
+  coverInputBox: { flex: 1 },
+  formCard: { backgroundColor: COLORS.surface, borderRadius: 24, padding: 20, borderWidth: 1, borderColor: COLORS.divider },
+  field: { marginBottom: 20 },
+  labelRow: { flexDirection: 'row', marginBottom: 8 },
+  labelText: { fontSize: 13, fontWeight: 'bold', color: COLORS.textSecondary },
+  input: { backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 12, padding: 14, color: '#FFF', borderSize: 1, borderColor: COLORS.divider },
+  selector: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 12, padding: 14, borderSize: 1, borderColor: COLORS.divider },
+  selectorText: { color: '#FFF', fontSize: 14 },
+  dropdown: { backgroundColor: COLORS.backgroundSecondary, borderRadius: 12, marginTop: 8, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.divider },
+  dropItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderBottomWidth: 1, borderBottomColor: COLORS.divider },
+  dropText: { color: COLORS.textSecondary, fontSize: 13 },
+  premiumSwitchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: COLORS.divider, marginBottom: 20 },
+  premiumLabel: { fontSize: 15, fontWeight: 'bold', color: '#FFF' },
+  premiumSub: { fontSize: 12, color: COLORS.textDisabled, marginTop: 2 },
+  switch: { width: 50, height: 28, borderRadius: 14, backgroundColor: COLORS.divider, padding: 2 },
+  switchOn: { backgroundColor: COLORS.primary },
+  switchThumb: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#FFF' },
+  switchThumbOn: { alignSelf: 'flex-end' },
+  deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 32, gap: 8 },
+  deleteBtnText: { color: COLORS.error, fontWeight: 'bold' },
+  sectionHeaderRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    marginTop: 40, 
+    marginBottom: 20 
+  },
+  premiumSectionTitle: { 
+    fontSize: 14, 
+    fontWeight: '900', 
+    color: '#FFF', 
+    letterSpacing: 1.5 
+  },
+  premiumSectionSub: { 
+    fontSize: 11, 
+    color: COLORS.textDisabled, 
+    marginTop: 2 
+  },
+  premiumAddBtn: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: COLORS.primary, 
+    paddingHorizontal: 12, 
+    paddingVertical: 6, 
+    borderRadius: 20, 
+    gap: 4 
+  },
+  premiumAddBtnText: { 
+    fontSize: 12, 
+    fontWeight: 'bold', 
+    color: '#000' 
+  },
+  premiumSongList: { 
+    backgroundColor: 'rgba(255,255,255,0.03)', 
+    borderRadius: 24, 
+    padding: 12, 
+    borderWidth: 1, 
+    borderColor: 'rgba(255,255,255,0.05)' 
+  },
+  premiumSongItem: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    padding: 12, 
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderRadius: 16,
+    marginBottom: 8,
+    borderWidth: 1, 
+    borderColor: 'transparent'
+  },
+  songRankBox: { 
+    width: 24, 
+    alignItems: 'center' 
+  },
+  songRankText: { 
+    fontSize: 10, 
+    color: COLORS.textDisabled, 
+    fontWeight: '900' 
+  },
+  songImageWrapper: {
+    position: 'relative',
+    marginLeft: 8,
+  },
+  premiumSongCover: { 
+    width: 48, 
+    height: 48, 
+    borderRadius: 12, 
+    backgroundColor: COLORS.surface 
+  },
+  miniPremiumBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: COLORS.primary,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: COLORS.surface,
   },
-  title: {
-    color: COLORS.text,
-    fontSize: SIZES.lg,
-    fontWeight: '600',
-    flex: 1,
-    textAlign: 'center',
+  premiumSongBody: { 
+    flex: 1, 
+    paddingHorizontal: 16 
   },
-  placeholder: {
-    width: 40,
+  premiumSongTitle: { 
+    color: '#FFF', 
+    fontSize: 14, 
+    fontWeight: 'bold', 
+    marginBottom: 6 
   },
-  content: {
-    padding: SIZES.padding,
+  premiumMetaRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 12 
   },
-  coverSection: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    color: COLORS.text,
-    fontSize: SIZES.md,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  coverContainer: {
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  coverImage: {
-    width: 150,
-    height: 150,
-    borderRadius: 8,
-  },
-  coverPlaceholder: {
-    width: 150,
-    height: 150,
-    borderRadius: 8,
-    backgroundColor: COLORS.primary + '20',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  coverPlaceholderText: {
-    color: COLORS.textSecondary,
-    fontSize: SIZES.sm,
-    marginTop: 8,
-  },
-  inputSection: {
-    marginBottom: 24,
-  },
-  input: {
-    backgroundColor: COLORS.surface,
-    borderRadius: SIZES.borderRadius,
-    padding: 16,
-    color: COLORS.text,
-    fontSize: SIZES.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  artistSelector: {
+  metaBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: COLORS.surface,
-    borderRadius: SIZES.borderRadius,
-    padding: 16,
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  metaBadgeText: { 
+    color: COLORS.textSecondary, 
+    fontSize: 10,
+    fontWeight: '600'
+  },
+  editActionCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.primary + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  premiumEmptyState: {
+    marginTop: 20,
+    borderRadius: 24,
+    overflow: 'hidden',
+  },
+  emptyGradient: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  premiumEmptyText: {
+    color: COLORS.textDisabled,
+    fontSize: 13,
+    marginTop: 12,
+    fontWeight: '500',
+  },
+  emptyAddBtn: {
+    marginTop: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: 8,
+    borderColor: COLORS.primary,
   },
-  artistSelectorText: {
-    color: COLORS.text,
-    fontSize: SIZES.md,
-  },
-  artistList: {
-    maxHeight: 200,
-    backgroundColor: COLORS.surface,
-    borderRadius: SIZES.borderRadius,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  artistItem: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  artistItemSelected: {
-    backgroundColor: COLORS.primary + '20',
-  },
-  artistItemText: {
-    color: COLORS.text,
-    fontSize: SIZES.md,
-  },
-  artistItemTextSelected: {
+  emptyAddBtnText: {
     color: COLORS.primary,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: 'bold',
   },
-  actionsContainer: {
-    gap: 12,
-    marginTop: 32,
-    marginBottom: 32,
+  integratedSongsContainer: {
+    marginTop: 10,
   },
-  actionButton: {
+  separator: {
+    height: 1,
+    backgroundColor: COLORS.divider,
+    marginHorizontal: -20,
+    marginTop: 12,
+  },
+  finalDeleteBtn: {
+    marginTop: 20,
+    marginBottom: 40,
+    paddingHorizontal: 20,
+  },
+  deleteDivider: {
+    height: 1,
+    backgroundColor: COLORS.error + '25',
+    marginBottom: 24,
+  },
+  deleteContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 16,
-    borderRadius: SIZES.borderRadius,
-    gap: 8,
-  },
-  saveButton: {
-    backgroundColor: COLORS.primary,
-  },
-  saveButtonText: {
-    color: COLORS.white,
-    fontSize: SIZES.md,
-    fontWeight: '600',
-  },
-  deleteButton: {
-    backgroundColor: COLORS.error,
-  },
-  deleteButtonText: {
-    color: COLORS.white,
-    fontSize: SIZES.md,
-    fontWeight: '600',
-  },
-  switchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  switch: {
-    width: 50,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: COLORS.border,
-    padding: 2,
-  },
-  switchActive: {
-    backgroundColor: COLORS.primary,
-  },
-  switchThumb: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: COLORS.white,
-  },
-  switchThumbActive: {
-    transform: [{ translateX: 20 }],
-  },
-  helperText: {
-    color: COLORS.textSecondary,
-    fontSize: SIZES.sm,
-    marginTop: 4,
+    gap: 10,
+    backgroundColor: COLORS.error + '10',
+    padding: 18,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.error + '20',
   },
 });
 

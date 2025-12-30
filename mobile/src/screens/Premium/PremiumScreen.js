@@ -14,8 +14,10 @@ import { premiumService } from '../../services/premiumService';
 import { walletService } from '../../services/walletService';
 import { useAlert } from '../../context/AlertContext';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const PremiumScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [premiumStatus, setPremiumStatus] = useState(null);
   const [balance, setBalance] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -207,7 +209,7 @@ const PremiumScreen = ({ navigation }) => {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 20) }]}>
         <Ionicons name="star" size={80} color="#FFD700" />
         <Text style={styles.title}>Premium</Text>
         <Text style={styles.subtitle}>
@@ -314,13 +316,7 @@ const PremiumScreen = ({ navigation }) => {
           <Text style={styles.purchaseHistoryText}>Lịch sử mua hàng</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.purchasedSongsButton}
-          onPress={() => navigation.navigate('PurchasedSongs')}
-        >
-          <Ionicons name="musical-note" size={20} color={COLORS.primary} />
-          <Text style={styles.purchasedSongsText}>Bài hát đã mua</Text>
-        </TouchableOpacity>
+
 
         <TouchableOpacity
           style={styles.membershipButton}
@@ -347,7 +343,6 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    paddingTop: 40,
     paddingBottom: 20,
   },
   title: {

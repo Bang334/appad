@@ -103,6 +103,9 @@ const PremiumAccessModal = ({ visible, song, onClose, onPurchaseSong, onSubscrib
   };
 
   const handleConfirmPurchase = async () => {
+    // Prevent double-click
+    if (loadingConfirm) return;
+    
     setLoadingConfirm(true);
     try {
       if (confirmType === 'song') {
@@ -110,7 +113,20 @@ const PremiumAccessModal = ({ visible, song, onClose, onPurchaseSong, onSubscrib
         if (response.success) {
           setShowConfirmModal(false);
           onClose();
-          onPurchaseSong && onPurchaseSong();
+          
+          // Try to refresh balance, but don't fail if it errors
+          try {
+            await fetchBalance();
+          } catch (balanceError) {
+            console.warn('Warning: Failed to refresh balance after purchase:', balanceError);
+          }
+          
+          // Call onPurchaseSong callback to refresh data, but don't fail if it errors
+          try {
+            onPurchaseSong && onPurchaseSong();
+          } catch (callbackError) {
+            console.warn('Warning: onPurchaseSong callback failed:', callbackError);
+          }
           
           const songIndex = songList.length > 0 
             ? songList.findIndex(s => s.song_id === song.song_id)
@@ -197,8 +213,41 @@ const PremiumAccessModal = ({ visible, song, onClose, onPurchaseSong, onSubscrib
         }
       }
     } catch (error) {
-      console.error(`Error in ${confirmType}:`, error);
-      Alert.alert('Lỗi', 'Đã có lỗi xảy ra. Vui lòng thử lại.');
+      // Check if already purchased (not a real error)
+      if (error.response?.status === 400 && error.response?.data?.message?.includes('already purchased')) {
+        // Already purchased - treat as success
+        console.log('Song already purchased, treating as success');
+        setShowConfirmModal(false);
+        onClose();
+        
+        // Try to refresh balance and call callback
+        try {
+          await fetchBalance();
+        } catch (balanceError) {
+          console.warn('Warning: Failed to refresh balance:', balanceError);
+        }
+        
+        try {
+          onPurchaseSong && onPurchaseSong();
+        } catch (callbackError) {
+          console.warn('Warning: onPurchaseSong callback failed:', callbackError);
+        }
+        
+        Alert.alert('Thông báo', 'Bạn đã sở hữu bài hát này rồi!');
+      } else if (error.response?.status === 400 && error.response?.data?.success === true) {
+        // Purchase succeeded but some update APIs failed
+        console.warn(`Purchase succeeded but some update APIs failed for ${confirmType}:`, error);
+        if (confirmType === 'song') {
+          setShowConfirmModal(false);
+          onClose();
+          Alert.alert('Thành công', 'Bạn đã mua bài hát thành công! (Một số thông tin có thể chưa được cập nhật)');
+        }
+      } else {
+        // Actual error
+        console.error(`Error in ${confirmType}:`, error);
+        const errorMessage = error.response?.data?.message || 'Đã có lỗi xảy ra. Vui lòng thử lại.';
+        Alert.alert('Lỗi', errorMessage);
+      }
     } finally {
       setLoadingConfirm(false);
     }

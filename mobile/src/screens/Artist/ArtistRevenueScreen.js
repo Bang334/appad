@@ -10,16 +10,20 @@ import {
   ScrollView,
   Dimensions,
   Image,
+  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SIZES } from '../../config/theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import { COLORS, SIZES, SHADOWS } from '../../config/theme';
 import { artistService } from '../../services/artistService';
 import { useFocusEffect } from '@react-navigation/native';
 import MiniPlayer from '../../components/Player/MiniPlayer';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-const ArtistRevenueScreen = ({ route }) => {
+const ArtistRevenueScreen = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { artistId } = route.params;
   const [activeTab, setActiveTab] = useState('overview'); // overview, topSongs, history
   const [timeFilter, setTimeFilter] = useState('30d'); // 7d, 30d, 3m, 1y, all
@@ -31,7 +35,6 @@ const ArtistRevenueScreen = ({ route }) => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      
       // Fetch stats
       const statsResponse = await artistService.getRevenueStats(artistId, {
         period: timeFilter,
@@ -43,7 +46,6 @@ const ArtistRevenueScreen = ({ route }) => {
       // Fetch history
       const historyResponse = await artistService.getRevenueHistory(artistId, {
         limit: 100,
-        share_type: undefined,
       });
       if (historyResponse.success) {
         setRevenue(historyResponse.data);
@@ -80,6 +82,21 @@ const ArtistRevenueScreen = ({ route }) => {
     });
   };
 
+  const getTypeInfo = (type) => {
+    switch (type) {
+      case 'direct_purchase':
+        return { icon: 'journal', color: COLORS.info, label: 'Mua bài hát', bg: COLORS.info + '20' };
+      case 'album_purchase':
+        return { icon: 'disc', color: COLORS.secondary, label: 'Mua album', bg: COLORS.secondary + '20' };
+      case 'premium_stream':
+        return { icon: 'flash', color: COLORS.warning, label: 'Premium', bg: COLORS.warning + '20' };
+      case 'artist_membership':
+        return { icon: 'people', color: COLORS.primary, label: 'Đăng ký hội viên', bg: COLORS.primary + '20' };
+      default:
+        return { icon: 'wallet', color: COLORS.primary, label: 'Khác', bg: COLORS.primary + '20' };
+    }
+  };
+
   // Render Overview Tab
   const renderOverview = () => {
     if (!stats || !stats.overview) return null;
@@ -88,54 +105,100 @@ const ArtistRevenueScreen = ({ route }) => {
     const revenueByType = stats.revenue_by_type || [];
 
     return (
-      <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false}>
-        {/* Summary Cards */}
-        <View style={styles.summaryContainer}>
-          <View style={styles.summaryCard}>
-            <Ionicons name="cash" size={24} color={COLORS.primary} />
-            <Text style={styles.summaryLabel}>Tổng doanh thu</Text>
-            <Text style={styles.summaryValue}>{formatCurrency(overview.total_revenue)}</Text>
+      <ScrollView 
+        style={styles.tabContent} 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.overviewContent}
+      >
+        {/* Main Revenue Card */}
+        <LinearGradient
+          colors={COLORS.gradient.primary}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.mainRevenueCard}
+        >
+          <View style={styles.mainRevenueHeader}>
+            <Text style={styles.mainRevenueLabel}>TỔNG THU NHẬP ƯỚC TÍNH</Text>
+            <TouchableOpacity style={styles.infoIcon}>
+              <Ionicons name="information-circle-outline" size={20} color="#FFF" />
+            </TouchableOpacity>
           </View>
-
-          <View style={styles.summaryCard}>
-            <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
-            <Text style={styles.summaryLabel}>Đã nhận</Text>
-            <Text style={styles.summaryValue}>{formatCurrency(overview.paid_revenue)}</Text>
-          </View>
-
-          <View style={styles.summaryCard}>
-            <Ionicons name="time" size={24} color="#FFA726" />
-            <Text style={styles.summaryLabel}>Chờ nhận</Text>
-            <Text style={styles.summaryValue}>{formatCurrency(overview.unpaid_revenue)}</Text>
-          </View>
-
-          <View style={styles.summaryCard}>
-            <Ionicons name="receipt" size={24} color={COLORS.info} />
-            <Text style={styles.summaryLabel}>Giao dịch</Text>
-            <Text style={styles.summaryValue}>{overview.total_transactions || 0}</Text>
-          </View>
-        </View>
-
-        {/* Revenue by Type */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Doanh thu theo loại</Text>
-          {revenueByType.map((item, index) => (
-            <View key={index} style={styles.typeCard}>
-              <View style={styles.typeHeader}>
-                <Text style={styles.typeLabel}>
-                  {item.share_type === 'direct_purchase' ? 'Mua bài hát' : 
-                   item.share_type === 'album_purchase' ? 'Mua album' : 'Premium Stream'}
-                </Text>
-                <Text style={styles.typeValue}>{formatCurrency(item.total_revenue)}</Text>
-              </View>
-              <View style={styles.typeDetails}>
-                <Text style={styles.typeDetailText}>
-                  {item.count} giao dịch • {formatCurrency(item.total_sales)} tổng bán
-                </Text>
-              </View>
+          <Text style={styles.mainRevenueValue}>
+            {formatCurrency(overview.total_revenue).replace('đ', '')}
+            <Text style={styles.mainCurrencySymbol}>₫</Text>
+          </Text>
+          <View style={styles.mainRevenueFooter}>
+            <View style={styles.footerStat}>
+              <Ionicons name="trending-up" size={16} color="rgba(255,255,255,0.8)" />
+              <Text style={styles.footerStatText}>+12.5% so với kỳ trước</Text>
             </View>
-          ))}
+          </View>
+        </LinearGradient>
+
+        {/* Secondary Stats Grid */}
+        <View style={styles.statsGrid}>
+          <View style={styles.statBox}>
+            <View style={[styles.statIconBg, { backgroundColor: COLORS.success + '20' }]}>
+              <Ionicons name="checkmark-done" size={20} color={COLORS.success} />
+            </View>
+            <Text style={styles.statLabel}>Đã nhận</Text>
+            <Text style={[styles.statValue, { color: COLORS.success }]}>
+              {formatCurrency(overview.paid_revenue)}
+            </Text>
+          </View>
+
+          <View style={styles.statBox}>
+            <View style={[styles.statIconBg, { backgroundColor: COLORS.warning + '20' }]}>
+              <Ionicons name="time" size={20} color={COLORS.warning} />
+            </View>
+            <Text style={styles.statLabel}>Chờ duyệt</Text>
+            <Text style={[styles.statValue, { color: COLORS.warning }]}>
+              {formatCurrency(overview.unpaid_revenue)}
+            </Text>
+          </View>
         </View>
+
+        {/* Revenue by Type Section */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Phân tích nguồn thu</Text>
+        </View>
+        
+        {revenueByType.length > 0 ? (
+          revenueByType.map((item, index) => {
+            const typeInfo = getTypeInfo(item.share_type);
+            return (
+              <View key={index} style={styles.analysisCard}>
+                <View style={[styles.analysisIconContainer, { backgroundColor: typeInfo.bg }]}>
+                  <Ionicons name={typeInfo.icon} size={22} color={typeInfo.color} />
+                </View>
+                <View style={styles.analysisInfo}>
+                  <Text style={styles.analysisLabel}>{typeInfo.label}</Text>
+                  <Text style={styles.analysisSublabel}>{item.count} giao dịch thành công</Text>
+                </View>
+                <View style={styles.analysisValueContainer}>
+                  <Text style={styles.analysisValue}>{formatCurrency(item.total_revenue)}</Text>
+                  <View style={styles.progressBarBg}>
+                    <View 
+                      style={[
+                        styles.progressBarFill, 
+                        { 
+                          backgroundColor: typeInfo.color,
+                          width: `${Math.min((item.total_revenue / (overview.total_revenue || 1)) * 100, 100)}%` 
+                        }
+                      ]} 
+                    />
+                  </View>
+                </View>
+              </View>
+            );
+          })
+        ) : (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyCardText}>Chưa có dữ liệu phân tích trong giai đoạn này</Text>
+          </View>
+        )}
+        
+        <View style={{ height: 100 }} />
       </ScrollView>
     );
   };
@@ -145,8 +208,14 @@ const ArtistRevenueScreen = ({ route }) => {
     if (!stats || !stats.top_songs || stats.top_songs.length === 0) {
       return (
         <View style={styles.emptyContainer}>
-          <Ionicons name="musical-note-outline" size={80} color={COLORS.textSecondary} />
-          <Text style={styles.emptyText}>Chưa có bài hát được mua</Text>
+          <LinearGradient
+            colors={[COLORS.surface, COLORS.surfaceLight]}
+            style={styles.emptyIconCircle}
+          >
+            <Ionicons name="musical-notes-outline" size={50} color={COLORS.textDisabled} />
+          </LinearGradient>
+          <Text style={styles.emptyTitle}>Chưa có doanh thu bài hát</Text>
+          <Text style={styles.emptySubtitle}>Các bài hát có lượt mua hoặc lượt nghe cao nhất sẽ xuất hiện ở đây.</Text>
         </View>
       );
     }
@@ -155,37 +224,48 @@ const ArtistRevenueScreen = ({ route }) => {
       <FlatList
         data={stats.top_songs}
         renderItem={({ item, index }) => (
-          <View style={styles.topSongItem}>
-            <View style={styles.rankBadge}>
-              <Text style={styles.rankText}>#{index + 1}</Text>
+          <View style={styles.topSongCard}>
+            <View style={styles.rankContainer}>
+              <Text style={[styles.rankNumber, index < 3 && styles.topRankNumber]}>
+                {index + 1}
+              </Text>
+              {index < 3 && (
+                <View style={[styles.rankIndictor, { backgroundColor: index === 0 ? '#FFD700' : index === 1 ? '#C0C0C0' : '#CD7F32' }]} />
+              )}
             </View>
             
-            {item.cover_url ? (
-              <Image source={{ uri: item.cover_url }} style={styles.songCover} />
-            ) : (
-              <View style={[styles.songCover, styles.songCoverPlaceholder]}>
-                <Ionicons name="musical-note" size={24} color={COLORS.textSecondary} />
-              </View>
-            )}
+            <View style={styles.songCoverContainer}>
+              {item.cover_url ? (
+                <Image source={{ uri: item.cover_url }} style={styles.songCover} />
+              ) : (
+                <View style={[styles.songCover, styles.songCoverPlaceholder]}>
+                  <Ionicons name="musical-note" size={24} color={COLORS.textDisabled} />
+                </View>
+              )}
+            </View>
 
-            <View style={styles.songInfo}>
-              <Text style={styles.songTitle} numberOfLines={1}>
-                {item.song_title || 'Unknown'}
+            <View style={styles.songMainInfo}>
+              <Text style={styles.songTitleText} numberOfLines={1}>
+                {item.song_title || 'Bài hát không tên'}
               </Text>
-              <View style={styles.songStats}>
-                <Text style={styles.songStatText}>
-                  <Ionicons name="cart" size={14} color={COLORS.primary} /> {item.purchase_count} lượt mua
-                </Text>
-                <Text style={styles.songStatText}>
-                  <Ionicons name="cash" size={14} color="#4CAF50" /> {formatCurrency(item.total_revenue)}
-                </Text>
-              </View>
+              <Text style={styles.songSubtitleText}>
+                {item.purchase_count} lượt mua • {item.stream_count || 0} streams
+              </Text>
+            </View>
+
+            <View style={styles.songRevenueContainer}>
+              <Text style={styles.songRevenueValue}>
+                {formatCurrency(item.total_revenue)}
+              </Text>
             </View>
           </View>
         )}
         keyExtractor={(item, index) => `top-song-${item.song_id || index}`}
         contentContainerStyle={styles.listContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
+        }
       />
     );
   };
@@ -195,8 +275,11 @@ const ArtistRevenueScreen = ({ route }) => {
     if (revenue.length === 0) {
       return (
         <View style={styles.emptyContainer}>
-          <Ionicons name="receipt-outline" size={80} color={COLORS.textSecondary} />
-          <Text style={styles.emptyText}>Chưa có lịch sử doanh thu</Text>
+          <View style={styles.emptyIconCircle}>
+            <Ionicons name="receipt-outline" size={50} color={COLORS.textDisabled} />
+          </View>
+          <Text style={styles.emptyTitle}>Lịch sử trống</Text>
+          <Text style={styles.emptySubtitle}>Bạn chưa có giao dịch doanh thu nào được ghi nhận.</Text>
         </View>
       );
     }
@@ -207,138 +290,120 @@ const ArtistRevenueScreen = ({ route }) => {
         renderItem={renderRevenueItem}
         keyExtractor={(item) => `revenue-${item.sharing_id}`}
         contentContainerStyle={styles.listContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
+        }
       />
     );
   };
 
   const renderRevenueItem = ({ item }) => {
     const typeInfo = getTypeInfo(item.share_type);
+    const isPaid = item.is_paid_to_artist === 1;
 
     return (
-      <View style={styles.revenueItem}>
-        {/* Song Avatar */}
-        {item.cover_url ? (
-          <Image source={{ uri: item.cover_url }} style={styles.songAvatar} />
-        ) : (
-          <View style={[styles.songAvatar, styles.songAvatarPlaceholder]}>
-            <Ionicons name="musical-note" size={24} color={COLORS.textSecondary} />
+      <TouchableOpacity style={styles.historyItem}>
+        <View style={styles.historyHeader}>
+          <View style={[styles.historyIcon, { backgroundColor: typeInfo.bg }]}>
+            <Ionicons name={typeInfo.icon} size={18} color={typeInfo.color} />
           </View>
-        )}
-
-        <View style={styles.revenueInfo}>
-          <View style={styles.revenueHeader}>
-            <Text style={styles.revenueType}>{typeInfo.label}</Text>
-            {item.is_paid_to_artist === 1 && (
-              <View style={styles.paidBadge}>
-                <Ionicons name="checkmark-circle" size={14} color="#4CAF50" />
-                <Text style={styles.paidText}>Đã trả</Text>
-              </View>
-            )}
-            {item.is_paid_to_artist === 0 && (
-              <View style={[styles.paidBadge, { backgroundColor: '#FFF3E0' }]}>
-                <Ionicons name="time" size={14} color="#FFA726" />
-                <Text style={[styles.paidText, { color: '#FFA726' }]}>Chờ</Text>
-              </View>
-            )}
+          <View style={styles.historyTypeInfo}>
+            <Text style={styles.historyTypeText}>{typeInfo.label}</Text>
+            <Text style={styles.historyDateText}>{formatDate(item.created_at)}</Text>
           </View>
-
-          <Text style={styles.songTitle} numberOfLines={1}>
-            {item.item_title || item.song_title || item.album_title || 'Unknown'}
-          </Text>
-
-          {item.username && (
-            <Text style={styles.username}>User: {item.username}</Text>
-          )}
-
-          <View style={styles.revenueDetails}>
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Tổng:</Text>
-              <Text style={styles.detailValue}>{formatCurrency(item.total_amount)}</Text>
-            </View>
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Bạn nhận:</Text>
-              <Text style={[styles.detailValue, { color: COLORS.primary, fontWeight: 'bold' }]}>
-                {formatCurrency(item.artist_share)}
-              </Text>
-            </View>
+          <View style={[styles.statusBadge, { backgroundColor: isPaid ? COLORS.success + '15' : COLORS.warning + '15' }]}>
+            <View style={[styles.statusDot, { backgroundColor: isPaid ? COLORS.success : COLORS.warning }]} />
+            <Text style={[styles.statusText, { color: isPaid ? COLORS.success : COLORS.warning }]}>
+              {isPaid ? 'Đã thanh toán' : 'Đang treo'}
+            </Text>
           </View>
-
-          {item.stream_count > 0 && (
-            <Text style={styles.streamCount}>{item.stream_count} lượt nghe</Text>
-          )}
-
-          {item.calculation_period && (
-            <Text style={styles.period}>Kỳ: {item.calculation_period}</Text>
-          )}
-
-          <Text style={styles.date}>{formatDate(item.created_at)}</Text>
         </View>
-      </View>
+
+        <View style={styles.historyDivider} />
+
+        <View style={styles.historyContent}>
+          <View style={styles.historyItemImage}>
+            {item.cover_url ? (
+              <Image source={{ uri: item.cover_url }} style={styles.historyThumb} />
+            ) : (
+              <View style={[styles.historyThumb, styles.songCoverPlaceholder]}>
+                <Ionicons name="musical-note" size={20} color={COLORS.textDisabled} />
+              </View>
+            )}
+          </View>
+          <View style={styles.historyItemDetails}>
+            <Text style={styles.historyItemTitle} numberOfLines={1}>
+              {item.share_type === 'artist_membership' ? 'Hội viên Artist' : (item.item_title || item.song_title || item.album_title || 'Tác phẩm')}
+            </Text>
+            {item.username && (
+              <Text style={styles.historyItemUser}>Từ: {item.username}</Text>
+            )}
+          </View>
+          <View style={styles.historyAmountContainer}>
+            <Text style={styles.historyAmountLabel}>Bạn nhận</Text>
+            <Text style={styles.historyAmountValue}>
+              +{formatCurrency(item.artist_share)}
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
     );
   };
-
-  const getTypeInfo = (type) => {
-    switch (type) {
-      case 'direct_purchase':
-        return { icon: 'cart', color: '#2196F3', label: 'Mua bài hát' };
-      case 'album_purchase':
-        return { icon: 'disc', color: '#9C27B0', label: 'Mua album' };
-      case 'premium_stream':
-        return { icon: 'star', color: '#FFD700', label: 'Premium Stream' };
-      default:
-        return { icon: 'cash', color: COLORS.primary, label: type };
-    }
-  };
-
-  if (loading && !stats) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </View>
-    );
-  }
 
   return (
     <View style={styles.container}>
-      {/* Time Filter - Horizontal Scroll */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.timeFilterContainer}
-        contentContainerStyle={styles.timeFilterContent}
-      >
-        {['7d', '30d', '3m', '1y', 'all'].map((period) => (
-          <TouchableOpacity
-            key={period}
-            style={[styles.timeFilterTab, timeFilter === period && styles.timeFilterTabActive]}
-            onPress={() => setTimeFilter(period)}
-          >
-            <Text style={[styles.timeFilterText, timeFilter === period && styles.timeFilterTextActive]}>
-              {period === '7d' ? '7 ngày' : period === '30d' ? '30 ngày' : period === '3m' ? '3 tháng' : period === '1y' ? '1 năm' : 'Tất cả'}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <StatusBar barStyle="light-content" />
+      
+      {/* Header Section */}
+      <View style={[styles.header, { paddingTop: 10 }]}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.filterScroll}
+          contentContainerStyle={styles.filterContent}
+        >
+          {[
+            { id: '7d', label: '7 ngày' },
+            { id: '30d', label: '30 ngày' },
+            { id: '3m', label: '3 tháng' },
+            { id: '1y', label: '1 năm' },
+            { id: 'all', label: 'Tất cả' },
+          ].map((item) => (
+            <TouchableOpacity
+              key={item.id}
+              style={[styles.filterChip, timeFilter === item.id && styles.filterChipActive]}
+              onPress={() => setTimeFilter(item.id)}
+            >
+              <Text style={[styles.filterChipText, timeFilter === item.id && styles.filterChipTextActive]}>
+                {item.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
 
-      {/* Tabs */}
-      <View style={styles.tabContainer}>
+      {/* Main Tab Switcher */}
+      <View style={styles.tabBar}>
         {[
           { key: 'overview', label: 'Tổng quan', icon: 'stats-chart' },
-          { key: 'topSongs', label: 'Top bài hát', icon: 'musical-note' },
-          { key: 'history', label: 'Lịch sử', icon: 'receipt' },
+          { key: 'topSongs', label: 'Top tác phẩm', icon: 'medal' },
+          { key: 'history', label: 'Lịch sử giao dịch', icon: 'list' },
         ].map((tab) => (
           <TouchableOpacity
             key={tab.key}
-            style={[styles.tab, activeTab === tab.key && styles.tabActive]}
+            style={styles.tabItem}
             onPress={() => setActiveTab(tab.key)}
           >
-            <Ionicons
-              name={tab.icon}
-              size={18}
-              color={activeTab === tab.key ? '#FFF' : COLORS.textSecondary}
-            />
-            <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>
+            <View style={styles.tabIconContainer}>
+              <Ionicons
+                name={tab.icon}
+                size={22}
+                color={activeTab === tab.key ? COLORS.primary : COLORS.textDisabled}
+              />
+              {activeTab === tab.key && <View style={styles.tabIndicator} />}
+            </View>
+            <Text style={[styles.tabLabel, activeTab === tab.key && styles.tabLabelActive]}>
               {tab.label}
             </Text>
           </TouchableOpacity>
@@ -346,9 +411,20 @@ const ArtistRevenueScreen = ({ route }) => {
       </View>
 
       {/* Tab Content */}
-      {activeTab === 'overview' && renderOverview()}
-      {activeTab === 'topSongs' && renderTopSongs()}
-      {activeTab === 'history' && renderHistory()}
+      <View style={styles.contentContainer}>
+        {loading && !refreshing ? (
+          <View style={styles.loadingWrapper}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+            <Text style={styles.loadingText}>Đang tải dữ liệu tài chính...</Text>
+          </View>
+        ) : (
+          <>
+            {activeTab === 'overview' && renderOverview()}
+            {activeTab === 'topSongs' && renderTopSongs()}
+            {activeTab === 'history' && renderHistory()}
+          </>
+        )}
+      </View>
 
       <MiniPlayer bottomOffset={0} />
     </View>
@@ -360,297 +436,458 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
+  header: {
+    backgroundColor: COLORS.backgroundSecondary,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.divider,
+    paddingBottom: 15,
   },
-  timeFilterContainer: {
+  headerTop: {
     flexDirection: 'row',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 8,
-    backgroundColor: COLORS.surface,
-    maxHeight: 50,
-  },
-  timeFilterTab: {
-    paddingVertical: 4,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    backgroundColor: COLORS.card,
-    marginRight: 8,
-    height: 34,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    marginBottom: 15,
   },
-  timeFilterTabActive: {
-    backgroundColor: COLORS.primary,
-  },
-  timeFilterText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.text,
-  },
-  timeFilterTextActive: {
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
     color: '#FFF',
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.surface,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    gap: 4,
-  },
-  tab: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
+    textAlign: 'center',
+  },
+  backButton: {
+    width: 40,
+    height: 40,
     justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-    gap: 6,
+    alignItems: 'flex-start',
   },
-  tabActive: {
-    backgroundColor: COLORS.primary,
+  settingButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'flex-end',
   },
-  tabText: {
-    fontSize: 12,
+  filterScroll: {
+    maxHeight: 40,
+  },
+  filterContent: {
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  filterChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: COLORS.surfaceLight,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  filterChipActive: {
+    backgroundColor: COLORS.primary + '30',
+    borderColor: COLORS.primary,
+  },
+  filterChipText: {
+    fontSize: 13,
     fontWeight: '600',
     color: COLORS.textSecondary,
   },
-  tabTextActive: {
-    color: '#FFF',
+  filterChipTextActive: {
+    color: COLORS.primary,
+  },
+  tabBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: COLORS.surface,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.divider,
+  },
+  tabItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  tabIconContainer: {
+    marginBottom: 6,
+    alignItems: 'center',
+    height: 26,
+    justifyContent: 'center',
+  },
+  tabIndicator: {
+    width: 15,
+    height: 3,
+    backgroundColor: COLORS.primary,
+    borderRadius: 2,
+    marginTop: 4,
+    position: 'absolute',
+    bottom: -8,
+  },
+  tabLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textDisabled,
+  },
+  tabLabelActive: {
+    color: COLORS.primary,
+  },
+  contentContainer: {
+    flex: 1,
+  },
+  loadingWrapper: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    color: COLORS.textSecondary,
+    fontSize: 14,
   },
   tabContent: {
     flex: 1,
   },
-  summaryContainer: {
+  overviewContent: {
+    padding: 16,
+  },
+  mainRevenueCard: {
+    borderRadius: 24,
+    padding: 24,
+    marginBottom: 20,
+    ...SHADOWS.large,
+  },
+  mainRevenueHeader: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    padding: 16,
-    gap: 12,
-  },
-  summaryCard: {
-    width: (SCREEN_WIDTH - 44) / 2,
-    backgroundColor: COLORS.card,
-    padding: 16,
-    borderRadius: 12,
+    justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 10,
   },
-  summaryLabel: {
+  mainRevenueLabel: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: 'rgba(255,255,255,0.7)',
+    letterSpacing: 1.5,
+  },
+  mainRevenueValue: {
+    fontSize: 36,
+    fontWeight: '900',
+    color: '#FFF',
+    marginVertical: 4,
+  },
+  mainCurrencySymbol: {
+    fontSize: 24,
+    fontWeight: '600',
+    marginRight: 4,
+  },
+  mainRevenueFooter: {
+    marginTop: 12,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.1)',
+  },
+  footerStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  footerStatText: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 24,
+  },
+  statBox: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.divider,
+  },
+  statIconBg: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  statLabel: {
     fontSize: 12,
     color: COLORS.textSecondary,
-    marginTop: 8,
     marginBottom: 4,
   },
-  summaryValue: {
+  statValue: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: COLORS.text,
   },
-  section: {
-    padding: 16,
-    paddingTop: 0,
+  sectionHeader: {
+    marginBottom: 16,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: 12,
+    color: '#FFF',
   },
-  typeCard: {
-    backgroundColor: COLORS.card,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  typeHeader: {
+  analysisCard: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    backgroundColor: COLORS.surface,
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: COLORS.divider,
   },
-  typeLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.text,
+  analysisIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
   },
-  typeValue: {
-    fontSize: 16,
+  analysisInfo: {
+    flex: 1,
+  },
+  analysisLabel: {
+    fontSize: 15,
     fontWeight: 'bold',
-    color: COLORS.primary,
+    color: '#FFF',
+    marginBottom: 2,
   },
-  typeDetails: {
-    flexDirection: 'row',
-  },
-  typeDetailText: {
+  analysisSublabel: {
     fontSize: 12,
     color: COLORS.textSecondary,
+  },
+  analysisValueContainer: {
+    alignItems: 'flex-end',
+    width: 120,
+  },
+  analysisValue: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#FFF',
+    marginBottom: 6,
+  },
+  progressBarBg: {
+    height: 6,
+    width: '100%',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 3,
   },
   listContent: {
     padding: 16,
     paddingBottom: 100,
   },
-  topSongItem: {
+  topSongCard: {
     flexDirection: 'row',
-    backgroundColor: COLORS.card,
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
     padding: 12,
-    borderRadius: 12,
+    borderRadius: 18,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: COLORS.divider,
+  },
+  rankContainer: {
+    width: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  rankNumber: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: COLORS.textDisabled,
+  },
+  topRankNumber: {
+    color: COLORS.primary,
+  },
+  rankIndictor: {
+    width: 12,
+    height: 3,
+    borderRadius: 2,
+    marginTop: 4,
+  },
+  songCoverContainer: {
+    marginRight: 12,
+  },
+  songCover: {
+    width: 54,
+    height: 54,
+    borderRadius: 12,
+  },
+  songCoverPlaceholder: {
+    backgroundColor: COLORS.surfaceLight,
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  rankBadge: {
+  songMainInfo: {
+    flex: 1,
+  },
+  songTitleText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFF',
+    marginBottom: 4,
+  },
+  songSubtitleText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+  },
+  songRevenueContainer: {
+    alignItems: 'flex-end',
+    paddingLeft: 8,
+  },
+  songRevenueValue: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: COLORS.primary,
+  },
+  historyItem: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: COLORS.divider,
+    overflow: 'hidden',
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+  },
+  historyIcon: {
     width: 32,
     height: 32,
-    borderRadius: 16,
-    backgroundColor: COLORS.primary,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
-  rankText: {
-    fontSize: 14,
+  historyTypeInfo: {
+    flex: 1,
+  },
+  historyTypeText: {
+    fontSize: 13,
     fontWeight: 'bold',
     color: '#FFF',
   },
-  songCover: {
-    width: 50,
-    height: 50,
-    borderRadius: 8,
-    marginRight: 12,
+  historyDateText: {
+    fontSize: 11,
+    color: COLORS.textDisabled,
   },
-  songCoverPlaceholder: {
-    backgroundColor: COLORS.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  songInfo: {
-    flex: 1,
-  },
-  songTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: 4,
-  },
-  songStats: {
-    flexDirection: 'row',
-    gap: 16,
-  },
-  songStatText: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-  },
-  revenueItem: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.card,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  songAvatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-    marginRight: 12,
-  },
-  songAvatarPlaceholder: {
-    backgroundColor: COLORS.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  revenueInfo: {
-    flex: 1,
-  },
-  revenueHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  revenueType: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.text,
-  },
-  paidBadge: {
+  statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E8F5E9',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: 8,
+    gap: 5,
   },
-  paidText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#4CAF50',
-    marginLeft: 4,
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
-  songTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: 4,
+  statusText: {
+    fontSize: 10,
+    fontWeight: 'bold',
   },
-  username: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginBottom: 8,
+  historyDivider: {
+    height: 1,
+    backgroundColor: COLORS.divider,
+    marginHorizontal: 14,
   },
-  revenueDetails: {
-    flexDirection: 'row',
-    gap: 16,
-    marginBottom: 6,
-  },
-  detailItem: {
+  historyContent: {
     flexDirection: 'row',
     alignItems: 'center',
+    padding: 14,
   },
-  detailLabel: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginRight: 4,
+  historyThumb: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    marginRight: 12,
   },
-  detailValue: {
+  historyItemDetails: {
+    flex: 1,
+  },
+  historyItemTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: COLORS.text,
+    color: '#FFF',
+    marginBottom: 2,
   },
-  streamCount: {
-    fontSize: 12,
-    color: COLORS.primary,
-    marginBottom: 4,
-  },
-  period: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginBottom: 4,
-  },
-  date: {
+  historyItemUser: {
     fontSize: 11,
     color: COLORS.textSecondary,
+  },
+  historyAmountContainer: {
+    alignItems: 'flex-end',
+  },
+  historyAmountLabel: {
+    fontSize: 10,
+    color: COLORS.textDisabled,
+    marginBottom: 2,
+  },
+  historyAmountValue: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: COLORS.success,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 32,
+    paddingHorizontal: 40,
   },
-  emptyText: {
-    fontSize: 16,
+  emptyIconCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: COLORS.divider,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFF',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  emptySubtitle: {
+    fontSize: 14,
     color: COLORS.textSecondary,
-    marginTop: 16,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  emptyCard: {
+    backgroundColor: COLORS.surface,
+    padding: 24,
+    borderRadius: 16,
+    alignItems: 'center',
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    borderColor: COLORS.textDisabled,
+  },
+  emptyCardText: {
+    color: COLORS.textDisabled,
+    fontSize: 14,
   },
 });
 

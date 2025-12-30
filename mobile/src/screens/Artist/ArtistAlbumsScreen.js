@@ -14,8 +14,10 @@ import { COLORS, SIZES } from '../../config/theme';
 import { artistService } from '../../services/artistService';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAlert } from '../../context/AlertContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const ArtistAlbumsScreen = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { artistId } = route.params;
   const [albums, setAlbums] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -127,7 +129,7 @@ const ArtistAlbumsScreen = ({ route, navigation }) => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top + 20, 60) }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
@@ -164,7 +166,8 @@ const ArtistAlbumsScreen = ({ route, navigation }) => {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
-          contentContainerStyle={styles.listContent}
+
+          contentContainerStyle={[styles.listContent, { paddingBottom: 100 + insets.bottom }]}
         />
       )}
     </View>
@@ -187,7 +190,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SIZES.padding,
-    paddingTop: 60,
     paddingBottom: 16,
     backgroundColor: COLORS.background,
   },

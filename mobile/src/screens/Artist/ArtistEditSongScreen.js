@@ -21,9 +21,11 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { COLORS, SIZES } from '../../config/theme';
 import { artistService } from '../../services/artistService';
 import { songService } from '../../services/songService';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAlert } from '../../context/AlertContext';
 
 const ArtistEditSongScreen = ({ navigation, route }) => {
+  const insets = useSafeAreaInsets();
   const { artistId, song } = route.params;
   const { showError, showSuccess } = useAlert();
   const [loading, setLoading] = useState(false);
@@ -304,7 +306,7 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top + 20, 60) }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
@@ -325,7 +327,7 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
         {!song && <View style={styles.placeholder} />}
       </View>
 
-      <ScrollView style={styles.content} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.content} contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 + insets.bottom }]} showsVerticalScrollIndicator={false}>
         <View style={styles.form}>
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Tên bài hát *</Text>
@@ -554,7 +556,7 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
         </View>
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom + 16, 16) }]}>
         <TouchableOpacity
           style={[styles.button, styles.updateButton]}
           onPress={handleUpdate}

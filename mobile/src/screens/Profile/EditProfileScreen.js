@@ -18,9 +18,11 @@ import { userService } from '../../services/userService';
 import { useSuccessModal } from '../../hooks/useSuccessModal';
 import SuccessModal from '../../components/Common/SuccessModal';
 import MiniPlayer from '../../components/Player/MiniPlayer';
-import YouTubeBackground from '../../components/Profile/YouTubeBackground';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 
 const EditProfileScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const { user, updateUser } = useAuth();
   const { showModal, modalData, showSuccess, showError, hideModal } = useSuccessModal();
   const [loading, setLoading] = useState(false);
@@ -30,8 +32,6 @@ const EditProfileScreen = ({ navigation }) => {
     email: '',
     full_name: '',
   });
-  const [videoUrl, setVideoUrl] = useState('');
-  const [previewUrl, setPreviewUrl] = useState('');
 
   useEffect(() => {
     if (user) {
@@ -40,10 +40,6 @@ const EditProfileScreen = ({ navigation }) => {
         email: user.email || '',
         full_name: user.full_name || '',
       });
-      if (user.background_video_url) {
-        setVideoUrl(user.background_video_url);
-        setPreviewUrl(user.background_video_url);
-      }
     }
   }, [user]);
 
@@ -116,84 +112,15 @@ const EditProfileScreen = ({ navigation }) => {
     navigation.navigate('ChangePassword');
   };
 
-  const handlePreviewVideo = () => {
-    if (!videoUrl.trim()) {
-      showError('Lỗi', 'Vui lòng nhập URL video YouTube');
-      return;
-    }
 
-    // Validate YouTube URL
-    const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/).+/;
-    if (!youtubeRegex.test(videoUrl.trim())) {
-      showError('Lỗi', 'URL YouTube không hợp lệ. Vui lòng nhập URL hợp lệ (ví dụ: https://www.youtube.com/watch?v=VIDEO_ID)');
-      return;
-    }
-
-    setPreviewUrl(videoUrl.trim());
-  };
-
-  const handleSaveVideo = async () => {
-    if (!videoUrl.trim()) {
-      showError('Lỗi', 'Vui lòng nhập URL video YouTube');
-      return;
-    }
-
-    // Validate YouTube URL
-    const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/).+/;
-    if (!youtubeRegex.test(videoUrl.trim())) {
-      showError('Lỗi', 'URL YouTube không hợp lệ');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const response = await userService.updateBackgroundVideo(videoUrl.trim());
-      updateUser(response.data);
-      showSuccess('Thành công', 'Đã cập nhật video background');
-    } catch (error) {
-      console.error('Error updating background video:', error);
-      showError('Lỗi', error.response?.data?.message || 'Không thể cập nhật video background');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRemoveVideo = () => {
-    Alert.alert(
-      'Xóa video background',
-      'Bạn có chắc chắn muốn xóa video background?',
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Xóa',
-          style: 'destructive',
-          onPress: async () => {
-            setLoading(true);
-            try {
-              const response = await userService.updateBackgroundVideo('');
-              updateUser(response.data);
-              setVideoUrl('');
-              setPreviewUrl('');
-              showSuccess('Thành công', 'Đã xóa video background');
-            } catch (error) {
-              console.error('Error removing background video:', error);
-              showError('Lỗi', 'Không thể xóa video background');
-            } finally {
-              setLoading(false);
-            }
-          },
-        },
-      ]
-    );
-  };
 
   return (
     <View style={styles.container}>
       <ScrollView 
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 + insets.bottom }]}
       >
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top + 20, 60) }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
@@ -283,79 +210,7 @@ const EditProfileScreen = ({ navigation }) => {
           <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
         </TouchableOpacity>
 
-        {/* Video Background Section */}
-        <View style={styles.videoBackgroundSection}>
-          <Text style={styles.sectionTitle}>Video Background</Text>
-          <Text style={styles.sectionSubtitle}>
-            Thêm video YouTube làm background cho hồ sơ của bạn
-          </Text>
 
-          {/* Preview */}
-          <View style={styles.previewContainer}>
-            {previewUrl ? (
-              <YouTubeBackground videoUrl={previewUrl} isMuted={false} />
-            ) : (
-              <View style={styles.emptyPreview}>
-                <Ionicons name="videocam-outline" size={48} color={COLORS.textMuted} />
-                <Text style={styles.emptyPreviewText}>Chưa có video</Text>
-              </View>
-            )}
-            <View style={styles.previewOverlay}>
-              <Text style={styles.previewLabel}>Xem trước</Text>
-            </View>
-          </View>
-
-          {/* Input */}
-          <View style={styles.videoInputContainer}>
-            <Ionicons name="link" size={20} color={COLORS.textSecondary} style={styles.inputIcon} />
-            <TextInput
-              style={styles.videoInput}
-              value={videoUrl}
-              onChangeText={setVideoUrl}
-              placeholder="https://www.youtube.com/watch?v=..."
-              placeholderTextColor={COLORS.textMuted}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-
-          {/* Action Buttons */}
-          <View style={styles.videoActions}>
-            <TouchableOpacity
-              style={styles.previewButton}
-              onPress={handlePreviewVideo}
-            >
-              <Ionicons name="eye-outline" size={18} color={COLORS.primary} />
-              <Text style={styles.previewButtonText}>Xem trước</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.saveVideoButton, loading && styles.disabledButton]}
-              onPress={handleSaveVideo}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color={COLORS.white} />
-              ) : (
-                <>
-                  <Ionicons name="checkmark" size={18} color={COLORS.white} />
-                  <Text style={styles.saveVideoButtonText}>Lưu video</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
-
-          {user?.background_video_url && (
-            <TouchableOpacity
-              style={styles.removeVideoButton}
-              onPress={handleRemoveVideo}
-              disabled={loading}
-            >
-              <Ionicons name="trash-outline" size={18} color={COLORS.error} />
-              <Text style={styles.removeVideoButtonText}>Xóa video background</Text>
-            </TouchableOpacity>
-          )}
-        </View>
       </View>
 
       {/* Success Modal */}
@@ -388,7 +243,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SIZES.padding,
-    paddingTop: 60,
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,

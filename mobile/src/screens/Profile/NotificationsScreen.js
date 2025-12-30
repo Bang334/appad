@@ -33,6 +33,7 @@ const NotificationsScreen = ({ navigation, onUnreadCountChange }) => {
   const { showSuccess, showError } = useAlert();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const isPremium = user?.is_premium == 1;
 
   // Synchronize unread count to parent TabNavigator
   useEffect(() => {
@@ -222,6 +223,8 @@ const NotificationsScreen = ({ navigation, onUnreadCountChange }) => {
 
   const renderNotificationItem = (item) => {
     const icon = getNotificationIcon(item.type);
+    const data = item.data || {};
+    const imageUrl = data.cover_url || data.image || data.avatar_url;
     
     return (
       <TouchableOpacity
@@ -231,14 +234,21 @@ const NotificationsScreen = ({ navigation, onUnreadCountChange }) => {
         onLongPress={() => handleDeleteNotification(item.notification_id)}
         activeOpacity={0.7}
       >
-        <LinearGradient
-          colors={icon.bg}
-          style={styles.iconBox}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <Ionicons name={icon.name} size={24} color={icon.color} />
-        </LinearGradient>
+        {imageUrl ? (
+          <Image
+            source={{ uri: imageUrl }}
+            style={[styles.iconBox, { backgroundColor: COLORS.surface }]}
+          />
+        ) : (
+          <LinearGradient
+            colors={icon.bg}
+            style={styles.iconBox}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <Ionicons name={icon.name} size={24} color={icon.color} />
+          </LinearGradient>
+        )}
         
         <View style={styles.itemContent}>
           <View style={styles.headerRow}>
@@ -272,7 +282,44 @@ const NotificationsScreen = ({ navigation, onUnreadCountChange }) => {
       
       {/* Custom Header Area */}
       <View style={[styles.headerArea, { paddingTop: Math.max(insets.top, 30) }]}>
-        <Text style={styles.pageTitle}>Thông báo</Text>
+        {/* Absolute Centered Title */}
+        <View style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end', alignItems: 'center', paddingBottom: 25, pointerEvents: 'none' }]}>
+            <View style={{ alignItems: 'center' }}>
+              <Text 
+                numberOfLines={1}
+                allowFontScaling={false}
+                style={{ 
+                  fontSize: 16, 
+                  fontWeight: '700', 
+                  color: isPremium ? COLORS.warning : COLORS.text, 
+                  textTransform: 'uppercase',
+                  letterSpacing: 2,
+                  textShadowColor: isPremium ? 'rgba(245, 158, 11, 0.5)' : undefined,
+                  textShadowOffset: isPremium ? { width: 0, height: 0 } : undefined,
+                  textShadowRadius: isPremium ? 10 : 0,
+                }}
+              >
+                THÔNG BÁO
+              </Text>
+              {isPremium && (
+                <View style={{ 
+                  marginTop: 4,
+                  width: 24,
+                  height: 2,
+                  backgroundColor: COLORS.warning,
+                  borderRadius: 1,
+                  shadowColor: COLORS.warning,
+                  shadowOffset: { width: 0, height: 0 },
+                  shadowOpacity: 0.8,
+                  shadowRadius: 5,
+                }} />
+              )}
+            </View>
+        </View>
+
+        {/* Spacer to push buttons to right */}
+        <View style={{ flex: 1 }} />
+
         <View style={styles.actionRow}>
           {unreadCount > 0 && (
             <TouchableOpacity onPress={handleMarkAllAsRead} style={styles.headerButton}>
@@ -327,7 +374,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
-    paddingTop:10,
   },
   loadingContainer: {
     flex: 1,
@@ -342,6 +388,8 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     backgroundColor: 'transparent',
     zIndex: 10,
+    position: 'relative',
+    top: -10,
   },
   pageTitle: {
     fontSize: 18,
@@ -353,6 +401,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    position: 'relative',
+    top: 10,
   },
   headerButton: {
     width: 44,

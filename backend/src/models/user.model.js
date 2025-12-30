@@ -23,7 +23,7 @@ class UserModel {
   // Find user by ID
   static async findById(userId) {
     const [rows] = await db.execute(
-      'SELECT user_id, username, email, full_name, avatar_url, role, is_premium, premium_expiry, background_video_url, created_at FROM users WHERE user_id = ?',
+      'SELECT user_id, username, email, full_name, avatar_url, role, is_premium, premium_expiry, created_at FROM users WHERE user_id = ?',
       [userId]
     );
     return rows[0];
@@ -81,7 +81,7 @@ class UserModel {
   // Get all users (admin only)
   static async findAll(limit = 50, offset = 0) {
     const [rows] = await db.execute(
-      'SELECT user_id, username, email, full_name, avatar_url, role, is_premium, premium_expiry, background_video_url, created_at FROM users LIMIT ? OFFSET ?',
+      'SELECT user_id, username, email, full_name, avatar_url, role, is_premium, premium_expiry, created_at FROM users LIMIT ? OFFSET ?',
       [parseInt(limit), parseInt(offset)]
     );
     return rows;

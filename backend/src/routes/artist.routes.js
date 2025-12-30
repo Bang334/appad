@@ -14,6 +14,7 @@ router.get('/:artist_id/dashboard', authenticateToken, isArtistOwner, ArtistCont
 router.get('/:artist_id/balance', authenticateToken, isArtistOwner, ArtistController.getBalance);
 router.get('/:artist_id/revenue', authenticateToken, isArtistOwner, ArtistController.getRevenueHistory);
 router.get('/:artist_id/revenue/stats', authenticateToken, isArtistOwner, ArtistController.getRevenueStats);
+router.get('/:artist_id/reviews', authenticateToken, isArtistOwner, ArtistController.getReviews);
 
 // Withdrawal management
 router.post('/:artist_id/withdraw', authenticateToken, isArtistOwner, ArtistController.requestWithdrawal);

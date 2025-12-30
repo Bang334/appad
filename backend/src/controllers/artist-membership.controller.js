@@ -116,6 +116,50 @@ class ArtistMembershipController {
       // Add revenue to artist wallet
       await UserModel.addBalance(artist.user_id, artistShare);
 
+      // Create transaction record for artist revenue
+      await TransactionModel.create({
+        user_id: artist.user_id,
+        type: 'revenue',
+        amount: artistShare,
+        status: 'completed',
+        description: `Doanh thu đăng ký hội viên mới: ${req.user.username || 'Người dùng'}`
+      });
+
+      // Add revenue to admins
+      const admins = await UserModel.findAdmins();
+      if (admins.length > 0) {
+        const sharePerAdmin = platformShare / admins.length;
+        for (const admin of admins) {
+          await UserModel.addBalance(admin.user_id, sharePerAdmin);
+          await TransactionModel.create({
+            user_id: admin.user_id,
+            type: 'revenue',
+            amount: sharePerAdmin,
+            status: 'completed',
+            description: `Phí nền tảng (30%) từ hội viên mới của nghệ sĩ: ${artist.name}`
+          });
+
+          // Create revenue notification for admin
+          await NotificationModel.create({
+            user_id: admin.user_id,
+            type: 'revenue',
+            title: 'Nhận phí nền tảng từ hội viên',
+            message: `Bạn đã nhận ${sharePerAdmin.toLocaleString('vi-VN')}đ từ phí nền tảng (30%) khi người dùng đăng ký hội viên nghệ sĩ "${artist.name}" (tổng: ${priceNum.toLocaleString('vi-VN')}đ, ${membershipDuration} ngày)`,
+            data: {
+              artist_id: parseInt(artist_id),
+              artist_name: artist.name,
+              user_id: userId,
+              amount: sharePerAdmin,
+              total_amount: priceNum,
+              platform_share: platformShare,
+              share_type: 'artist_membership',
+              share_percentage: 30,
+              duration_days: membershipDuration
+            }
+          });
+        }
+      }
+
       // Record revenue sharing (use parsed price)
       await RevenueSharingModel.create({
         transaction_id: transactionId,
@@ -126,7 +170,6 @@ class ArtistMembershipController {
         artist_share: artistShare,
         artist_percentage: 70,
         platform_share: platformShare,
-        platform_percentage: 30
       });
 
       // Get updated user info

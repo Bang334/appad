@@ -18,8 +18,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useAlert } from '../../context/AlertContext';
 import { usePlayer } from '../../context/PlayerContext';
 import PremiumBadge from '../../components/Common/PremiumBadge';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const ArtistSongsScreen = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { artistId } = route.params;
   const [songs, setSongs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -213,7 +215,7 @@ const ArtistSongsScreen = ({ route, navigation }) => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top + 20, 60) }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
@@ -249,7 +251,7 @@ const ArtistSongsScreen = ({ route, navigation }) => {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: 100 + insets.bottom }]}
         />
       )}
     </View>
@@ -272,7 +274,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SIZES.padding,
-    paddingTop: 60,
     paddingBottom: 16,
     backgroundColor: COLORS.background,
   },

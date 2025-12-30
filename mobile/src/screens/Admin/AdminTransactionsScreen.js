@@ -5,6 +5,7 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  ScrollView,
   ActivityIndicator,
   RefreshControl,
   Alert,
@@ -12,19 +13,22 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SIZES } from '../../config/theme';
+import { COLORS, SIZES, SHADOWS } from '../../config/theme';
 import { adminService } from '../../services/adminService';
 import { useFocusEffect } from '@react-navigation/native';
 import MiniPlayer from '../../components/Player/MiniPlayer';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const AdminTransactionsScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [transactions, setTransactions] = useState([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState('pending'); // all, pending, completed, cancelled
+  const [filter, setFilter] = useState('pending');
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -35,15 +39,10 @@ const AdminTransactionsScreen = ({ navigation }) => {
         type: 'deposit',
         status: filter === 'all' ? undefined : filter,
       });
-      if (response.success) {
-        setTransactions(response.data);
-      }
+      if (response.success) setTransactions(response.data);
 
-      // Get pending count
       const countResponse = await adminService.getPendingDepositsCount();
-      if (countResponse.success) {
-        setPendingCount(countResponse.data.count);
-      }
+      if (countResponse.success) setPendingCount(countResponse.data.count);
     } catch (error) {
       console.error('Error fetching transactions:', error);
     } finally {
@@ -65,22 +64,21 @@ const AdminTransactionsScreen = ({ navigation }) => {
 
   const handleApprove = (transaction) => {
     Alert.alert(
-      'Xác nhận duyệt',
-      `Duyệt nạp tiền ${parseFloat(transaction.amount).toLocaleString('vi-VN')}đ cho ${transaction.username || transaction.email}?`,
+      'Phê duyệt giao dịch',
+      `Xác nhận cộng ${parseFloat(transaction.amount).toLocaleString('vi-VN')}đ cho ${transaction.username || 'User'}?`,
       [
         { text: 'Hủy', style: 'cancel' },
         {
-          text: 'Duyệt',
+          text: 'Xác nhận',
           onPress: async () => {
             try {
               const response = await adminService.approveDeposit(transaction.transaction_id);
               if (response.success) {
-                Alert.alert('Thành công', 'Đã duyệt nạp tiền và cộng vào tài khoản');
+                Alert.alert('Thành công', 'Đã cộng tiền vào tài khoản');
                 fetchTransactions();
               }
             } catch (error) {
-              const message = error.response?.data?.message || 'Có lỗi xảy ra';
-              Alert.alert('Lỗi', message);
+              Alert.alert('Lỗi', 'Không thể phê duyệt giao dịch');
             }
           },
         },
@@ -88,134 +86,66 @@ const AdminTransactionsScreen = ({ navigation }) => {
     );
   };
 
-  const handleReject = (transaction) => {
-    setSelectedTransaction(transaction);
-    setRejectReason('');
-    setShowRejectModal(true);
-  };
-
   const confirmReject = async () => {
-    if (!selectedTransaction) return;
-
-    if (!rejectReason.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập lý do từ chối');
-      return;
-    }
-
+    if (!rejectReason.trim()) return Alert.alert('Lỗi', 'Vui lòng nhập lý do');
     try {
-      const response = await adminService.rejectDeposit(
-        selectedTransaction.transaction_id,
-        rejectReason.trim()
-      );
+      const response = await adminService.rejectDeposit(selectedTransaction.transaction_id, rejectReason.trim());
       if (response.success) {
         Alert.alert('Thành công', 'Đã từ chối giao dịch');
         setShowRejectModal(false);
-        setSelectedTransaction(null);
-        setRejectReason('');
         fetchTransactions();
       }
     } catch (error) {
-      const message = error.response?.data?.message || 'Có lỗi xảy ra';
-      Alert.alert('Lỗi', message);
+      Alert.alert('Lỗi', 'Thao tác không thành công');
     }
-  };
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'completed':
-        return '#4CAF50';
-      case 'pending':
-        return '#FFA726';
-      case 'cancelled':
-        return '#EF5350';
-      default:
-        return COLORS.textSecondary;
-    }
-  };
-
-  const getStatusText = (status) => {
-    switch (status) {
-      case 'completed':
-        return 'Đã duyệt';
-      case 'pending':
-        return 'Chờ duyệt';
-      case 'cancelled':
-        return 'Đã hủy';
-      default:
-        return status;
-    }
-  };
-
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('vi-VN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
   };
 
   const renderTransaction = ({ item }) => {
-    const statusColor = getStatusColor(item.status);
     const isPending = item.status === 'pending';
-
     return (
-      <View style={styles.transactionCard}>
-        <View style={styles.transactionHeader}>
-          <View>
-            <Text style={styles.userName}>{item.full_name || item.username || item.email}</Text>
-            <Text style={styles.amount}>
-              {parseFloat(item.amount).toLocaleString('vi-VN')}đ
-            </Text>
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={styles.userSection}>
+            <View style={styles.userIcon}>
+              <Ionicons name="person" size={20} color={COLORS.primary} />
+            </View>
+            <View>
+              <Text style={styles.userName} numberOfLines={1}>{item.full_name || item.username || item.email}</Text>
+              <Text style={styles.emailText} numberOfLines={1}>{item.email}</Text>
+            </View>
           </View>
-          <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
-            <Text style={[styles.statusText, { color: statusColor }]}>
-              {getStatusText(item.status)}
+          <View style={[styles.statusTag, { backgroundColor: isPending ? COLORS.warning + '20' : item.status === 'completed' ? COLORS.success + '20' : COLORS.error + '20' }]}>
+            <Text style={[styles.statusTabText, { color: isPending ? COLORS.warning : item.status === 'completed' ? COLORS.success : COLORS.error }]}>
+              {item.status === 'pending' ? 'Chờ duyệt' : item.status === 'completed' ? 'Thành công' : 'Đã hủy'}
             </Text>
           </View>
         </View>
 
-        <View style={styles.infoRow}>
-          <Ionicons name="mail" size={16} color={COLORS.textSecondary} />
-          <Text style={styles.infoText}>{item.email}</Text>
+        <View style={styles.amountSection}>
+          <Text style={styles.amountLabel}>Số tiền nạp:</Text>
+          <Text style={styles.amountValue}>{parseFloat(item.amount).toLocaleString('vi-VN')}đ</Text>
         </View>
-
-        {item.reference_code && (
-          <View style={styles.infoRow}>
-            <Ionicons name="barcode" size={16} color={COLORS.textSecondary} />
-            <Text style={styles.infoText}>Mã: {item.reference_code}</Text>
-          </View>
-        )}
 
         {item.description && (
-          <View style={styles.noteBox}>
-            <Text style={styles.noteText}>{item.description}</Text>
+          <View style={styles.descBox}>
+            <Text style={styles.descText}>{item.description}</Text>
           </View>
         )}
 
-        <Text style={styles.date}>Tạo: {formatDate(item.created_at)}</Text>
-        {item.updated_at && item.updated_at !== item.created_at && (
-          <Text style={styles.date}>Cập nhật: {formatDate(item.updated_at)}</Text>
-        )}
+        <View style={styles.cardFooter}>
+          <Text style={styles.dateText}>📅 {new Date(item.created_at).toLocaleString('vi-VN')}</Text>
+          {item.reference_code && <Text style={styles.refText}>Ref: {item.reference_code}</Text>}
+        </View>
 
         {isPending && (
-          <View style={styles.actions}>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.approveButton]}
-              onPress={() => handleApprove(item)}
-            >
-              <Ionicons name="checkmark" size={18} color="#FFF" />
-              <Text style={styles.actionButtonText}>Duyệt</Text>
+          <View style={styles.cardActions}>
+            <TouchableOpacity style={[styles.actionBtn, styles.btnApprove]} onPress={() => handleApprove(item)}>
+              <Ionicons name="checkmark-circle" size={18} color="#FFF" />
+              <Text style={styles.btnText}>Duyệt</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionButton, styles.rejectButton]}
-              onPress={() => handleReject(item)}
-            >
-              <Ionicons name="close" size={18} color="#FFF" />
-              <Text style={styles.actionButtonText}>Từ chối</Text>
+            <TouchableOpacity style={[styles.actionBtn, styles.btnReject]} onPress={() => { setSelectedTransaction(item); setShowRejectModal(true); }}>
+              <Ionicons name="close-circle" size={18} color="#FFF" />
+              <Text style={styles.btnText}>Từ chối</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -223,124 +153,81 @@ const AdminTransactionsScreen = ({ navigation }) => {
     );
   };
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </View>
-    );
-  }
-
   return (
     <View style={styles.container}>
-      {/* Filter Tabs */}
-      <View style={styles.filterContainer}>
-        {['pending', 'completed', 'cancelled', 'all'].map((f) => (
-          <TouchableOpacity
-            key={f}
-            style={[styles.filterTab, filter === f && styles.filterTabActive]}
-            onPress={() => setFilter(f)}
-          >
-            <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
-              {f === 'all' ? 'Tất cả' : getStatusText(f)}
-            </Text>
-            {f === 'pending' && pendingCount > 0 && (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{pendingCount}</Text>
-              </View>
-            )}
+      <StatusBar barStyle="light-content" />
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+        <View style={styles.headerTop}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <Ionicons name="chevron-back" size={28} color="#FFF" />
           </TouchableOpacity>
-        ))}
+          <Text style={styles.headerTitle}>DUYỆT NẠP TIỀN</Text>
+          <View style={styles.backBtn} />
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
+          {[
+            { id: 'pending', label: 'Chờ duyệt', icon: 'time-outline' },
+            { id: 'completed', label: 'Đã duyệt', icon: 'checkmark-done-outline' },
+            { id: 'cancelled', label: 'Đã hủy', icon: 'close-outline' },
+            { id: 'all', label: 'Tất cả', icon: 'list-outline' }
+          ].map(f => (
+            <TouchableOpacity 
+              key={f.id} 
+              style={[styles.tab, filter === f.id && styles.activeTab]}
+              onPress={() => setFilter(f.id)}
+            >
+              <Ionicons name={f.icon} size={16} color={filter === f.id ? COLORS.primary : COLORS.textDisabled} />
+              <Text style={[styles.tabText, filter === f.id && styles.activeTabText]}>{f.label}</Text>
+              {f.id === 'pending' && pendingCount > 0 && (
+                <View style={styles.countBadge}><Text style={styles.countText}>{pendingCount}</Text></View>
+              )}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
-      {transactions.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Ionicons name="wallet-outline" size={80} color={COLORS.textSecondary} />
-          <Text style={styles.emptyText}>Không có giao dịch nào</Text>
-        </View>
+      {loading && transactions.length === 0 ? (
+        <ActivityIndicator style={{ marginTop: 40 }} color={COLORS.primary} size="large" />
       ) : (
         <FlatList
           data={transactions}
           renderItem={renderTransaction}
-          keyExtractor={(item) => `transaction-${item.transaction_id}`}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          keyExtractor={item => item.transaction_id.toString()}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
+          contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Ionicons name="receipt-outline" size={60} color={COLORS.textDisabled} />
+              <Text style={styles.emptyText}>Không tìm thấy giao dịch nào</Text>
+            </View>
           }
-          contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
         />
       )}
 
       {/* Reject Modal */}
-      <Modal
-        visible={showRejectModal}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowRejectModal(false)}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.modalOverlay}
-        >
-          <TouchableOpacity
-            style={styles.modalOverlay}
-            activeOpacity={1}
-            onPress={() => setShowRejectModal(false)}
-          >
-            <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Từ chối giao dịch</Text>
-                <TouchableOpacity
-                  onPress={() => setShowRejectModal(false)}
-                  style={styles.closeButton}
-                >
-                  <Ionicons name="close" size={24} color={COLORS.text} />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.modalBody}>
-                {selectedTransaction && (
-                  <View style={styles.transactionInfo}>
-                    <Text style={styles.infoLabel}>Người dùng:</Text>
-                    <Text style={styles.infoValue}>
-                      {selectedTransaction.full_name || selectedTransaction.username || selectedTransaction.email}
-                    </Text>
-                    <Text style={styles.infoLabel}>Số tiền:</Text>
-                    <Text style={styles.infoValue}>
-                      {parseFloat(selectedTransaction.amount).toLocaleString('vi-VN')}đ
-                    </Text>
-                  </View>
-                )}
-
-                <Text style={styles.inputLabel}>Lý do từ chối *</Text>
-                <TextInput
-                  style={styles.textInput}
-                  placeholder="Nhập lý do từ chối giao dịch..."
-                  placeholderTextColor={COLORS.textSecondary}
-                  value={rejectReason}
-                  onChangeText={setRejectReason}
-                  multiline
-                  numberOfLines={4}
-                  textAlignVertical="top"
-                />
-              </View>
-
-              <View style={styles.modalActions}>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.cancelButton]}
-                  onPress={() => setShowRejectModal(false)}
-                >
-                  <Text style={styles.cancelButtonText}>Hủy</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.rejectModalButton]}
-                  onPress={confirmReject}
-                >
-                  <Text style={styles.rejectButtonText}>Từ chối</Text>
-                </TouchableOpacity>
-              </View>
+      <Modal visible={showRejectModal} transparent animationType="fade">
+        <View style={styles.modalBg}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Từ chối nạp tiền</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Nhập lý do từ chối..."
+              placeholderTextColor={COLORS.textDisabled}
+              multiline
+              value={rejectReason}
+              onChangeText={setRejectReason}
+            />
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={styles.modalBtnCancel} onPress={() => setShowRejectModal(false)}>
+                <Text style={styles.modalBtnText}>Hủy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalBtnReject} onPress={confirmReject}>
+                <Text style={[styles.modalBtnText, { color: '#FFF' }]}>Xác nhận</Text>
+              </TouchableOpacity>
             </View>
-          </TouchableOpacity>
-        </KeyboardAvoidingView>
+          </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       <MiniPlayer bottomOffset={0} />
@@ -349,251 +236,50 @@ const AdminTransactionsScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-  },
-  filterContainer: {
-    flexDirection: 'row',
-    padding: 12,
-    gap: 8,
-    backgroundColor: COLORS.surface,
-  },
-  filterTab: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 16,
-    backgroundColor: COLORS.card,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  filterTabActive: {
-    backgroundColor: COLORS.primary,
-  },
-  filterText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.text,
-  },
-  filterTextActive: {
-    color: '#FFF',
-  },
-  badge: {
-    backgroundColor: '#EF5350',
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 6,
-  },
-  badgeText: {
-    color: '#FFF',
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: COLORS.textSecondary,
-    marginTop: 16,
-  },
-  listContent: {
-    padding: 16,
-  },
-  transactionCard: {
-    backgroundColor: COLORS.card,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  transactionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  userName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: 4,
-  },
-  amount: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: COLORS.primary,
-  },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  infoText: {
-    fontSize: 14,
-    color: COLORS.text,
-    marginLeft: 8,
-  },
-  noteBox: {
-    backgroundColor: COLORS.surface,
-    padding: 10,
-    borderRadius: 8,
-    marginVertical: 8,
-  },
-  noteText: {
-    fontSize: 13,
-    color: COLORS.text,
-  },
-  date: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
-    marginTop: 4,
-  },
-  actions: {
-    flexDirection: 'row',
-    marginTop: 16,
-    gap: 8,
-  },
-  actionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 8,
-    gap: 6,
-  },
-  approveButton: {
-    backgroundColor: '#4CAF50',
-  },
-  rejectButton: {
-    backgroundColor: '#EF5350',
-  },
-  actionButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFF',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: COLORS.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '80%',
-    paddingBottom: Platform.OS === 'ios' ? 34 : 16,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: SIZES.padding,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: COLORS.text,
-  },
-  closeButton: {
-    padding: 4,
-  },
-  modalBody: {
-    padding: SIZES.padding,
-  },
-  transactionInfo: {
-    backgroundColor: COLORS.card,
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  infoLabel: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginTop: 8,
-  },
-  infoValue: {
-    fontSize: 14,
-    color: COLORS.text,
-    fontWeight: '600',
-    marginTop: 4,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: 8,
-  },
-  textInput: {
-    backgroundColor: COLORS.card,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 14,
-    color: COLORS.text,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    minHeight: 100,
-    maxHeight: 150,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    paddingHorizontal: SIZES.padding,
-    paddingTop: SIZES.padding,
-    gap: 12,
-  },
-  modalButton: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancelButton: {
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  cancelButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.text,
-  },
-  rejectModalButton: {
-    backgroundColor: '#EF5350',
-  },
-  rejectButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFF',
-  },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  header: { backgroundColor: COLORS.backgroundSecondary, borderBottomWidth: 1, borderBottomColor: COLORS.divider, paddingBottom: 16 },
+  headerTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, marginBottom: 16 },
+  headerTitle: { fontSize: 16, fontWeight: '900', color: '#FFF', letterSpacing: 1.2 },
+  backBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+  tabs: { paddingHorizontal: 16, gap: 10 },
+  tab: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20, backgroundColor: COLORS.surface, gap: 6 },
+  activeTab: { backgroundColor: COLORS.primary + '20', borderWidth: 1, borderColor: COLORS.primary },
+  tabText: { fontSize: 13, color: COLORS.textSecondary, fontWeight: 'bold' },
+  activeTabText: { color: COLORS.primary },
+  countBadge: { backgroundColor: COLORS.error, borderRadius: 10, minWidth: 18, height: 18, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4 },
+  countText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
+  list: { padding: 16 },
+  card: { backgroundColor: COLORS.surface, borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: COLORS.divider },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
+  userSection: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 },
+  userIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primary + '15', justifyContent: 'center', alignItems: 'center' },
+  userName: { fontSize: 15, fontWeight: 'bold', color: '#FFF' },
+  emailText: { fontSize: 12, color: COLORS.textDisabled },
+  statusTag: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  statusTabText: { fontSize: 11, fontWeight: 'bold' },
+  amountSection: { marginBottom: 12 },
+  amountLabel: { fontSize: 12, color: COLORS.textSecondary, marginBottom: 4 },
+  amountValue: { fontSize: 24, fontWeight: '900', color: COLORS.primary },
+  descBox: { backgroundColor: 'rgba(255,255,255,0.03)', padding: 10, borderRadius: 10, marginBottom: 12 },
+  descText: { fontSize: 13, color: 'rgba(255,255,255,0.7)', fontStyle: 'italic' },
+  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: COLORS.divider, paddingTop: 12, marginBottom: 16 },
+  dateText: { fontSize: 11, color: COLORS.textDisabled },
+  refText: { fontSize: 11, color: COLORS.textDisabled, fontWeight: 'bold' },
+  cardActions: { flexDirection: 'row', gap: 12 },
+  actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 14, gap: 6 },
+  btnApprove: { backgroundColor: COLORS.success },
+  btnReject: { backgroundColor: COLORS.error },
+  btnText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
+  empty: { marginTop: 100, alignItems: 'center' },
+  emptyText: { marginTop: 16, color: COLORS.textDisabled, fontSize: 14 },
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', padding: 20 },
+  modalContent: { backgroundColor: COLORS.surface, borderRadius: 24, padding: 24 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#FFF', marginBottom: 20, textAlign: 'center' },
+  modalInput: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: 16, color: '#FFF', minHeight: 100, textAlignVertical: 'top', marginBottom: 24 },
+  modalBtns: { flexDirection: 'row', gap: 12 },
+  modalBtnCancel: { flex: 1, paddingVertical: 14, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center' },
+  modalBtnReject: { flex: 1, paddingVertical: 14, borderRadius: 14, backgroundColor: COLORS.error, alignItems: 'center' },
+  modalBtnText: { fontWeight: 'bold', color: COLORS.textSecondary },
 });
 
 export default AdminTransactionsScreen;
-

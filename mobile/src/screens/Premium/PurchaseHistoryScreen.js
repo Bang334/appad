@@ -14,8 +14,10 @@ import { COLORS } from '../../config/theme';
 import { premiumService } from '../../services/premiumService';
 import { useFocusEffect } from '@react-navigation/native';
 import { usePlayer } from '../../context/PlayerContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const PurchaseHistoryScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -76,34 +78,86 @@ const PurchaseHistoryScreen = ({ navigation }) => {
   };
 
   const renderHistoryItem = ({ item, index }) => {
-    const isCurrentSong = currentSong?.song_id === item.song_id;
+    const isCurrentSong = item.type === 'song' && currentSong?.song_id === item.song_id;
+    const isPremiumSubscription = item.type === 'premium_subscription';
+    const isAlbum = item.type === 'album';
+
+    const getItemTitle = () => {
+      if (isPremiumSubscription) {
+        return item.description || 'Đăng ký Premium';
+      }
+      return item.title || 'Không có tiêu đề';
+    };
+
+    const getItemSubtitle = () => {
+      if (isPremiumSubscription) {
+        return 'Gói Premium';
+      }
+      if (isAlbum) {
+        return item.artist_name ? `${item.artist_name} • Album` : 'Album';
+      }
+      return item.artist_name || '';
+    };
+
+    const getItemIcon = () => {
+      if (isPremiumSubscription) {
+        return 'star';
+      }
+      if (isAlbum) {
+        return 'disc';
+      }
+      return 'musical-note';
+    };
 
     return (
       <View style={[styles.historyItem, isCurrentSong && styles.historyItemActive]}>
         <TouchableOpacity
           style={styles.historyContent}
-          onPress={() => handleSongPress(item, index)}
+          onPress={() => {
+            if (item.type === 'song') {
+              handleSongPress(item, index);
+            } else if (item.type === 'album') {
+              navigation.navigate('AlbumDetail', { albumId: item.album_id });
+            }
+            // Premium subscription không có action
+          }}
           activeOpacity={0.7}
+          disabled={isPremiumSubscription}
         >
         <View style={styles.coverContainer}>
-          <Image
-            source={{ uri: item.cover_url || 'https://via.placeholder.com/60' }}
-            style={styles.songCover}
-          />
-          {isCurrentSong && isPlaying && (
-            <View style={styles.playingIndicator}>
-              <Ionicons name="volume-high" size={20} color="#FFF" />
+          {isPremiumSubscription ? (
+            <View style={[styles.iconCover, { backgroundColor: COLORS.primary + '20' }]}>
+              <Ionicons name={getItemIcon()} size={30} color={COLORS.primary} />
             </View>
+          ) : (
+            <>
+              <Image
+                source={{ uri: item.cover_url || 'https://via.placeholder.com/60' }}
+                style={styles.songCover}
+              />
+              {isCurrentSong && isPlaying && (
+                <View style={styles.playingIndicator}>
+                  <Ionicons name="volume-high" size={20} color="#FFF" />
+                </View>
+              )}
+            </>
           )}
         </View>
 
         <View style={styles.itemInfo}>
-          <Text style={styles.songTitle} numberOfLines={1}>
-            {item.title}
-          </Text>
-          {item.artist_name && (
+          <View style={styles.titleRow}>
+            <Text style={styles.songTitle} numberOfLines={1}>
+              {getItemTitle()}
+            </Text>
+            {isPremiumSubscription && (
+              <View style={styles.premiumBadge}>
+                <Ionicons name="star" size={12} color={COLORS.primary} />
+              </View>
+            )}
+          </View>
+          {getItemSubtitle() && (
             <Text style={styles.artistName} numberOfLines={1}>
-              {item.artist_name}
+              {getItemSubtitle()}
             </Text>
           )}
           <Text style={styles.date}>
@@ -113,20 +167,22 @@ const PurchaseHistoryScreen = ({ navigation }) => {
 
         <View style={styles.priceContainer}>
           <Text style={styles.price}>
-            {parseFloat(item.price_paid).toLocaleString('vi-VN')}đ
+            {parseFloat(item.price_paid || item.total_amount || 0).toLocaleString('vi-VN')}đ
           </Text>
         </View>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.playIconButton}
-          onPress={() => handlePlaySong(item, index)}
-        >
-          <Ionicons 
-            name={isCurrentSong && isPlaying ? "pause-circle" : "play-circle"} 
-            size={32} 
-            color={COLORS.primary} 
-          />
-        </TouchableOpacity>
+        {item.type === 'song' && (
+          <TouchableOpacity
+            style={styles.playIconButton}
+            onPress={() => handlePlaySong(item, index)}
+          >
+            <Ionicons 
+              name={isCurrentSong && isPlaying ? "pause-circle" : "play-circle"} 
+              size={32} 
+              color={COLORS.primary} 
+            />
+          </TouchableOpacity>
+        )}
       </View>
     );
   };
@@ -140,7 +196,7 @@ const PurchaseHistoryScreen = ({ navigation }) => {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.summaryCard}>
         <Text style={styles.summaryLabel}>Tổng chi tiêu</Text>
         <Text style={styles.summaryAmount}>
@@ -160,7 +216,12 @@ const PurchaseHistoryScreen = ({ navigation }) => {
         <FlatList
           data={history}
           renderItem={renderHistoryItem}
-          keyExtractor={(item) => `history-${item.purchase_id}`}
+          keyExtractor={(item) => {
+            if (item.type === 'premium_subscription') {
+              return `history-premium-${item.sharing_id || item.transaction_id}`;
+            }
+            return `history-${item.type}-${item.purchase_id || item.album_id || item.song_id}`;
+          }}
           contentContainerStyle={styles.listContent}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -286,6 +347,24 @@ const styles = StyleSheet.create({
   playIconButton: {
     padding: 4,
     marginLeft: 8,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  premiumBadge: {
+    marginLeft: 8,
+    padding: 2,
+    borderRadius: 4,
+    backgroundColor: COLORS.primary + '20',
+  },
+  iconCover: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 

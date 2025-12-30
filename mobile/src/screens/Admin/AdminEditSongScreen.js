@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,141 +12,69 @@ import {
   Modal,
   FlatList,
   Image,
+  StatusBar,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
-import { COLORS, SIZES } from '../../config/theme';
+import { COLORS, SIZES, SHADOWS } from '../../config/theme';
 import { adminService } from '../../services/adminService';
 import { songService } from '../../services/songService';
-import { useSuccessModal } from '../../hooks/useSuccessModal';
-import SuccessModal from '../../components/Common/SuccessModal';
 import MiniPlayer from '../../components/Player/MiniPlayer';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const AdminEditSongScreen = ({ navigation, route }) => {
-  const { song } = route.params;
-  const { showModal, modalData, showSuccess, showError, hideModal } = useSuccessModal();
+  const insets = useSafeAreaInsets();
+  const { song, initialAlbumId } = route.params || {};
   const [loading, setLoading] = useState(false);
   const [uploadingSong, setUploadingSong] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [artists, setArtists] = useState([]);
   const [albums, setAlbums] = useState([]);
-  const [filteredAlbums, setFilteredAlbums] = useState([]);
   const [genres, setGenres] = useState([]);
   
-  // Modal states
   const [showArtistModal, setShowArtistModal] = useState(false);
   const [showAlbumModal, setShowAlbumModal] = useState(false);
   const [showGenreModal, setShowGenreModal] = useState(false);
-  const [showCreateArtistModal, setShowCreateArtistModal] = useState(false);
-  const [showCreateGenreModal, setShowCreateGenreModal] = useState(false);
-  const [newArtistName, setNewArtistName] = useState('');
-  const [newAlbumTitle, setNewAlbumTitle] = useState('');
-  const [newGenreName, setNewGenreName] = useState('');
-  
-  // New artist form data
-  const [newArtistData, setNewArtistData] = useState({
-    name: '',
-    bio: '',
-    image_url: '',
-    country: ''
-  });
 
-  // New genre form data
-  const [newGenreData, setNewGenreData] = useState({
-    name: '',
-    description: ''
-  });
-  
-  // Get current date in YYYY-MM-DD format
-  const getCurrentDate = () => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+  // Find initial artist if we have an initial album
+  const getInitialArtistId = () => {
+    if (song?.artist_id) return song.artist_id;
+    if (initialAlbumId && albums.length > 0) {
+        const targetAlbum = albums.find(a => a.album_id === initialAlbumId);
+        return targetAlbum?.artist_id || '';
+    }
+    return '';
   };
 
   const [formData, setFormData] = useState({
     title: song?.title || '',
     artist_id: song?.artist_id || '',
-    album_id: song?.album_id || '',
+    album_id: song?.album_id || initialAlbumId || '',
     genre_id: song?.genre_id || '',
-    // Thời lượng sẽ được tính tự động từ file upload (ẩn khỏi form)
     duration: song?.duration?.toString() || '',
     lyrics: song?.lyrics || '',
-    release_date: song?.release_date 
-      ? song.release_date.split('T')[0] 
-      : getCurrentDate(), // Default to current date when creating new
+    release_date: song?.release_date ? song.release_date.split('T')[0] : new Date().toISOString().split('T')[0],
     file_url: song?.file_url || '',
     cover_url: song?.cover_url || '',
-    is_premium: song?.is_premium === 1 || song?.is_premium === true || false,
+    is_premium: song?.is_premium === 1 || song?.is_premium === true,
     price: song?.price?.toString() || '0',
   });
 
+  // Effect to update artist_id once albums are loaded if initialAlbumId is present
+  useEffect(() => {
+    if (!song && initialAlbumId && albums.length > 0) {
+        const targetAlbum = albums.find(a => a.album_id === initialAlbumId);
+        if (targetAlbum?.artist_id) {
+            setFormData(prev => ({ ...prev, artist_id: targetAlbum.artist_id }));
+        }
+    }
+  }, [albums, initialAlbumId, song]);
+
   useEffect(() => {
     loadReferenceData();
-    if (song?.song_id) {
-      loadSongDetails();
-    }
   }, []);
-
-  useEffect(() => {
-    // Filter albums when artist changes
-    if (formData.artist_id) {
-      const filtered = albums.filter(album => album.artist_id == formData.artist_id);
-      setFilteredAlbums(filtered);
-      // Reset album if current album doesn't belong to selected artist
-      // Only reset if we are not currently loading the initial song data (which might have matching IDs)
-      // However, since we set formData from loadSongDetails, this check is still valid but we need to be careful.
-      // Actually, if we load song details, artist_id and album_id will be set together.
-      // This effect runs when artist_id changes. 
-      // If we just loaded the song, artist_id changed, so we filter albums.
-      // If the loaded album_id is valid for this artist, we shouldn't clear it.
-      
-      const isValidAlbum = filtered.find(album => album.album_id == formData.album_id);
-      if (formData.album_id && !isValidAlbum) {
-        // Only clear if it's truly invalid. 
-        // But wait, albums might not be loaded yet when this runs if loadReferenceData is slow.
-        // If albums is empty, filtered is empty.
-        // We should only clear if albums are loaded.
-        if (albums.length > 0) {
-           setFormData(prev => ({ ...prev, album_id: '' }));
-        }
-      }
-    } else {
-      setFilteredAlbums(albums);
-    }
-  }, [formData.artist_id, albums]);
-
-  const loadSongDetails = async () => {
-    try {
-      setLoading(true);
-      const response = await adminService.getSongById(song.song_id);
-      if (response.data) {
-        const fullSong = response.data;
-        setFormData(prev => ({
-          ...prev,
-          title: fullSong.title,
-          artist_id: fullSong.artist_id,
-          album_id: fullSong.album_id,
-          genre_id: fullSong.genre_id,
-          duration: fullSong.duration?.toString(),
-          lyrics: fullSong.lyrics || '',
-          release_date: fullSong.release_date ? fullSong.release_date.split('T')[0] : getCurrentDate(),
-          file_url: fullSong.file_url,
-          cover_url: fullSong.cover_url,
-          is_premium: fullSong.is_premium === 1 || fullSong.is_premium === true,
-          price: fullSong.price?.toString() || '0',
-        }));
-      }
-    } catch (error) {
-      console.error('Error loading song details:', error);
-      showError('Lỗi', 'Không thể tải thông tin chi tiết bài hát');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const loadReferenceData = async () => {
     try {
@@ -155,1277 +83,225 @@ const AdminEditSongScreen = ({ navigation, route }) => {
         songService.getAlbums(),
         songService.getGenres(),
       ]);
-      
       setArtists(artistsRes.data || []);
       setAlbums(albumsRes.data || []);
-      setFilteredAlbums(albumsRes.data || []);
       setGenres(genresRes.data || []);
-    } catch (error) {
-      console.error('Error loading reference data:', error);
-      Alert.alert('Lỗi', 'Không thể tải dữ liệu tham chiếu');
-    }
-  };
-
-  const handleInputChange = (field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
-  };
-
-  const validateForm = () => {
-    if (!formData.title.trim()) {
-      showError('Lỗi', 'Vui lòng nhập tên bài hát');
-      return false;
-    }
-    if (!formData.file_url.trim()) {
-      showError('Lỗi', 'Vui lòng tải lên file nhạc');
-      return false;
-    }
-    if (formData.is_premium && (!formData.price || parseFloat(formData.price) <= 0)) {
-      showError('Lỗi', 'Vui lòng nhập giá hợp lệ cho bài hát premium');
-      return false;
-    }
-    return true;
-  };
-
-  // Pick MP3 file
-  const pickSongFile = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: 'audio/*',
-        copyToCacheDirectory: true,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        await uploadSongFile(result.assets[0].uri);
-      }
-    } catch (error) {
-      console.error('Error picking song file:', error);
-      showError('Lỗi', 'Không thể chọn file nhạc');
-    }
-  };
-
-  // Upload song file
-  const uploadSongFile = async (fileUri) => {
-    setUploadingSong(true);
-    try {
-      const response = await adminService.uploadSong(fileUri);
-      // API trả về { success, message, data: { url, duration } }
-      const uploadData = response?.data || response;
-      const fileInfo = uploadData?.data || {};
-
-      setFormData(prev => ({
-        ...prev,
-        file_url: fileInfo.url || prev.file_url,
-        // Lưu lại thời lượng tự động tính (ẩn, không cho nhập tay)
-        duration:
-          fileInfo.duration != null
-            ? Math.round(fileInfo.duration).toString()
-            : prev.duration,
-      }));
-      showSuccess('Thành công', 'Tải lên file nhạc thành công');
-    } catch (error) {
-      console.error('Error uploading song:', error);
-      showError('Lỗi', 'Không thể tải lên file nhạc');
-    } finally {
-      setUploadingSong(false);
-    }
-  };
-
-  // Pick cover image
-  const pickCoverImage = async () => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        await uploadCoverImage(result.assets[0].uri);
-      }
-    } catch (error) {
-      console.error('Error picking cover image:', error);
-      showError('Lỗi', 'Không thể chọn ảnh bìa');
-    }
-  };
-
-  // Upload cover image
-  const uploadCoverImage = async (imageUri) => {
-    setUploadingCover(true);
-    try {
-      const response = await adminService.uploadCover(imageUri);
-      setFormData(prev => ({ ...prev, cover_url: response.data.file_url }));
-      showSuccess('Thành công', 'Tải lên ảnh bìa thành công');
-    } catch (error) {
-      console.error('Error uploading cover:', error);
-      showError('Lỗi', 'Không thể tải lên ảnh bìa');
-    } finally {
-      setUploadingCover(false);
-    }
+    } catch (e) { console.error(e); }
   };
 
   const handleUpdate = async () => {
-    if (!validateForm()) return;
-
+    if (!formData.title.trim() || !formData.file_url) {
+      return Alert.alert('Lỗi', 'Tiêu đề và file nhạc là bắt buộc');
+    }
     setLoading(true);
     try {
-      // Prepare data with proper null handling
-      const songData = {
-        title: formData.title.trim(),
-        artist_id: formData.artist_id && formData.artist_id !== '' ? parseInt(formData.artist_id) : null,
-        album_id: formData.album_id && formData.album_id !== '' ? parseInt(formData.album_id) : null,
-        genre_id: formData.genre_id && formData.genre_id !== '' ? parseInt(formData.genre_id) : null,
-        duration: parseInt(formData.duration) || null,
-        lyrics: formData.lyrics.trim() || null,
-        release_date: formData.release_date && formData.release_date !== '' ? formData.release_date : null,
-        file_url: formData.file_url.trim(),
-        cover_url: formData.cover_url.trim() || null,
+      const data = {
+        ...formData,
         is_premium: formData.is_premium ? 1 : 0,
-        price: formData.is_premium ? parseFloat(formData.price) || 0 : 0,
+        price: parseFloat(formData.price) || 0
       };
-
       if (song) {
-        // Update existing song
-        await adminService.updateSong(song.song_id, songData);
-        showSuccess('Thành công', 'Đã cập nhật bài hát thành công');
-        setTimeout(() => navigation.goBack(), 1500);
+        await adminService.updateSong(song.song_id, data);
+        Alert.alert('Thành công', 'Đã cập nhật bài hát');
       } else {
-        // Create new song
-        await adminService.createSong(songData);
-        showSuccess('Thành công', 'Đã tạo bài hát mới thành công');
-        setTimeout(() => navigation.goBack(), 1500);
+        await adminService.createSong(data);
+        Alert.alert('Thành công', 'Đã tạo bài hát mới');
       }
-    } catch (error) {
-      console.error('Save song error:', error);
-      showError('Lỗi', error.response?.data?.message || 'Không thể lưu bài hát');
+      navigation.goBack();
+    } catch (e) {
+      Alert.alert('Lỗi', 'Không thể lưu bài hát');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = () => {
-    Alert.alert(
-      'Xác nhận xóa',
-      'Bạn có chắc chắn muốn xóa bài hát này? Hành động này không thể hoàn tác.',
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Xóa',
-          style: 'destructive',
-          onPress: confirmDelete
-        }
-      ]
-    );
-  };
-
-  const confirmDelete = async () => {
-    setLoading(true);
-    try {
-      await adminService.deleteSong(song?.song_id);
-      Alert.alert('Thành công', 'Đã xóa bài hát thành công', [
-        { text: 'OK', onPress: () => navigation.goBack() }
-      ]);
-    } catch (error) {
-      console.error('Delete song error:', error);
-      Alert.alert('Lỗi', error.response?.data?.message || 'Không thể xóa bài hát');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Pick image for artist
-  const pickArtistImage = async () => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        const imageUri = result.assets[0].uri;
-        setNewArtistData(prev => ({ ...prev, image_url: imageUri }));
+  const pickFile = async (type) => {
+    if (type === 'audio') {
+      const res = await DocumentPicker.getDocumentAsync({ type: 'audio/*' });
+      if (!res.canceled) {
+        setUploadingSong(true);
+        try {
+          const up = await adminService.uploadSong(res.assets[0].uri);
+          const info = up?.data?.data || up?.data || up;
+          setFormData({ ...formData, file_url: info.url, duration: Math.round(info.duration || 0).toString() });
+        } finally { setUploadingSong(false); }
       }
-    } catch (error) {
-      console.error('Error picking image:', error);
-      Alert.alert('Lỗi', 'Không thể chọn ảnh');
-    }
-  };
-
-  // Upload image to Cloudinary
-  const uploadImageToCloudinary = async (imageUri) => {
-    try {
-      const formData = new FormData();
-      formData.append('file', {
-        uri: imageUri,
-        type: 'image/jpeg',
-        name: 'artist-image.jpg',
-      });
-      formData.append('upload_preset', 'music_app'); // Replace with your upload preset
-      formData.append('folder', 'artists');
-
-      const response = await fetch('https://api.cloudinary.com/v1_1/dnd4apm6t/image/upload', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        body: formData,
-      });
-
-      const data = await response.json();
-      return data.secure_url;
-    } catch (error) {
-      console.error('Error uploading image:', error);
-      throw error;
-    }
-  };
-
-  // Create new artist with full form
-  const createArtistWithForm = async () => {
-    if (!newArtistData.name.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập tên nghệ sĩ');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      let imageUrl = null;
-      
-      // Upload image if selected
-      if (newArtistData.image_url) {
-        imageUrl = await uploadImageToCloudinary(newArtistData.image_url);
+    } else {
+      const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1,1] });
+      if (!res.canceled) {
+        setUploadingCover(true);
+        try {
+          const up = await adminService.uploadCover(res.assets[0].uri);
+          setFormData({ ...formData, cover_url: up.data.file_url });
+        } finally { setUploadingCover(false); }
       }
-
-      const response = await adminService.createArtist({
-        name: newArtistData.name.trim(),
-        bio: newArtistData.bio.trim() || null,
-        image_url: imageUrl,
-        country: newArtistData.country.trim() || null
-      });
-
-      // Reload artists
-      await loadReferenceData();
-      
-      // Set the new artist as selected
-      setFormData(prev => ({ ...prev, artist_id: response.data.artist_id }));
-      
-      // Reset form
-      setNewArtistData({
-        name: '',
-        bio: '',
-        image_url: '',
-        country: ''
-      });
-      setShowCreateArtistModal(false);
-      Alert.alert('Thành công', 'Đã tạo nghệ sĩ mới');
-    } catch (error) {
-      console.error('Create artist error:', error);
-      Alert.alert('Lỗi', 'Không thể tạo nghệ sĩ mới');
-    } finally {
-      setLoading(false);
     }
   };
 
-  // Create new album
-  const createAlbum = async () => {
-    if (!newAlbumTitle.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập tên album');
-      return;
-    }
-
-    if (!formData.artist_id) {
-      Alert.alert('Lỗi', 'Vui lòng chọn nghệ sĩ trước');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const response = await adminService.createAlbum({
-        title: newAlbumTitle.trim(),
-        artist_id: formData.artist_id,
-        release_date: null,
-        cover_url: null
-      });
-
-      // Reload albums
-      await loadReferenceData();
-      
-      // Set the new album as selected
-      setFormData(prev => ({ ...prev, album_id: response.data.album_id }));
-      
-      setNewAlbumTitle('');
-      setShowAlbumModal(false);
-      Alert.alert('Thành công', 'Đã tạo album mới');
-    } catch (error) {
-      console.error('Create album error:', error);
-      Alert.alert('Lỗi', 'Không thể tạo album mới');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Create new genre with full form
-  const createGenreWithForm = async () => {
-    if (!newGenreData.name.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập tên thể loại');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const response = await adminService.createGenre({
-        name: newGenreData.name.trim(),
-        description: newGenreData.description.trim() || null
-      });
-
-      // Reload genres
-      await loadReferenceData();
-      
-      // Set the new genre as selected
-      setFormData(prev => ({ ...prev, genre_id: response.data.genre_id }));
-      
-      // Reset form
-      setNewGenreData({
-        name: '',
-        description: ''
-      });
-      setShowCreateGenreModal(false);
-      Alert.alert('Thành công', 'Đã tạo thể loại mới');
-    } catch (error) {
-      console.error('Create genre error:', error);
-      Alert.alert('Lỗi', 'Không thể tạo thể loại mới');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const SelectorField = ({ label, value, onPress, icon }) => (
+    <View style={styles.field}>
+      <Text style={styles.label}>{label}</Text>
+      <TouchableOpacity style={styles.selector} onPress={onPress}>
+        <Ionicons name={icon} size={18} color={COLORS.primary} style={{ marginRight: 10 }} />
+        <Text style={[styles.selText, !value && { color: COLORS.textDisabled }]}>{value || `Chọn ${label.toLowerCase()}...`}</Text>
+        <Ionicons name="chevron-down" size={18} color={COLORS.textDisabled} />
+      </TouchableOpacity>
+    </View>
+  );
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color={COLORS.text} />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" />
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Ionicons name="chevron-back" size={28} color="#FFF" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>
-          {song ? 'Chỉnh sửa bài hát' : 'Thêm bài hát mới'}
-        </Text>
-        {song && (
-          <TouchableOpacity
-            style={styles.deleteButton}
-            onPress={handleDelete}
-          >
-            <Ionicons name="trash-outline" size={24} color={COLORS.error} />
-          </TouchableOpacity>
-        )}
-        {!song && <View style={styles.placeholder} />}
-      </View>
-
-      <ScrollView style={styles.content} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.form}>
-          {/* Title */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Tên bài hát *</Text>
-            <TextInput
-              style={styles.input}
-              value={formData.title}
-              onChangeText={(value) => handleInputChange('title', value)}
-              placeholder="Nhập tên bài hát"
-              placeholderTextColor={COLORS.textSecondary}
-            />
-          </View>
-
-          {/* Artist */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Nghệ sĩ</Text>
-            <View style={styles.pickerContainer}>
-              <TouchableOpacity
-                style={styles.pickerButton}
-                onPress={() => setShowArtistModal(true)}
-              >
-                <Text style={[
-                  styles.pickerText,
-                  !formData.artist_id && styles.placeholderText
-                ]}>
-                  {formData.artist_id 
-                    ? artists.find(a => a.artist_id == formData.artist_id)?.name 
-                    : 'Chọn nghệ sĩ'
-                  }
-                </Text>
-                <Ionicons name="chevron-down" size={20} color={COLORS.textSecondary} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.addButton}
-                onPress={() => setShowCreateArtistModal(true)}
-              >
-                <Ionicons name="add" size={20} color={COLORS.white} />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Album */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Album</Text>
-            <View style={styles.pickerContainer}>
-              <TouchableOpacity
-                style={[
-                  styles.pickerButton,
-                  !formData.artist_id && styles.pickerButtonDisabled
-                ]}
-                onPress={() => formData.artist_id && setShowAlbumModal(true)}
-                disabled={!formData.artist_id}
-              >
-                <Text style={[
-                  styles.pickerText,
-                  (!formData.album_id || !formData.artist_id) && styles.placeholderText
-                ]}>
-                  {!formData.artist_id 
-                    ? 'Chọn nghệ sĩ trước'
-                    : formData.album_id 
-                      ? filteredAlbums.find(a => a.album_id == formData.album_id)?.title
-                      : 'Chọn album'
-                  }
-                </Text>
-                <Ionicons name="chevron-down" size={20} color={COLORS.textSecondary} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.addButton,
-                  !formData.artist_id && styles.addButtonDisabled
-                ]}
-                onPress={() => formData.artist_id && setShowAlbumModal(true)}
-                disabled={!formData.artist_id}
-              >
-                <Ionicons name="add" size={20} color={COLORS.primary} />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Genre */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Thể loại</Text>
-            <View style={styles.pickerContainer}>
-              <TouchableOpacity
-                style={styles.pickerButton}
-                onPress={() => setShowGenreModal(true)}
-              >
-                <Text style={[
-                  styles.pickerText,
-                  !formData.genre_id && styles.placeholderText
-                ]}>
-                  {formData.genre_id 
-                    ? genres.find(g => g.genre_id == formData.genre_id)?.name 
-                    : 'Chọn thể loại'
-                  }
-                </Text>
-                <Ionicons name="chevron-down" size={20} color={COLORS.textSecondary} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.addButton}
-                onPress={() => setShowCreateGenreModal(true)}
-              >
-                <Ionicons name="add" size={20} color={COLORS.white} />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Song File Upload */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>File nhạc *</Text>
-            <TouchableOpacity
-              style={styles.uploadButton}
-              onPress={pickSongFile}
-              disabled={uploadingSong}
-            >
-              {uploadingSong ? (
-                <ActivityIndicator size="small" color={COLORS.white} />
-              ) : (
-                <>
-                  <Ionicons name="musical-notes" size={20} color={COLORS.white} />
-                  <Text style={styles.uploadButtonText}>
-                    {formData.file_url ? 'Thay đổi file nhạc' : 'Chọn file MP3'}
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-            {formData.file_url && (
-              <Text style={styles.fileStatusText}>✓ Đã tải lên file nhạc</Text>
-            )}
-          </View>
-
-          {/* Cover Image Upload */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Ảnh bìa</Text>
-            <TouchableOpacity
-              style={styles.uploadButton}
-              onPress={pickCoverImage}
-              disabled={uploadingCover}
-            >
-              {uploadingCover ? (
-                <ActivityIndicator size="small" color={COLORS.white} />
-              ) : (
-                <>
-                  <Ionicons name="image" size={20} color={COLORS.white} />
-                  <Text style={styles.uploadButtonText}>
-                    {formData.cover_url ? 'Thay đổi ảnh bìa' : 'Chọn ảnh bìa'}
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-            {formData.cover_url && (
-              <Text style={styles.fileStatusText}>✓ Đã tải lên ảnh bìa</Text>
-            )}
-          </View>
-
-          {/* Release Date */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Ngày phát hành</Text>
-            <TextInput
-              style={styles.input}
-              value={formData.release_date}
-              onChangeText={(value) => handleInputChange('release_date', value)}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={COLORS.textSecondary}
-            />
-          </View>
-
-          {/* Premium Toggle */}
-          <View style={styles.inputGroup}>
-            <View style={styles.switchContainer}>
-              <View style={styles.switchLabelContainer}>
-                <Ionicons name="star" size={20} color={formData.is_premium ? COLORS.warning : COLORS.textSecondary} />
-                <Text style={styles.label}>Bài hát Premium</Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.switch, formData.is_premium && styles.switchActive]}
-                onPress={() => handleInputChange('is_premium', !formData.is_premium)}
-              >
-                <View style={[styles.switchThumb, formData.is_premium && styles.switchThumbActive]} />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Price (only if premium) */}
-          {formData.is_premium && (
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Giá (VNĐ) *</Text>
-              <TextInput
-                style={styles.input}
-                value={formData.price}
-                onChangeText={(value) => handleInputChange('price', value.replace(/[^0-9]/g, ''))}
-                placeholder="Nhập giá (ví dụ: 10000)"
-                placeholderTextColor={COLORS.textSecondary}
-                keyboardType="numeric"
-              />
-            </View>
-          )}
-
-          {/* Lyrics */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Lời bài hát</Text>
-            <TextInput
-              style={[styles.input, styles.lyricsInput]}
-              value={formData.lyrics}
-              onChangeText={(value) => handleInputChange('lyrics', value)}
-              placeholder="Nhập lời bài hát..."
-              multiline
-              numberOfLines={8}
-              textAlignVertical="top"
-              placeholderTextColor={COLORS.textSecondary}
-            />
-          </View>
-        </View>
-      </ScrollView>
-
-      <View style={styles.footer}>
-        <TouchableOpacity
-          style={[styles.button, styles.updateButton]}
-          onPress={handleUpdate}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color={COLORS.white} />
-          ) : (
-            <>
-              <Ionicons name="save-outline" size={20} color={COLORS.white} />
-              <Text style={styles.buttonText}>Lưu</Text>
-            </>
-          )}
+        <Text style={styles.headerTitle}>{song ? 'CHỈNH SỬA NHẠC' : 'THÊM NHẠC MỚI'}</Text>
+        <TouchableOpacity onPress={handleUpdate} disabled={loading} style={styles.saveBtn}>
+          {loading ? <ActivityIndicator size="small" color={COLORS.primary} /> : <Text style={styles.saveBtnText}>Lưu</Text>}
         </TouchableOpacity>
       </View>
 
-      {/* Artist Selection Modal */}
-      <Modal
-        visible={showArtistModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowArtistModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Chọn nghệ sĩ</Text>
-              <TouchableOpacity onPress={() => setShowArtistModal(false)}>
-                <Ionicons name="close" size={24} color={COLORS.text} />
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 120 }]} showsVerticalScrollIndicator={false}>
+          <View style={styles.uploadSection}>
+            <TouchableOpacity style={styles.coverBox} onPress={() => pickFile('image')}>
+              {uploadingCover ? <ActivityIndicator color={COLORS.primary} /> : (
+                <Image source={{ uri: formData.cover_url || 'https://via.placeholder.com/150' }} style={styles.coverImg} />
+              )}
+              <View style={styles.editBadge}><Ionicons name="camera" size={14} color="#FFF" /></View>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={[styles.audioBtn, formData.file_url && styles.audioBtnDone]} onPress={() => pickFile('audio')}>
+              {uploadingSong ? <ActivityIndicator color="#FFF" /> : (
+                <>
+                  <Ionicons name={formData.file_url ? 'checkmark-circle' : 'cloud-upload'} size={20} color="#FFF" />
+                  <Text style={styles.audioBtnText}>{formData.file_url ? 'Đã tải lên file nhạc' : 'Chọn file nhạc (MP3)'}</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.formCard}>
+            <View style={styles.field}>
+              <Text style={styles.label}>Tên bài hát *</Text>
+              <TextInput style={styles.input} value={formData.title} onChangeText={v => setFormData({...formData, title: v})} placeholder="Nhập tiêu đề..." placeholderTextColor={COLORS.textDisabled} />
+            </View>
+
+            <SelectorField 
+              label="Nghệ sĩ" 
+              icon="mic-outline" 
+              onPress={() => setShowArtistModal(true)} 
+              value={artists.find(a => a.artist_id === formData.artist_id)?.name} 
+            />
+            <SelectorField 
+              label="Album" 
+              icon="disc-outline" 
+              onPress={() => setShowAlbumModal(true)} 
+              value={albums.find(a => a.album_id === formData.album_id)?.title} 
+            />
+            <SelectorField 
+              label="Thể loại" 
+              icon="list-outline" 
+              onPress={() => setShowGenreModal(true)} 
+              value={genres.find(g => g.genre_id === formData.genre_id)?.name} 
+            />
+
+            <View style={styles.field}>
+              <Text style={styles.label}>Ngày phát hành</Text>
+              <TextInput style={styles.input} value={formData.release_date} onChangeText={v => setFormData({...formData, release_date: v})} placeholder="YYYY-MM-DD" placeholderTextColor={COLORS.textDisabled} />
+            </View>
+
+            <View style={styles.premiumRow}>
+              <View>
+                <Text style={styles.premiumLab}>Bản quyền Premium</Text>
+                <Text style={styles.premiumSub}>Cần mua để nghe bản đầy đủ</Text>
+              </View>
+              <TouchableOpacity style={[styles.switch, formData.is_premium && styles.switchOn]} onPress={() => setFormData({...formData, is_premium: !formData.is_premium})}>
+                <View style={[styles.switchThumb, formData.is_premium && styles.switchThumbOn]} />
               </TouchableOpacity>
             </View>
 
+            {formData.is_premium && (
+              <View style={styles.field}>
+                <Text style={styles.label}>Giá bán (VNĐ)</Text>
+                <TextInput style={styles.input} value={formData.price} onChangeText={v => setFormData({...formData, price: v})} keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textDisabled} />
+              </View>
+            )}
 
+            <View style={styles.field}>
+              <Text style={styles.label}>Lời bài hát</Text>
+              <TextInput style={[styles.input, { height: 120, textAlignVertical: 'top' }]} value={formData.lyrics} onChangeText={v => setFormData({...formData, lyrics: v})} multiline placeholder="Nhập lời bài hát..." placeholderTextColor={COLORS.textDisabled} />
+            </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      {/* Basic Modals */}
+      <Modal visible={showArtistModal || showAlbumModal || showGenreModal} transparent animationType="fade">
+        <View style={styles.modalBg}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Chọn {showArtistModal ? 'nghệ sĩ' : showAlbumModal ? 'album' : 'thể loại'}</Text>
             <FlatList
-              data={artists}
+              data={showArtistModal ? artists : showAlbumModal ? albums : genres}
+              keyExtractor={item => (item.artist_id || item.album_id || item.genre_id).toString()}
               renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.modalItem}
-                  onPress={() => {
-                    handleInputChange('artist_id', item.artist_id);
-                    setShowArtistModal(false);
-                  }}
-                >
-                  <Text style={styles.modalItemText}>{item.name}</Text>
-                  {formData.artist_id == item.artist_id && (
-                    <Ionicons name="checkmark" size={20} color={COLORS.primary} />
-                  )}
+                <TouchableOpacity style={styles.dropItem} onPress={() => {
+                  if (showArtistModal) setFormData({...formData, artist_id: item.artist_id});
+                  if (showAlbumModal) setFormData({...formData, album_id: item.album_id});
+                  if (showGenreModal) setFormData({...formData, genre_id: item.genre_id});
+                  setShowArtistModal(false); setShowAlbumModal(false); setShowGenreModal(false);
+                }}>
+                  <Text style={styles.dropText}>{item.name || item.title}</Text>
                 </TouchableOpacity>
               )}
-              keyExtractor={(item) => item.artist_id.toString()}
-              style={styles.modalList}
             />
+            <TouchableOpacity style={styles.closeBtn} onPress={() => {setShowArtistModal(false); setShowAlbumModal(false); setShowGenreModal(false);}}>
+              <Text style={{color: COLORS.primary, fontWeight: 'bold'}}>Đóng</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* Album Selection Modal */}
-      <Modal
-        visible={showAlbumModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowAlbumModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Chọn album</Text>
-              <TouchableOpacity onPress={() => setShowAlbumModal(false)}>
-                <Ionicons name="close" size={24} color={COLORS.text} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Create New Album */}
-            <View style={styles.createNewSection}>
-              <Text style={styles.createNewLabel}>Tạo album mới:</Text>
-              <View style={styles.createNewRow}>
-                <TextInput
-                  style={styles.createNewInput}
-                  placeholder="Tên album"
-                  value={newAlbumTitle}
-                  onChangeText={setNewAlbumTitle}
-                  placeholderTextColor={COLORS.textSecondary}
-                />
-                <TouchableOpacity
-                  style={styles.createNewButton}
-                  onPress={createAlbum}
-                  disabled={loading}
-                >
-                  <Ionicons name="add" size={20} color={COLORS.white} />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <FlatList
-              data={filteredAlbums}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.modalItem}
-                  onPress={() => {
-                    handleInputChange('album_id', item.album_id);
-                    setShowAlbumModal(false);
-                  }}
-                >
-                  <Text style={styles.modalItemText}>{item.title}</Text>
-                  {formData.album_id == item.album_id && (
-                    <Ionicons name="checkmark" size={20} color={COLORS.primary} />
-                  )}
-                </TouchableOpacity>
-              )}
-              keyExtractor={(item) => item.album_id.toString()}
-              style={styles.modalList}
-              ListEmptyComponent={
-                <Text style={styles.emptyText}>
-                  {!formData.artist_id ? 'Chọn nghệ sĩ trước' : 'Không có album nào'}
-                </Text>
-              }
-            />
-          </View>
-        </View>
-      </Modal>
-
-      {/* Genre Selection Modal */}
-      <Modal
-        visible={showGenreModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowGenreModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Chọn thể loại</Text>
-              <TouchableOpacity onPress={() => setShowGenreModal(false)}>
-                <Ionicons name="close" size={24} color={COLORS.text} />
-              </TouchableOpacity>
-            </View>
-
-
-            <FlatList
-              data={genres}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.modalItem}
-                  onPress={() => {
-                    handleInputChange('genre_id', item.genre_id);
-                    setShowGenreModal(false);
-                  }}
-                >
-                  <Text style={styles.modalItemText}>{item.name}</Text>
-                  {formData.genre_id == item.genre_id && (
-                    <Ionicons name="checkmark" size={20} color={COLORS.primary} />
-                  )}
-                </TouchableOpacity>
-              )}
-              keyExtractor={(item) => item.genre_id.toString()}
-              style={styles.modalList}
-            />
-          </View>
-        </View>
-      </Modal>
-
-      {/* Create New Artist Modal */}
-      <Modal
-        visible={showCreateArtistModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowCreateArtistModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.createModalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Thêm nghệ sĩ mới</Text>
-              <TouchableOpacity onPress={() => setShowCreateArtistModal(false)}>
-                <Ionicons name="close" size={24} color={COLORS.text} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.createModalBody} showsVerticalScrollIndicator={false}>
-              {/* Artist Image */}
-              <View style={styles.imageSection}>
-                <Text style={styles.label}>Ảnh nghệ sĩ</Text>
-                <TouchableOpacity
-                  style={styles.imagePicker}
-                  onPress={pickArtistImage}
-                >
-                  {newArtistData.image_url ? (
-                    <Image
-                      source={{ uri: newArtistData.image_url }}
-                      style={styles.selectedImage}
-                    />
-                  ) : (
-                    <View style={styles.imagePlaceholder}>
-                      <Ionicons name="camera" size={40} color={COLORS.textSecondary} />
-                      <Text style={styles.imagePlaceholderText}>Chọn ảnh</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              </View>
-
-              {/* Artist Name */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Tên nghệ sĩ *</Text>
-                <TextInput
-                  style={styles.input}
-                  value={newArtistData.name}
-                  onChangeText={(value) => setNewArtistData(prev => ({ ...prev, name: value }))}
-                  placeholder="Nhập tên nghệ sĩ"
-                  placeholderTextColor={COLORS.textSecondary}
-                />
-              </View>
-
-              {/* Bio */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Tiểu sử</Text>
-                <TextInput
-                  style={[styles.input, styles.bioInput]}
-                  value={newArtistData.bio}
-                  onChangeText={(value) => setNewArtistData(prev => ({ ...prev, bio: value }))}
-                  placeholder="Nhập tiểu sử nghệ sĩ..."
-                  multiline
-                  numberOfLines={4}
-                  textAlignVertical="top"
-                  placeholderTextColor={COLORS.textSecondary}
-                />
-              </View>
-
-              {/* Country */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Quốc gia</Text>
-                <TextInput
-                  style={styles.input}
-                  value={newArtistData.country}
-                  onChangeText={(value) => setNewArtistData(prev => ({ ...prev, country: value }))}
-                  placeholder="Nhập quốc gia"
-                  placeholderTextColor={COLORS.textSecondary}
-                />
-              </View>
-            </ScrollView>
-
-            <View style={styles.createModalFooter}>
-              <TouchableOpacity
-                style={[styles.button, styles.cancelButton]}
-                onPress={() => setShowCreateArtistModal(false)}
-              >
-                <Text style={styles.cancelButtonText}>Hủy</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.button, styles.createButton]}
-                onPress={createArtistWithForm}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color={COLORS.white} />
-                ) : (
-                  <Text style={styles.createButtonText}>Tạo nghệ sĩ</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Create New Genre Modal */}
-      <Modal
-        visible={showCreateGenreModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowCreateGenreModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.createModalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Thêm thể loại mới</Text>
-              <TouchableOpacity onPress={() => setShowCreateGenreModal(false)}>
-                <Ionicons name="close" size={24} color={COLORS.text} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.createModalBody} showsVerticalScrollIndicator={false}>
-              {/* Genre Name */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Tên thể loại *</Text>
-                <TextInput
-                  style={styles.input}
-                  value={newGenreData.name}
-                  onChangeText={(value) => setNewGenreData(prev => ({ ...prev, name: value }))}
-                  placeholder="Nhập tên thể loại"
-                  placeholderTextColor={COLORS.textSecondary}
-                />
-              </View>
-
-              {/* Description */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Mô tả</Text>
-                <TextInput
-                  style={[styles.input, styles.bioInput]}
-                  value={newGenreData.description}
-                  onChangeText={(value) => setNewGenreData(prev => ({ ...prev, description: value }))}
-                  placeholder="Nhập mô tả thể loại..."
-                  multiline
-                  numberOfLines={4}
-                  textAlignVertical="top"
-                  placeholderTextColor={COLORS.textSecondary}
-                />
-              </View>
-            </ScrollView>
-
-            <View style={styles.createModalFooter}>
-              <TouchableOpacity
-                style={[styles.button, styles.cancelButton]}
-                onPress={() => setShowCreateGenreModal(false)}
-              >
-                <Text style={styles.cancelButtonText}>Hủy</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.button, styles.createButton]}
-                onPress={createGenreWithForm}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color={COLORS.white} />
-                ) : (
-                  <Text style={styles.createButtonText}>Tạo thể loại</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Success Modal */}
-      <SuccessModal
-        visible={showModal}
-        onClose={hideModal}
-        title={modalData.title}
-        message={modalData.message}
-        icon={modalData.icon}
-      />
       <MiniPlayer bottomOffset={0} />
-    </KeyboardAvoidingView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SIZES.padding,
-    paddingTop: 60,
-    paddingBottom: 20,
-    backgroundColor: COLORS.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  backButton: {
-    padding: 8,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: COLORS.text,
-  },
-  deleteButton: {
-    padding: 8,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: SIZES.padding,
-  },
-  scrollContent: {
-    paddingBottom: 100, // Space for MiniPlayer
-  },
-  form: {
-    paddingVertical: SIZES.padding,
-  },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: COLORS.text,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  lyricsInput: {
-    height: 120,
-    textAlignVertical: 'top',
-  },
-  pickerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  pickerButton: {
-    flex: 1,
-    backgroundColor: COLORS.surface,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  pickerButtonDisabled: {
-    backgroundColor: COLORS.card,
-    opacity: 0.6,
-  },
-  pickerText: {
-    fontSize: 16,
-    color: COLORS.text,
-    flex: 1,
-  },
-  placeholderText: {
-    color: COLORS.textSecondary,
-  },
-  addButton: {
-    backgroundColor: COLORS.primary,
-    borderRadius: 12,
-    padding: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  addButtonDisabled: {
-    backgroundColor: COLORS.card,
-    opacity: 0.6,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: COLORS.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '80%',
-    paddingBottom: 32,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: SIZES.padding,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  modalTitle: {
-    color: COLORS.text,
-    fontSize: SIZES.lg,
-    fontWeight: '700',
-  },
-  createNewSection: {
-    padding: SIZES.padding,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  createNewLabel: {
-    color: COLORS.text,
-    fontSize: SIZES.md,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  createNewRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  createNewInput: {
-    flex: 1,
-    backgroundColor: COLORS.card,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: COLORS.text,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  createNewButton: {
-    backgroundColor: COLORS.primary,
-    borderRadius: 12,
-    padding: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalList: {
-    paddingHorizontal: SIZES.padding,
-  },
-  modalItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  modalItemText: {
-    color: COLORS.text,
-    fontSize: SIZES.md,
-    flex: 1,
-  },
-  emptyText: {
-    color: COLORS.textSecondary,
-    fontSize: SIZES.md,
-    textAlign: 'center',
-    padding: SIZES.padding * 2,
-  },
-  // Create Artist Modal Styles
-  createModalContent: {
-    backgroundColor: COLORS.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '90%',
-    paddingBottom: 32,
-  },
-  createModalBody: {
-    paddingHorizontal: SIZES.padding,
-    paddingVertical: SIZES.padding,
-  },
-  createModalFooter: {
-    flexDirection: 'row',
-    paddingHorizontal: SIZES.padding,
-    paddingTop: 20,
-    gap: 12,
-  },
-  imageSection: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  imagePicker: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    overflow: 'hidden',
-    backgroundColor: COLORS.card,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.border,
-    borderStyle: 'dashed',
-  },
-  selectedImage: {
-    width: '100%',
-    height: '100%',
-  },
-  imagePlaceholder: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  imagePlaceholderText: {
-    color: COLORS.textSecondary,
-    fontSize: SIZES.sm,
-    marginTop: 8,
-  },
-  bioInput: {
-    height: 100,
-    textAlignVertical: 'top',
-  },
-  cancelButton: {
-    backgroundColor: COLORS.card,
-    paddingVertical: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  cancelButtonText: {
-    color: COLORS.text,
-    fontSize: SIZES.md,
-    fontWeight: '600',
-  },
-  createButton: {
-    backgroundColor: COLORS.primary,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  createButtonText: {
-    color: COLORS.white,
-    fontSize: SIZES.md,
-    fontWeight: '700',
-  },
-  footer: {
-    paddingHorizontal: SIZES.padding,
-    paddingVertical: 20,
-    backgroundColor: COLORS.surface,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-  },
-  button: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    borderRadius: 12,
-    gap: 8,
-  },
-  updateButton: {
-    backgroundColor: COLORS.primary,
-  },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.white,
-  },
-  placeholder: {
-    width: 24,
-  },
-  uploadButton: {
-    backgroundColor: COLORS.primary,
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  uploadButtonText: {
-    color: COLORS.white,
-    fontSize: SIZES.md,
-    fontWeight: '600',
-  },
-  fileStatusText: {
-    color: COLORS.success,
-    fontSize: SIZES.sm,
-    marginTop: 8,
-    fontWeight: '500',
-  },
-  switchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: COLORS.surface,
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  switchLabelContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  switch: {
-    width: 50,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.card,
-    justifyContent: 'center',
-    padding: 2,
-  },
-  switchActive: {
-    backgroundColor: COLORS.primary,
-  },
-  switchThumb: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: COLORS.white,
-    alignSelf: 'flex-start',
-  },
-  switchThumbActive: {
-    alignSelf: 'flex-end',
-  },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  header: { backgroundColor: COLORS.backgroundSecondary, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: COLORS.divider },
+  headerTitle: { fontSize: 14, fontWeight: '900', color: '#FFF', letterSpacing: 1.2 },
+  backBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+  saveBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10, backgroundColor: COLORS.surface },
+  saveBtnText: { color: COLORS.primary, fontWeight: 'bold' },
+  content: { padding: 20 },
+  uploadSection: { alignItems: 'center', marginBottom: 32 },
+  coverBox: { position: 'relative', marginBottom: 20 },
+  coverImg: { width: 140, height: 140, borderRadius: 24, backgroundColor: COLORS.surface },
+  editBadge: { position: 'absolute', bottom: 5, right: 5, width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center', borderWidth: 3, borderColor: COLORS.background },
+  audioBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.surface, paddingHorizontal: 20, paddingVertical: 14, borderRadius: 16, borderWidth: 1, borderColor: COLORS.divider },
+  audioBtnDone: { backgroundColor: COLORS.success, borderColor: COLORS.success },
+  audioBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 13 },
+  formCard: { backgroundColor: COLORS.surface, borderRadius: 24, padding: 20, borderWidth: 1, borderColor: COLORS.divider },
+  field: { marginBottom: 20 },
+  label: { fontSize: 13, fontWeight: 'bold', color: COLORS.textSecondary, marginBottom: 8 },
+  input: { backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 12, padding: 14, color: '#FFF', borderSize: 1, borderColor: COLORS.divider },
+  selector: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 12, padding: 14, borderSize: 1, borderColor: COLORS.divider },
+  selText: { flex: 1, color: '#FFF', fontSize: 14 },
+  premiumRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: COLORS.divider, marginBottom: 20 },
+  premiumLab: { fontSize: 15, fontWeight: 'bold', color: '#FFF' },
+  premiumSub: { fontSize: 12, color: COLORS.textDisabled, marginTop: 2 },
+  switch: { width: 50, height: 28, borderRadius: 14, backgroundColor: COLORS.divider, padding: 2 },
+  switchOn: { backgroundColor: COLORS.primary },
+  switchThumb: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#FFF' },
+  switchThumbOn: { alignSelf: 'flex-end' },
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', padding: 30 },
+  modalContent: { backgroundColor: COLORS.surface, borderRadius: 24, padding: 20, maxHeight: '70%' },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#FFF', marginBottom: 20, textAlign: 'center' },
+  dropItem: { paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: COLORS.divider },
+  dropText: { color: COLORS.textSecondary, fontSize: 15, textAlign: 'center' },
+  closeBtn: { marginTop: 20, paddingVertical: 12, alignItems: 'center' },
 });
 
 export default AdminEditSongScreen;

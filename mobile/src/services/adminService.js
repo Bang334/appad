@@ -107,6 +107,47 @@ export const adminService = {
     return response.data;
   },
 
+  getArtistReviews: async (artistId, params = {}) => {
+    const { limit = 50, offset = 0, song_id, rating, sort_by } = params;
+    const queryParams = new URLSearchParams({
+      limit,
+      offset,
+      ...(song_id && { song_id }),
+      ...(rating && { rating }),
+      ...(sort_by && { sort_by }),
+    }).toString();
+    const response = await api.get(`/admin/artists/${artistId}/reviews?${queryParams}`);
+    return response.data;
+  },
+
+  getAllReviews: async (params = {}) => {
+    const { limit = 50, offset = 0, artist_id, rating, sort_by } = params;
+    const queryParams = new URLSearchParams({
+      limit,
+      offset,
+      ...(artist_id && { artist_id }),
+      ...(rating && { rating }),
+      ...(sort_by && { sort_by }),
+    }).toString();
+    const response = await api.get(`/admin/reviews?${queryParams}`);
+    return response.data;
+  },
+
+  getReviewStats: async () => {
+    const response = await api.get('/admin/reviews/stats');
+    return response.data;
+  },
+
+  getArtistSongs: async (artistId) => {
+    const response = await api.get(`/artists/${artistId}/songs`);
+    return response.data;
+  },
+
+  deleteReview: async (reviewId) => {
+    const response = await api.delete(`/admin/reviews/${reviewId}`);
+    return response.data;
+  },
+
   createAlbum: async (albumData) => {
     const response = await api.post('/admin/albums', albumData);
     return response.data;
@@ -308,6 +349,30 @@ export const adminService = {
 
   getMembershipStats: async () => {
     const response = await api.get('/admin/memberships/stats');
+    return response.data;
+  },
+
+  // Premium Revenue & Payout
+  calculatePremiumPayout: async (startDate, endDate) => {
+    const response = await api.post('/revenue/calculate-monthly', {
+      start_date: startDate,
+      end_date: endDate,
+    });
+    return response.data;
+  },
+
+  applyPremiumPayout: async (payoutData) => {
+    const response = await api.post('/revenue/apply-monthly', payoutData);
+    return response.data;
+  },
+
+  getPayoutHistory: async () => {
+    const response = await api.get('/revenue/payout-history');
+    return response.data;
+  },
+
+  getPayoutBatchDetails: async (batchTime) => {
+    const response = await api.get(`/revenue/payout-batch?batch_time=${encodeURIComponent(batchTime)}`);
     return response.data;
   },
 };

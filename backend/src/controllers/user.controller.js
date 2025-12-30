@@ -74,7 +74,7 @@ class UserController {
   static async updateProfile(req, res) {
     try {
       const userId = req.user.user_id;
-      const { username, email, full_name, avatar_url, background_video_url } = req.body;
+      const { username, email, full_name, avatar_url } = req.body;
 
       // Update user profile (bio is not in database schema, so we skip it)
       const updateData = {};
@@ -82,7 +82,7 @@ class UserController {
       if (email !== undefined) updateData.email = email;
       if (full_name !== undefined) updateData.full_name = full_name;
       if (avatar_url !== undefined) updateData.avatar_url = avatar_url;
-      if (background_video_url !== undefined) updateData.background_video_url = background_video_url;
+
 
       const updated = await UserModel.update(userId, updateData);
       
@@ -110,50 +110,7 @@ class UserController {
     }
   }
 
-  // Update background video URL
-  static async updateBackgroundVideo(req, res) {
-    try {
-      const userId = req.user.user_id;
-      const { background_video_url } = req.body;
 
-      // Validate YouTube URL format (optional)
-      if (background_video_url && background_video_url.trim() !== '') {
-        const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/).+/;
-        if (!youtubeRegex.test(background_video_url)) {
-          return res.status(400).json({
-            success: false,
-            message: 'URL YouTube không hợp lệ'
-          });
-        }
-      }
-
-      const updated = await UserModel.update(userId, { 
-        background_video_url: background_video_url || null 
-      });
-      
-      if (!updated) {
-        return res.status(404).json({
-          success: false,
-          message: 'Không tìm thấy người dùng'
-        });
-      }
-
-      // Get updated user data
-      const updatedUser = await UserModel.findById(userId);
-
-      res.json({
-        success: true,
-        message: 'Cập nhật video background thành công',
-        data: updatedUser
-      });
-    } catch (error) {
-      console.error('Update background video error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Lỗi server'
-      });
-    }
-  }
 
   // Change password
   static async changePassword(req, res) {

@@ -12,12 +12,14 @@ import {
   Clipboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../../config/theme';
 import { walletService } from '../../services/walletService';
 import MiniPlayer from '../../components/Player/MiniPlayer';
 import SuccessModal from '../../components/Common/SuccessModal';
 
 const TopUpScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
   const [qrData, setQrData] = useState(null);
@@ -114,7 +116,7 @@ const TopUpScreen = ({ navigation }) => {
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
         >
-        <View style={styles.qrContainer}>
+        <View style={[styles.qrContainer, { paddingTop: Math.max(insets.top, 20) }]}>
           <Text style={styles.qrTitle}>Quét mã QR để chuyển khoản</Text>
           
           <View style={styles.qrCodeWrapper}>
@@ -217,7 +219,7 @@ const TopUpScreen = ({ navigation }) => {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
       >
-      <View style={styles.content}>
+      <View style={[styles.content, { paddingTop: Math.max(insets.top, 20) }]}>
         <Text style={styles.title}>Nạp tiền vào ví</Text>
         <Text style={styles.subtitle}>
           Nhập số tiền bạn muốn nạp vào ví

@@ -14,8 +14,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../../config/theme';
 import { artistService } from '../../services/artistService';
 import MiniPlayer from '../../components/Player/MiniPlayer';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const ArtistEditAlbumScreen = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { artistId, album } = route.params;
   const [loading, setLoading] = useState(false);
   
@@ -134,9 +136,9 @@ const ArtistEditAlbumScreen = ({ route, navigation }) => {
     <View style={styles.container}>
       <ScrollView 
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 + insets.bottom }]}
       >
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top + 20, 60) }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}

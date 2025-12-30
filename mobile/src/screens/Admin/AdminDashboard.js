@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,422 +7,296 @@ import {
   ScrollView,
   Alert,
   RefreshControl,
+  StatusBar,
+  Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../context/AuthContext';
-import { COLORS, SIZES } from '../../config/theme';
+import { COLORS, SIZES, SHADOWS } from '../../config/theme';
 import { adminService } from '../../services/adminService';
 import MiniPlayer from '../../components/Player/MiniPlayer';
-import { songService } from '../../services/songService';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const AdminDashboard = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [stats, setStats] = useState({
     totalUsers: 0,
     totalSongs: 0,
     totalAlbums: 0,
     totalPlays: 0,
+    newUsersThisMonth: 0
   });
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    loadStats();
-  }, []);
-
   const loadStats = async () => {
-    setLoading(true);
     try {
-      // Use admin API for real data
       const response = await adminService.getDashboardStats();
-      setStats(response.data);
+      if (response.success) {
+        setStats(response.data);
+      }
     } catch (error) {
       console.error('Error loading stats:', error);
-      // Fallback to mock data if admin API fails
-      setStats({
-        totalUsers: 1250,
-        totalSongs: 850,
-        totalAlbums: 120,
-        totalPlays: 45600,
-      });
+      Alert.alert('Lỗi', 'Không thể tải thống kê hệ thống');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  const onRefresh = async () => {
+  useFocusEffect(
+    useCallback(() => {
+      loadStats();
+    }, [])
+  );
+
+  const onRefresh = () => {
     setRefreshing(true);
-    await loadStats();
-    setRefreshing(false);
+    loadStats();
   };
 
   const handleQuickSettings = () => {
-    Alert.alert(
-      'Cài đặt hệ thống',
-      'Chọn loại cài đặt:',
-      [
-        { text: 'Hủy', style: 'cancel' },
-        { 
-          text: 'Cài đặt chung', 
-          onPress: () => {
-            Alert.alert('Thông báo', 'Tính năng cài đặt chung sẽ sớm có mặt');
-          }
-        },
-        { 
-          text: 'Cài đặt bảo mật', 
-          onPress: () => {
-            Alert.alert('Thông báo', 'Tính năng cài đặt bảo mật sẽ sớm có mặt');
-          }
-        },
-        { 
-          text: 'Cài đặt thông báo', 
-          onPress: () => {
-            Alert.alert('Thông báo', 'Tính năng cài đặt thông báo sẽ sớm có mặt');
-          }
-        },
-        { 
-          text: 'Cài đặt lưu trữ', 
-          onPress: () => {
-            Alert.alert('Thông báo', 'Tính năng cài đặt lưu trữ sẽ sớm có mặt');
-          }
-        }
-      ]
-    );
+    Alert.alert('Cài đặt hệ thống', 'Tính năng này đang được phát triển');
   };
 
-  const handleQuickBackup = async () => {
-    Alert.alert(
-      'Sao lưu dữ liệu',
-      'Chọn loại sao lưu:',
-      [
-        { text: 'Hủy', style: 'cancel' },
-        { 
-          text: 'Sao lưu toàn bộ', 
-          onPress: async () => {
-            try {
-              Alert.alert('Thông báo', 'Đang tạo bản sao lưu toàn bộ...');
-              // Simulate backup process
-              setTimeout(() => {
-                Alert.alert('Thành công', 'Đã tạo bản sao lưu thành công!');
-              }, 2000);
-            } catch (error) {
-              Alert.alert('Lỗi', 'Không thể tạo bản sao lưu');
-            }
-          }
-        },
-        { 
-          text: 'Sao lưu cơ sở dữ liệu', 
-          onPress: async () => {
-            try {
-              Alert.alert('Thông báo', 'Đang sao lưu cơ sở dữ liệu...');
-              setTimeout(() => {
-                Alert.alert('Thành công', 'Đã sao lưu cơ sở dữ liệu!');
-              }, 1500);
-            } catch (error) {
-              Alert.alert('Lỗi', 'Không thể sao lưu cơ sở dữ liệu');
-            }
-          }
-        },
-        { 
-          text: 'Sao lưu file media', 
-          onPress: async () => {
-            try {
-              Alert.alert('Thông báo', 'Đang sao lưu file media...');
-              setTimeout(() => {
-                Alert.alert('Thành công', 'Đã sao lưu file media!');
-              }, 3000);
-            } catch (error) {
-              Alert.alert('Lỗi', 'Không thể sao lưu file media');
-            }
-          }
-        }
-      ]
-    );
+  const handleQuickBackup = () => {
+    Alert.alert('Sao lưu', 'Tính năng sao lưu đang được chuẩn bị');
   };
 
-  const handleQuickReport = () => {
-    Alert.alert(
-      'Báo cáo',
-      'Chọn loại báo cáo:',
-      [
-        { text: 'Hủy', style: 'cancel' },
-        { 
-          text: 'Báo cáo người dùng', 
-          onPress: () => {
-            Alert.alert('Thông báo', 'Đang tạo báo cáo người dùng...');
-            setTimeout(() => {
-              Alert.alert('Thành công', 'Báo cáo người dùng đã được tạo!');
-            }, 2000);
-          }
-        },
-        { 
-          text: 'Báo cáo bài hát', 
-          onPress: () => {
-            Alert.alert('Thông báo', 'Đang tạo báo cáo bài hát...');
-            setTimeout(() => {
-              Alert.alert('Thành công', 'Báo cáo bài hát đã được tạo!');
-            }, 2000);
-          }
-        },
-        { 
-          text: 'Báo cáo thống kê', 
-          onPress: () => {
-            Alert.alert('Thông báo', 'Đang tạo báo cáo thống kê...');
-            setTimeout(() => {
-              Alert.alert('Thành công', 'Báo cáo thống kê đã được tạo!');
-            }, 2000);
-          }
-        },
-        { 
-          text: 'Báo cáo tổng hợp', 
-          onPress: () => {
-            Alert.alert('Thông báo', 'Đang tạo báo cáo tổng hợp...');
-            setTimeout(() => {
-              Alert.alert('Thành công', 'Báo cáo tổng hợp đã được tạo!');
-            }, 3000);
-          }
-        }
-      ]
-    );
-  };
-
-  const StatCard = ({ icon, title, value, color = COLORS.primary, onPress }) => (
-    <TouchableOpacity style={styles.statCard} onPress={onPress}>
-      <View style={[styles.statIcon, { backgroundColor: color + '20' }]}>
-        <Ionicons name={icon} size={24} color={color} />
+  const StatPanel = ({ icon, title, value, color, onPress }) => (
+    <TouchableOpacity 
+      style={styles.statPanel} 
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <View style={[styles.statIconContainer, { backgroundColor: color + '15' }]}>
+        <Ionicons name={icon} size={22} color={color} />
       </View>
-      <Text style={styles.statValue}>{(value || 0).toLocaleString()}</Text>
-      <Text style={styles.statTitle}>{title}</Text>
+      <View style={styles.statTextContainer}>
+        <Text style={styles.statPanelValue}>{(value || 0).toLocaleString()}</Text>
+        <Text style={styles.statPanelLabel}>{title}</Text>
+      </View>
     </TouchableOpacity>
   );
 
-  const AdminMenuItem = ({ icon, title, subtitle, onPress, gradientColors }) => {
-    const defaultGradient = [COLORS.primary, COLORS.accent];
-    const colors = gradientColors || defaultGradient;
-    
+  const MenuCard = ({ icon, title, subtitle, onPress, colors }) => (
+    <TouchableOpacity 
+      style={styles.menuCard} 
+      onPress={onPress}
+      activeOpacity={0.8}
+    >
+      <LinearGradient
+        colors={colors || ['#4f46e5', '#3730a3']}
+        style={styles.menuCardIcon}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <Ionicons name={icon} size={24} color="#FFF" />
+      </LinearGradient>
+      <View style={styles.menuCardInfo}>
+        <Text style={styles.menuCardTitle}>{title}</Text>
+        <Text style={styles.menuCardSubtitle} numberOfLines={1}>{subtitle}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={COLORS.textDisabled} />
+    </TouchableOpacity>
+  );
+
+  if (loading && !refreshing) {
     return (
-      <TouchableOpacity style={styles.adminMenuItem} onPress={onPress}>
-        <LinearGradient
-          colors={colors}
-          style={styles.adminMenuIcon}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <Ionicons name={icon} size={24} color="#FFF" />
-        </LinearGradient>
-        <View style={styles.adminMenuText}>
-          <Text style={styles.adminMenuTitle}>{title}</Text>
-          <Text style={styles.adminMenuSubtitle}>{subtitle}</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
-      </TouchableOpacity>
+      <View style={styles.loadingWrapper}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={styles.loadingText}>Đang khởi tạo quyền quản trị...</Text>
+      </View>
     );
-  };
+  }
 
   return (
     <View style={styles.container}>
+      <StatusBar barStyle="light-content" />
+      
+      {/* Premium Header */}
+      <LinearGradient
+        colors={[COLORS.backgroundSecondary, COLORS.background]}
+        style={[styles.header, { paddingTop: insets.top + 10 }]}
+      >
+        <View style={styles.headerTop}>
+          <TouchableOpacity 
+            onPress={() => navigation.navigate('MainTabs', { screen: 'Profile' })}
+            style={styles.headerIconButton}
+          >
+            <Ionicons name="person-circle-outline" size={32} color="#FFF" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Admin Control</Text>
+          <TouchableOpacity style={styles.headerIconButton} onPress={handleQuickSettings}>
+            <Ionicons name="settings-outline" size={24} color="#FFF" />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.welcomeBox}>
+          <View>
+            <Text style={styles.welcomeSub}>Hệ thống vận hành tốt,</Text>
+            <Text style={styles.adminName}>{user?.username || 'Administrator'}</Text>
+          </View>
+          <View style={styles.statusBadge}>
+            <View style={styles.statusDot} />
+            <Text style={styles.statusText}>Live</Text>
+          </View>
+        </View>
+
+        {/* Highlight Stats */}
+        <View style={styles.highlightStats}>
+          <View style={styles.highlightItem}>
+            <Text style={styles.highlightValue}>{stats.totalPlays.toLocaleString()}</Text>
+            <Text style={styles.highlightLabel}>Lượt nghe</Text>
+          </View>
+          <View style={styles.highlightDivider} />
+          <View style={styles.highlightItem}>
+            <Text style={styles.highlightValue}>+{stats.newUsersThisMonth}</Text>
+            <Text style={styles.highlightLabel}>User mới (tháng)</Text>
+          </View>
+        </View>
+      </LinearGradient>
+
       <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        style={styles.content}
+        contentContainerStyle={[styles.scrollPadding, { paddingBottom: insets.bottom + 100 }]}
+        showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
         }
       >
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.welcomeText}>Xin chào,</Text>
-          <Text style={styles.adminName}>{user?.username || 'Admin'}</Text>
-        </View>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => {
-            navigation.navigate('MainTabs', { screen: 'Profile' });
-          }}
-        >
-          <Ionicons name="arrow-back-outline" size={24} color={COLORS.text} />
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.statsSection}>
-        <Text style={styles.sectionTitle}>Thống kê tổng quan</Text>
+        {/* Statistics Grid */}
+        <Text style={styles.sectionLabel}>THỐNG KÊ CHI TIẾT</Text>
         <View style={styles.statsGrid}>
-          <StatCard
-            icon="people-outline"
+          <StatPanel
+            icon="people"
             title="Người dùng"
             value={stats.totalUsers}
-            color={COLORS.primary}
+            color="#3B82F6"
             onPress={() => navigation.navigate('AdminUsers')}
           />
-          <StatCard
-            icon="musical-notes-outline"
+          <StatPanel
+            icon="musical-notes"
             title="Bài hát"
             value={stats.totalSongs}
-            color={COLORS.success}
+            color="#10B981"
             onPress={() => navigation.navigate('AdminSongs')}
           />
-          <StatCard
-            icon="disc-outline"
+          <StatPanel
+            icon="disc"
             title="Album"
             value={stats.totalAlbums}
-            color={COLORS.warning}
+            color="#F59E0B"
             onPress={() => navigation.navigate('AdminAlbums')}
           />
-          <StatCard
-            icon="play-circle-outline"
-            title="Lượt phát"
+          <StatPanel
+            icon="bar-chart"
+            title="Phân tích"
             value={stats.totalPlays}
-            color={COLORS.info}
+            color="#8B5CF6"
             onPress={() => navigation.navigate('AdminAnalytics')}
           />
         </View>
-      </View>
 
-      <View style={styles.adminMenuSection}>
-        <Text style={styles.sectionTitle}>Quản lý hệ thống</Text>
-        
-        <AdminMenuItem
-          icon="people"
-          title="Quản lý người dùng"
-          subtitle="Xem, thêm, sửa, xóa người dùng"
-          gradientColors={['#2196F3', '#21CBF3']}
-          onPress={() => navigation.navigate('AdminUsers')}
-        />
+        {/* Content Management */}
+        <Text style={[styles.sectionLabel, { marginTop: 24 }]}>QUẢN LÝ NỘI DUNG</Text>
+        <View style={styles.menuGroup}>
+          <MenuCard
+            icon="people-outline"
+            title="Người dùng"
+            subtitle="Ban/Unban, phân quyền tài khoản"
+            colors={['#3B82F6', '#2563EB']}
+            onPress={() => navigation.navigate('AdminUsers')}
+          />
+          <MenuCard
+            icon="musical-note-outline"
+            title="Kho bài hát"
+            subtitle="Kiểm duyệt và chỉnh sửa"
+            colors={['#10B981', '#059669']}
+            onPress={() => navigation.navigate('AdminSongs')}
+          />
+          <MenuCard
+            icon="albums-outline"
+            title="Bộ sưu tập Album"
+            subtitle="Quản lý danh sách album"
+            colors={['#F59E0B', '#D97706']}
+            onPress={() => navigation.navigate('AdminAlbums')}
+          />
+          <MenuCard
+            icon="chatbubbles-outline"
+            title="Quản lý Đánh giá"
+            subtitle="Xem và kiểm soát đánh giá của artist"
+            colors={['#EC4899', '#BE185D']}
+            onPress={() => navigation.navigate('AdminReviewsMain')}
+          />
+        </View>
 
-        <AdminMenuItem
-          icon="musical-notes"
-          title="Quản lý bài hát"
-          subtitle="Thêm, sửa, xóa bài hát"
-          gradientColors={['#4CAF50', '#8BC34A']}
-          onPress={() => navigation.navigate('AdminSongs')}
-        />
+        {/* Financial Management */}
+        <Text style={[styles.sectionLabel, { marginTop: 24 }]}>TÀI CHÍNH & GIAO DỊCH</Text>
+        <View style={styles.menuGroup}>
+          <MenuCard
+            icon="wallet-outline"
+            title="Duyệt nạp tiền"
+            subtitle="Yêu cầu nạp từ người dùng"
+            colors={['#06B6D4', '#0891B2']}
+            onPress={() => navigation.navigate('AdminTransactions')}
+          />
+          <MenuCard
+            icon="cash-outline"
+            title="Duyệt rút tiền"
+            subtitle="Yêu cầu rút từ nghệ sĩ"
+            colors={['#8B5CF6', '#7C3AED']}
+            onPress={() => navigation.navigate('AdminWithdrawals')}
+          />
+          <MenuCard
+            icon="star-outline"
+            title="Gói hội viên"
+            subtitle="Thống kê đăng ký thành viên"
+            colors={['#EC4899', '#DB2777']}
+            onPress={() => navigation.navigate('AdminMembership')}
+          />
+          <MenuCard
+            icon="gift-outline"
+            title="Phát lương Premium"
+            subtitle="Chia sẻ doanh thu & xem lịch sử"
+            colors={['#8B5CF6', '#D946EF']}
+            onPress={() => navigation.navigate('AdminPremiumPayout')}
+          />
+        </View>
 
-        <AdminMenuItem
-          icon="disc"
-          title="Quản lý album"
-          subtitle="Thêm, sửa, xóa album"
-          gradientColors={['#FF9800', '#FFC107']}
-          onPress={() => navigation.navigate('AdminAlbums')}
-        />
-
-        <AdminMenuItem
-          icon="analytics"
-          title="Phân tích dữ liệu"
-          subtitle="Thống kê và báo cáo"
-          gradientColors={['#9C27B0', '#E91E63']}
-          onPress={() => navigation.navigate('AdminAnalytics')}
-        />
-
-        <AdminMenuItem
-          icon="wallet"
-          title="Quản lý nạp tiền"
-          subtitle="Duyệt yêu cầu nạp tiền của users"
-          gradientColors={['#00BCD4', '#0097A7']}
-          onPress={() => navigation.navigate('AdminTransactions')}
-        />
-
-        <AdminMenuItem
-          icon="cash"
-          title="Quản lý rút tiền"
-          subtitle="Duyệt yêu cầu rút tiền của artists"
-          gradientColors={['#4CAF50', '#66BB6A']}
-          onPress={() => navigation.navigate('AdminWithdrawals')}
-        />
-
-        <AdminMenuItem
-          icon="people"
-          title="Quản lý hội viên"
-          subtitle="Xem và quản lý hội viên của các artist"
-          gradientColors={['#E91E63', '#F06292']}
-          onPress={() => navigation.navigate('AdminMembership')}
-        />
-
-        <AdminMenuItem
-          icon="settings"
-          title="Cài đặt hệ thống"
-          subtitle="Cấu hình ứng dụng"
-          gradientColors={['#607D8B', '#78909C']}
-          onPress={() => Alert.alert('Thông báo', 'Tính năng cài đặt hệ thống sẽ sớm có mặt')}
-        />
-      </View>
-
-      <View style={styles.quickActionsSection}>
-        <Text style={styles.sectionTitle}>Thao tác nhanh</Text>
-        
-        <View style={styles.quickActionsGrid}>
-          <TouchableOpacity 
-            style={styles.quickActionButton}
-            onPress={() => navigation.navigate('AdminEditSong', { song: null })}
-          >
-            <LinearGradient
-              colors={['#4CAF50', '#8BC34A']}
-              style={styles.quickActionIcon}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <Ionicons name="add-circle" size={32} color="#FFF" />
-            </LinearGradient>
-            <Text style={styles.quickActionText}>Thêm bài hát</Text>
+        {/* System & Tools */}
+        <Text style={[styles.sectionLabel, { marginTop: 24 }]}>HỆ THỐNG</Text>
+        <View style={styles.toolsRow}>
+          <TouchableOpacity style={styles.toolItem} onPress={handleQuickBackup}>
+            <View style={[styles.toolIcon, { backgroundColor: '#64748B20' }]}>
+              <Ionicons name="cloud-upload-outline" size={24} color="#64748B" />
+            </View>
+            <Text style={styles.toolLabel}>Sao lưu</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.quickActionButton}
-            onPress={() => navigation.navigate('AdminEditAlbum', { album: null })}
-          >
-            <LinearGradient
-              colors={['#FF9800', '#FFC107']}
-              style={styles.quickActionIcon}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <Ionicons name="disc" size={32} color="#FFF" />
-            </LinearGradient>
-            <Text style={styles.quickActionText}>Thêm album</Text>
+          <TouchableOpacity style={styles.toolItem} onPress={() => Alert.alert('Thông báo', 'Đang tạo báo cáo tổng hợp...')}>
+            <View style={[styles.toolIcon, { backgroundColor: '#F43F5E20' }]}>
+              <Ionicons name="document-text-outline" size={24} color="#F43F5E" />
+            </View>
+            <Text style={styles.toolLabel}>Báo cáo</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.quickActionButton}
-            onPress={() => navigation.navigate('AdminAnalytics')}
-          >
-            <LinearGradient
-              colors={['#9C27B0', '#E91E63']}
-              style={styles.quickActionIcon}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <Ionicons name="analytics" size={32} color="#FFF" />
-            </LinearGradient>
-            <Text style={styles.quickActionText}>Phân tích</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.quickActionButton}
-            onPress={handleQuickSettings}
-          >
-            <Ionicons name="settings" size={32} color={COLORS.primary} />
-            <Text style={styles.quickActionText}>Cài đặt</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.quickActionButton}
-            onPress={handleQuickBackup}
-          >
-            <Ionicons name="cloud-upload" size={32} color={COLORS.success} />
-            <Text style={styles.quickActionText}>Sao lưu</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.quickActionButton}
-            onPress={handleQuickReport}
-          >
-            <Ionicons name="document-text" size={32} color={COLORS.warning} />
-            <Text style={styles.quickActionText}>Báo cáo</Text>
+          <TouchableOpacity style={styles.toolItem} onPress={handleQuickSettings}>
+            <View style={[styles.toolIcon, { backgroundColor: '#47556920' }]}>
+              <Ionicons name="construct-outline" size={24} color="#475569" />
+            </View>
+            <Text style={styles.toolLabel}>Bảo trì</Text>
           </TouchableOpacity>
         </View>
-      </View>
-    </ScrollView>
-    <MiniPlayer bottomOffset={0} />
-  </View>
+
+        <View style={{ height: 120 }} />
+      </ScrollView>
+      <MiniPlayer bottomOffset={0} />
+    </View>
   );
 };
 
@@ -431,144 +305,213 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  scrollView: {
+  loadingWrapper: {
     flex: 1,
+    backgroundColor: COLORS.background,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  scrollContent: {
-    paddingBottom: 100, // Space for MiniPlayer
+  loadingText: {
+    color: COLORS.textSecondary,
+    marginTop: 12,
+    fontSize: 14,
   },
   header: {
+    paddingHorizontal: 20,
+    paddingBottom: 24,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    ...SHADOWS.medium,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFF',
+  },
+  headerIconButton: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  welcomeBox: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 60,
-    paddingHorizontal: SIZES.padding,
-    paddingBottom: SIZES.padding,
-    backgroundColor: COLORS.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    alignItems: 'flex-end',
+    marginBottom: 24,
   },
-  welcomeText: {
-    color: COLORS.textSecondary,
-    fontSize: SIZES.md,
+  welcomeSub: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.6)',
   },
   adminName: {
-    color: COLORS.text,
-    fontSize: SIZES.lg,
+    fontSize: 26,
+    fontWeight: '900',
+    color: '#FFF',
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 6,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#10B981',
+  },
+  statusText: {
+    color: '#10B981',
+    fontSize: 12,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+  },
+  highlightStats: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 20,
+    paddingVertical: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  highlightItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  highlightValue: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#FFF',
+  },
+  highlightLabel: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.5)',
+    marginTop: 2,
     fontWeight: 'bold',
   },
-  backButton: {
-    padding: 8,
+  highlightDivider: {
+    width: 1,
+    backgroundColor: 'rgba(255,255,255,0.1)',
   },
-  statsSection: {
-    padding: SIZES.padding,
+  content: {
+    flex: 1,
   },
-  sectionTitle: {
-    color: COLORS.text,
-    fontSize: SIZES.lg,
-    fontWeight: 'bold',
+  scrollPadding: {
+    paddingHorizontal: 20,
+    paddingTop: 24,
+  },
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.textSecondary,
+    letterSpacing: 1.5,
     marginBottom: 16,
+    paddingLeft: 4,
   },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
   },
-  statCard: {
+  statPanel: {
+    width: (SCREEN_WIDTH - 52) / 2,
     backgroundColor: COLORS.surface,
-    borderRadius: SIZES.borderRadius,
+    borderRadius: 20,
     padding: 16,
-    alignItems: 'center',
-    width: '48%',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  statIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  statValue: {
-    color: COLORS.text,
-    fontSize: SIZES.xl,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  statTitle: {
-    color: COLORS.textSecondary,
-    fontSize: SIZES.sm,
-    textAlign: 'center',
-  },
-  adminMenuSection: {
-    padding: SIZES.padding,
-  },
-  adminMenuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.surface,
-    borderRadius: SIZES.borderRadius,
-    padding: 16,
-    marginBottom: 12,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.divider,
+    gap: 12,
   },
-  adminMenuIcon: {
+  statIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statTextContainer: {
+    flex: 1,
+  },
+  statPanelValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFF',
+  },
+  statPanelLabel: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+  },
+  menuGroup: {
+    gap: 12,
+  },
+  menuCard: {
+    backgroundColor: COLORS.surface,
+    padding: 12,
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.divider,
+  },
+  menuCardIcon: {
     width: 48,
     height: 48,
-    borderRadius: 24,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
   },
-  adminMenuText: {
+  menuCardInfo: {
     flex: 1,
   },
-  adminMenuTitle: {
-    color: COLORS.text,
-    fontSize: SIZES.md,
-    fontWeight: '600',
-    marginBottom: 4,
+  menuCardTitle: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#FFF',
+    marginBottom: 2,
   },
-  adminMenuSubtitle: {
+  menuCardSubtitle: {
+    fontSize: 12,
     color: COLORS.textSecondary,
-    fontSize: SIZES.sm,
   },
-  quickActionsSection: {
-    padding: SIZES.padding,
-    paddingBottom: 32,
-  },
-  quickActionsGrid: {
+  toolsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    justifyContent: 'space-between',
     gap: 12,
   },
-  quickActionButton: {
+  toolItem: {
+    flex: 1,
     backgroundColor: COLORS.surface,
-    borderRadius: SIZES.borderRadius,
     padding: 16,
+    borderRadius: 20,
     alignItems: 'center',
-    width: '31%',
     borderWidth: 1,
-    borderColor: COLORS.border,
-    minHeight: 100,
+    borderColor: COLORS.divider,
+    gap: 8,
   },
-  quickActionIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  toolIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
   },
-  quickActionText: {
-    color: COLORS.text,
-    fontSize: SIZES.sm,
-    marginTop: 8,
-    textAlign: 'center',
-    fontWeight: '500',
+  toolLabel: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: COLORS.textSecondary,
   },
 });
 

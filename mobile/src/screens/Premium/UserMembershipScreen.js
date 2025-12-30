@@ -18,8 +18,10 @@ import { artistService } from '../../services/artistService';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAlert } from '../../context/AlertContext';
 import MiniPlayer from '../../components/Player/MiniPlayer';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const UserMembershipScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const { showSuccess, showError, showWarning } = useAlert();
   
   const [activeMemberships, setActiveMemberships] = useState([]);
@@ -153,7 +155,7 @@ const UserMembershipScreen = ({ navigation }) => {
         }
       >
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: Math.max(insets.top, 20) }]}>
           <TouchableOpacity
             style={styles.backButton}
             onPress={() => navigation.goBack()}
@@ -352,7 +354,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SIZES.padding,
-    paddingTop: 60,
     paddingBottom: 20,
   },
   backButton: {

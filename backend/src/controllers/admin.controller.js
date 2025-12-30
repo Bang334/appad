@@ -14,6 +14,10 @@ class AdminController {
       const [songsResult] = await db.query('SELECT COUNT(*) as total FROM songs');
       const totalSongs = songsResult[0].total;
 
+      // Get total albums
+      const [albumsResult] = await db.query('SELECT COUNT(*) as total FROM albums');
+      const totalAlbums = albumsResult[0].total;
+
       // Get total plays
       const [playsResult] = await db.query('SELECT SUM(listen_count) as total FROM songs');
       const totalPlays = playsResult[0].total || 0;
@@ -29,6 +33,7 @@ class AdminController {
         data: {
           totalUsers,
           totalSongs,
+          totalAlbums,
           totalPlays,
           newUsersThisMonth
         }
@@ -564,10 +569,13 @@ class AdminController {
   async getAllAlbums(req, res) {
     try {
       const [albums] = await db.query(`
-        SELECT al.*, a.name as artist_name
-        FROM albums al
-        LEFT JOIN artists a ON al.artist_id = a.artist_id
-        ORDER BY al.release_date DESC
+      SELECT 
+        al.*, 
+        a.name as artist_name,
+        (SELECT COUNT(*) FROM songs WHERE album_id = al.album_id) as song_count
+      FROM albums al
+      LEFT JOIN artists a ON al.artist_id = a.artist_id
+      ORDER BY al.release_date DESC
       `);
 
       res.json({
@@ -882,7 +890,9 @@ class AdminController {
   // Get all artist memberships (admin)
   async getAllMemberships(req, res) {
     try {
-      const { limit = 50, offset = 0, artist_id, status, search } = req.query;
+      const limit = parseInt(req.query.limit) || 50;
+      const offset = parseInt(req.query.offset) || 0;
+      const { artist_id, status, search } = req.query;
       
       let query = `
         SELECT 
@@ -917,9 +927,9 @@ class AdminController {
       }
       
       query += ' ORDER BY am.created_at DESC LIMIT ? OFFSET ?';
-      params.push(parseInt(limit), parseInt(offset));
+      params.push(limit, offset);
       
-      const [memberships] = await db.execute(query, params);
+      const [memberships] = await db.query(query, params);
       
       // Get total count
       let countQuery = `
@@ -947,11 +957,11 @@ class AdminController {
         countParams.push(searchTerm, searchTerm, searchTerm);
       }
       
-      const [countResult] = await db.execute(countQuery, countParams);
+      const [countResult] = await db.query(countQuery, countParams);
       const total = countResult[0].total;
       
       // Get stats
-      const [statsResult] = await db.execute(`
+      const [statsResult] = await db.query(`
         SELECT 
           COUNT(*) as total_memberships,
           COUNT(CASE WHEN status = 'active' AND expiry_date > NOW() THEN 1 END) as active_members,
@@ -981,7 +991,7 @@ class AdminController {
   // Get membership statistics (admin)
   async getMembershipStats(req, res) {
     try {
-      const [stats] = await db.execute(`
+      const [stats] = await db.query(`
         SELECT 
           COUNT(*) as total_memberships,
           COUNT(CASE WHEN status = 'active' AND expiry_date > NOW() THEN 1 END) as active_members,
@@ -994,7 +1004,7 @@ class AdminController {
       `);
       
       // Get top artists by membership revenue
-      const [topArtists] = await db.execute(`
+      const [topArtists] = await db.query(`
         SELECT 
           a.artist_id,
           a.name,
@@ -1021,6 +1031,105 @@ class AdminController {
       res.status(500).json({
         success: false,
         message: 'Lỗi khi lấy thống kê hội viên'
+      });
+    }
+  }
+  // Get artist reviews (Admin)
+  async getArtistReviews(req, res) {
+    try {
+      const { artist_id } = req.params;
+      const { limit = 50, offset = 0, song_id, rating, sort_by } = req.query;
+      const CommentModel = require('../models/comment.model');
+      
+      const reviews = await CommentModel.findByArtist(artist_id, {
+        limit,
+        offset,
+        songId: song_id,
+        rating: rating,
+        sortBy: sort_by
+      });
+      
+      res.json({
+        success: true,
+        data: reviews
+      });
+    } catch (error) {
+      console.error('getArtistReviews error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Server error'
+      });
+    }
+  }
+
+  // Delete review (Admin)
+  async deleteReview(req, res) {
+    try {
+      const { id } = req.params;
+      const CommentModel = require('../models/comment.model');
+      
+      const success = await CommentModel.delete(id);
+      
+      if (!success) {
+        return res.status(404).json({
+          success: false,
+          message: 'Review not found'
+        });
+      }
+      
+      res.json({
+        success: true,
+        message: 'Review deleted successfully'
+      });
+    } catch (error) {
+      console.error('deleteReview error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Server error'
+      });
+    }
+  }
+
+  async getAllReviews(req, res) {
+    try {
+      const { limit = 50, offset = 0, rating, sort_by, artist_id } = req.query;
+      const CommentModel = require('../models/comment.model');
+      
+      const reviews = await CommentModel.findAll({
+        limit,
+        offset,
+        rating,
+        sortBy: sort_by,
+        artistId: artist_id
+      });
+      
+      res.json({
+        success: true,
+        data: reviews
+      });
+    } catch (error) {
+      console.error('getAllReviews error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Server error'
+      });
+    }
+  }
+
+  async getReviewStats(req, res) {
+    try {
+      const CommentModel = require('../models/comment.model');
+      const stats = await CommentModel.getGlobalStats();
+      
+      res.json({
+        success: true,
+        data: stats
+      });
+    } catch (error) {
+      console.error('getReviewStats error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Server error'
       });
     }
   }

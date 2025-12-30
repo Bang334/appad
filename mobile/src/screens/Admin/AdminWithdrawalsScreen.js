@@ -8,19 +8,23 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  StatusBar,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../../config/theme';
+import { COLORS, SIZES, SHADOWS } from '../../config/theme';
 import { adminService } from '../../services/adminService';
 import { useFocusEffect } from '@react-navigation/native';
 import MiniPlayer from '../../components/Player/MiniPlayer';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const AdminWithdrawalsScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [withdrawals, setWithdrawals] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState('pending'); // all, pending, completed, rejected
+  const [filter, setFilter] = useState('pending');
 
   const fetchWithdrawals = async () => {
     try {
@@ -52,12 +56,12 @@ const AdminWithdrawalsScreen = ({ navigation }) => {
 
   const handleApprove = (withdrawal) => {
     Alert.alert(
-      'Xác nhận duyệt',
-      `Duyệt yêu cầu rút ${parseFloat(withdrawal.amount).toLocaleString('vi-VN')}đ cho ${withdrawal.artist_name}?`,
+      'Duyệt rút tiền',
+      `Xác nhận chuyển ${parseFloat(withdrawal.amount).toLocaleString('vi-VN')}đ cho nghệ sĩ ${withdrawal.artist_name}?`,
       [
         { text: 'Hủy', style: 'cancel' },
         {
-          text: 'Duyệt',
+          text: 'Xác nhận',
           onPress: async () => {
             try {
               const response = await adminService.approveWithdrawal(withdrawal.withdrawal_id);
@@ -66,8 +70,7 @@ const AdminWithdrawalsScreen = ({ navigation }) => {
                 fetchWithdrawals();
               }
             } catch (error) {
-              const message = error.response?.data?.message || 'Có lỗi xảy ra';
-              Alert.alert('Lỗi', message);
+              Alert.alert('Lỗi', 'Thao tác không thành công');
             }
           },
         },
@@ -77,14 +80,15 @@ const AdminWithdrawalsScreen = ({ navigation }) => {
 
   const handleReject = (withdrawal) => {
     Alert.prompt(
-      'Từ chối yêu cầu',
-      'Nhập lý do từ chối:',
+      'Từ chối rút tiền',
+      'Nhập lý do từ chối để thông báo cho nghệ sĩ:',
       [
         { text: 'Hủy', style: 'cancel' },
         {
-          text: 'Từ chối',
+          text: 'Xác nhận',
           style: 'destructive',
           onPress: async (reason) => {
+            if (!reason) return Alert.alert('Lỗi', 'Vui lòng nhập lý do');
             try {
               const response = await adminService.rejectWithdrawal(withdrawal.withdrawal_id, reason);
               if (response.success) {
@@ -92,8 +96,7 @@ const AdminWithdrawalsScreen = ({ navigation }) => {
                 fetchWithdrawals();
               }
             } catch (error) {
-              const message = error.response?.data?.message || 'Có lỗi xảy ra';
-              Alert.alert('Lỗi', message);
+              Alert.alert('Lỗi', 'Thao tác không thành công');
             }
           },
         },
@@ -102,122 +105,63 @@ const AdminWithdrawalsScreen = ({ navigation }) => {
     );
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'completed':
-        return '#4CAF50';
-      case 'pending':
-        return '#FFA726';
-      case 'processing':
-        return '#2196F3';
-      case 'rejected':
-        return '#EF5350';
-      default:
-        return COLORS.textSecondary;
-    }
-  };
-
-  const getStatusText = (status) => {
-    switch (status) {
-      case 'completed':
-        return 'Hoàn thành';
-      case 'pending':
-        return 'Chờ duyệt';
-      case 'processing':
-        return 'Đang xử lý';
-      case 'rejected':
-        return 'Từ chối';
-      default:
-        return status;
-    }
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    try {
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) return 'N/A';
-      return date.toLocaleDateString('vi-VN', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    } catch (error) {
-      return 'N/A';
-    }
-  };
-
   const renderWithdrawal = ({ item }) => {
-    const statusColor = getStatusColor(item.status);
     const isPending = item.status === 'pending';
-
     return (
-      <View style={styles.withdrawalCard}>
-        <View style={styles.withdrawalHeader}>
-          <View>
-            <Text style={styles.artistName}>{item.artist_name}</Text>
-            <Text style={styles.amount}>
-              {parseFloat(item.amount).toLocaleString('vi-VN')}đ
-            </Text>
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={styles.artistBox}>
+            <View style={styles.artistIcon}>
+              <Ionicons name="mic-outline" size={20} color={COLORS.secondary} />
+            </View>
+            <View>
+              <Text style={styles.artistName}>{item.artist_name}</Text>
+              <Text style={styles.bankName}>{item.bank_name || 'Ngân hàng chưa cập nhật'}</Text>
+            </View>
           </View>
-          <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
-            <Text style={[styles.statusText, { color: statusColor }]}>
-              {getStatusText(item.status)}
+          <View style={[styles.statusTag, { backgroundColor: isPending ? COLORS.warning + '15' : item.status === 'completed' ? COLORS.success + '15' : COLORS.error + '15' }]}>
+            <Text style={[styles.statusTabText, { color: isPending ? COLORS.warning : item.status === 'completed' ? COLORS.success : COLORS.error }]}>
+              {item.status === 'pending' ? 'Chờ duyệt' : item.status === 'completed' ? 'Hoàn thành' : 'Từ chối'}
             </Text>
           </View>
         </View>
 
-        {(item.bank_name || item.bank_account) && (
-          <View style={styles.infoRow}>
-            <Ionicons name="card" size={16} color={COLORS.textSecondary} />
-            <Text style={styles.infoText}>
-              {`${item.bank_name || ''}${item.bank_name && item.bank_account ? ' - ' : ''}${item.bank_account || ''}`}
-            </Text>
-          </View>
-        )}
+        <View style={styles.amountBox}>
+          <Text style={styles.amountLabel}>Số tiền yêu cầu:</Text>
+          <Text style={styles.amountValue}>{parseFloat(item.amount).toLocaleString('vi-VN')}đ</Text>
+        </View>
 
-        <View style={styles.infoRow}>
-          <Ionicons name="person" size={16} color={COLORS.textSecondary} />
-          <Text style={styles.infoText}>{item.bank_account_name}</Text>
+        <View style={styles.bankDetailBox}>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Tên TK:</Text>
+            <Text style={styles.detailValue}>{item.bank_account_name}</Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Số TK:</Text>
+            <Text style={[styles.detailValue, { color: COLORS.primary, fontWeight: '900' }]}>{item.bank_account}</Text>
+          </View>
         </View>
 
         {item.artist_note && (
           <View style={styles.noteBox}>
-            <Text style={styles.noteLabel}>Ghi chú:</Text>
+            <Text style={styles.noteLabel}>Nghệ sĩ nhắn: </Text>
             <Text style={styles.noteText}>{item.artist_note}</Text>
           </View>
         )}
 
-        {item.admin_note && (
-          <View style={[styles.noteBox, { backgroundColor: '#FFF3E0' }]}>
-            <Text style={[styles.noteLabel, { color: '#FFA726' }]}>Admin:</Text>
-            <Text style={styles.noteText}>{item.admin_note}</Text>
-          </View>
-        )}
-
-        <Text style={styles.date}>Yêu cầu: {formatDate(item.requested_at)}</Text>
-        {item.processed_at && (
-          <Text style={styles.date}>Xử lý: {formatDate(item.processed_at)}</Text>
-        )}
+        <View style={styles.cardFooter}>
+          <Text style={styles.dateText}>📅 {new Date(item.requested_at).toLocaleString('vi-VN')}</Text>
+        </View>
 
         {isPending && (
           <View style={styles.actions}>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.approveButton]}
-              onPress={() => handleApprove(item)}
-            >
-              <Ionicons name="checkmark" size={18} color="#FFF" />
-              <Text style={styles.actionButtonText}>Duyệt</Text>
+            <TouchableOpacity style={[styles.btnAction, styles.btnApprove]} onPress={() => handleApprove(item)}>
+              <Ionicons name="checkmark-done" size={18} color="#FFF" />
+              <Text style={styles.btnText}>Duyệt rút</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionButton, styles.rejectButton]}
-              onPress={() => handleReject(item)}
-            >
-              <Ionicons name="close" size={18} color="#FFF" />
-              <Text style={styles.actionButtonText}>Từ chối</Text>
+            <TouchableOpacity style={[styles.btnAction, styles.btnReject]} onPress={() => handleReject(item)}>
+              <Ionicons name="close-circle" size={18} color="#FFF" />
+              <Text style={styles.btnText}>Từ chối</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -225,70 +169,63 @@ const AdminWithdrawalsScreen = ({ navigation }) => {
     );
   };
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </View>
-    );
-  }
-
   return (
     <View style={styles.container}>
-      {/* Filter Tabs */}
-      <View style={styles.filterContainer}>
-        {['pending', 'completed', 'rejected', 'all'].map((f) => (
-          <TouchableOpacity
-            key={f}
-            style={[styles.filterTab, filter === f && styles.filterTabActive]}
-            onPress={() => setFilter(f)}
-          >
-            <Text style={[styles.filterText, filter === f && styles.filterTextActive]}>
-              {f === 'all' ? 'Tất cả' : getStatusText(f)}
-            </Text>
+      <StatusBar barStyle="light-content" />
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+        <View style={styles.headerTop}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <Ionicons name="chevron-back" size={28} color="#FFF" />
           </TouchableOpacity>
-        ))}
+          <Text style={styles.headerTitle}>DUYỆT RÚT TIỀN</Text>
+          <View style={styles.backBtn} />
+        </View>
+
+        <View style={styles.summaryRow}>
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryVal}>{stats?.pending || 0}</Text>
+            <Text style={styles.summaryLab}>Chờ duyệt</Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryVal}>{parseFloat(stats?.total_completed_amount || 0).toLocaleString('vi-VN')}đ</Text>
+            <Text style={styles.summaryLab}>Đã giải ngân</Text>
+          </View>
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
+          {[
+            { id: 'pending', label: 'Chờ duyệt' },
+            { id: 'completed', label: 'Hoàn thành' },
+            { id: 'rejected', label: 'Từ chối' },
+            { id: 'all', label: 'Tất cả' }
+          ].map(f => (
+            <TouchableOpacity 
+              key={f.id} 
+              style={[styles.tab, filter === f.id && styles.activeTab]}
+              onPress={() => setFilter(f.id)}
+            >
+              <Text style={[styles.tabText, filter === f.id && styles.activeTabText]}>{f.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
-      {/* Stats Summary */}
-      {stats && (
-        <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Tổng cộng</Text>
-            <Text style={styles.statValue}>{stats.total || 0}</Text>
-            <Text style={styles.statAmount}>
-              {parseFloat(stats.total_completed_amount || 0).toLocaleString('vi-VN')}đ
-            </Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Chờ duyệt</Text>
-            <Text style={styles.statValue}>{stats.pending || 0}</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Hoàn thành</Text>
-            <Text style={styles.statValue}>{stats.completed || 0}</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Đã hủy</Text>
-            <Text style={styles.statValue}>{stats.cancelled || 0}</Text>
-          </View>
-        </View>
-      )}
-
-      {withdrawals.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Ionicons name="receipt-outline" size={80} color={COLORS.textSecondary} />
-          <Text style={styles.emptyText}>Không có yêu cầu nào</Text>
-        </View>
+      {loading && withdrawals.length === 0 ? (
+        <ActivityIndicator style={{ marginTop: 40 }} color={COLORS.primary} size="large" />
       ) : (
         <FlatList
           data={withdrawals}
           renderItem={renderWithdrawal}
-          keyExtractor={(item, index) => `withdrawal-${item.withdrawal_id || item.transaction_id || index}`}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          keyExtractor={(item, index) => (item.withdrawal_id || index).toString()}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
+          contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Ionicons name="card-outline" size={60} color={COLORS.textDisabled} />
+              <Text style={styles.emptyText}>Không có yêu cầu rút tiền nào</Text>
+            </View>
           }
-          contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
         />
       )}
       <MiniPlayer bottomOffset={0} />
@@ -297,172 +234,49 @@ const AdminWithdrawalsScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-  },
-  filterContainer: {
-    flexDirection: 'row',
-    padding: 12,
-    gap: 8,
-    backgroundColor: COLORS.surface,
-  },
-  filterTab: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 16,
-    backgroundColor: COLORS.card,
-    alignItems: 'center',
-  },
-  filterTabActive: {
-    backgroundColor: COLORS.primary,
-  },
-  filterText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.text,
-  },
-  filterTextActive: {
-    color: '#FFF',
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    padding: 12,
-    gap: 8,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: COLORS.card,
-    padding: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  statLabel: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
-    marginBottom: 4,
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: 2,
-  },
-  statAmount: {
-    fontSize: 11,
-    color: COLORS.primary,
-    fontWeight: '600',
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: COLORS.textSecondary,
-    marginTop: 16,
-  },
-  listContent: {
-    padding: 16,
-  },
-  withdrawalCard: {
-    backgroundColor: COLORS.card,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  withdrawalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  artistName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: 4,
-  },
-  amount: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: COLORS.primary,
-  },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  infoText: {
-    fontSize: 14,
-    color: COLORS.text,
-    marginLeft: 8,
-  },
-  noteBox: {
-    backgroundColor: COLORS.surface,
-    padding: 10,
-    borderRadius: 8,
-    marginVertical: 8,
-  },
-  noteLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-    marginBottom: 4,
-  },
-  noteText: {
-    fontSize: 13,
-    color: COLORS.text,
-  },
-  date: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
-    marginTop: 4,
-  },
-  actions: {
-    flexDirection: 'row',
-    marginTop: 16,
-    gap: 8,
-  },
-  actionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 8,
-    gap: 6,
-  },
-  approveButton: {
-    backgroundColor: '#4CAF50',
-  },
-  rejectButton: {
-    backgroundColor: '#EF5350',
-  },
-  actionButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFF',
-  },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  header: { backgroundColor: COLORS.backgroundSecondary, borderBottomWidth: 1, borderBottomColor: COLORS.divider, paddingBottom: 16 },
+  headerTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, marginBottom: 16 },
+  headerTitle: { fontSize: 16, fontWeight: '900', color: '#FFF', letterSpacing: 1.2 },
+  backBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+  summaryRow: { flexDirection: 'row', paddingHorizontal: 20, marginBottom: 20, alignItems: 'center' },
+  summaryItem: { flex: 1, alignItems: 'center' },
+  summaryVal: { fontSize: 18, fontWeight: 'bold', color: '#FFF' },
+  summaryLab: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
+  summaryDivider: { width: 1, height: 24, backgroundColor: COLORS.divider },
+  tabs: { paddingHorizontal: 16, gap: 10 },
+  tab: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, backgroundColor: COLORS.surface },
+  activeTab: { backgroundColor: COLORS.primary + '20', borderWidth: 1, borderColor: COLORS.primary },
+  tabText: { fontSize: 13, color: COLORS.textSecondary, fontWeight: 'bold' },
+  activeTabText: { color: COLORS.primary },
+  list: { padding: 16 },
+  card: { backgroundColor: COLORS.surface, borderRadius: 24, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: COLORS.divider },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16, alignItems: 'center' },
+  artistBox: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 },
+  artistIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: COLORS.secondary + '15', justifyContent: 'center', alignItems: 'center' },
+  artistName: { fontSize: 15, fontWeight: 'bold', color: '#FFF' },
+  bankName: { fontSize: 12, color: COLORS.textDisabled },
+  statusTag: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  statusTabText: { fontSize: 11, fontWeight: 'bold' },
+  amountBox: { marginBottom: 16 },
+  amountLabel: { fontSize: 12, color: COLORS.textSecondary, marginBottom: 4 },
+  amountValue: { fontSize: 24, fontWeight: '900', color: COLORS.primary },
+  bankDetailBox: { backgroundColor: 'rgba(255,255,255,0.03)', padding: 12, borderRadius: 12, marginBottom: 12, gap: 6 },
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  detailLabel: { fontSize: 12, color: COLORS.textDisabled },
+  detailValue: { fontSize: 13, color: '#FFF' },
+  noteBox: { flexDirection: 'row', marginBottom: 12, flexWrap: 'wrap' },
+  noteLabel: { fontSize: 12, color: COLORS.secondary, fontWeight: 'bold' },
+  noteText: { fontSize: 12, color: 'rgba(255,255,255,0.7)', fontStyle: 'italic' },
+  cardFooter: { borderTopWidth: 1, borderTopColor: COLORS.divider, paddingTop: 12, marginBottom: 16 },
+  dateText: { fontSize: 11, color: COLORS.textDisabled },
+  actions: { flexDirection: 'row', gap: 12 },
+  btnAction: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 14, gap: 6 },
+  btnApprove: { backgroundColor: COLORS.success },
+  btnReject: { backgroundColor: COLORS.error },
+  btnText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
+  empty: { marginTop: 100, alignItems: 'center' },
+  emptyText: { marginTop: 16, color: COLORS.textDisabled, fontSize: 14 },
 });
 
 export default AdminWithdrawalsScreen;
-

@@ -55,7 +55,12 @@ router.post('/upload-cover', (req, res, next) => {
 }, AdminController.uploadCover);
 
 // Artist management
+// Artist management
 router.post('/artists', AdminController.createArtist);
+router.get('/artists/:artist_id/reviews', AdminController.getArtistReviews);
+router.get('/reviews', AdminController.getAllReviews);
+router.get('/reviews/stats', AdminController.getReviewStats);
+router.delete('/reviews/:id', AdminController.deleteReview);
 
 // Album management
 router.get('/albums', AdminController.getAllAlbums);

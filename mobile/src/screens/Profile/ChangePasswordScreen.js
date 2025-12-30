@@ -14,8 +14,10 @@ import { COLORS, SIZES } from '../../config/theme';
 import { userService } from '../../services/userService';
 import MiniPlayer from '../../components/Player/MiniPlayer';
 import SuccessModal from '../../components/Common/SuccessModal';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const ChangePasswordScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     currentPassword: '',
@@ -102,7 +104,7 @@ const ChangePasswordScreen = ({ navigation }) => {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
       >
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 20) }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
@@ -236,7 +238,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SIZES.padding,
-    paddingTop: 60,
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,

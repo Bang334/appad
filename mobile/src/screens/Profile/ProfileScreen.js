@@ -134,6 +134,8 @@ const ProfileScreen = ({ navigation }) => {
             colors={['rgba(139, 92, 246, 0.2)', 'rgba(236, 72, 153, 0.1)', 'transparent']}
             style={styles.headerGradient}
           />
+
+
           
           <View style={styles.profileMain}>
             <View style={styles.avatarWrapper}>
@@ -293,7 +295,8 @@ const ProfileScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#050505',
+    backgroundColor: '#000000ff',
+    
   },
   scrollContent: {
     paddingBottom: 100,

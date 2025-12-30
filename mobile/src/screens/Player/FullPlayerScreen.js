@@ -18,6 +18,8 @@ import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePlayer, usePlayerProgress } from '../../context/PlayerContext';
+import { useAuth } from '../../context/AuthContext';
+import { userService } from '../../services/userService';
 import { COLORS, SIZES } from '../../config/theme';
 import { formatTime } from '../../utils/formatTime';
 import AddToPlaylistModal from '../../components/Playlist/AddToPlaylistModal';
@@ -31,8 +33,35 @@ import PremiumBadge from '../../components/Common/PremiumBadge';
 const { width, height } = Dimensions.get('window');
 
 const FullPlayerScreen = ({ navigation, route }) => {
+  const { user, updateUser } = useAuth();
   const { currentSong, isPlaying, togglePlayPause, playNext, playPrevious, seekTo, currentPlaylist, playlist, currentIndex, playSong, refreshCurrentSong, isRepeat, toggleRepeat, isShuffle, toggleShuffle } = usePlayer();
   const { position, duration } = usePlayerProgress();
+  
+  // Calculate premium status
+  const isUserPremiumSub = user?.is_premium == 1; 
+  const isArtistMember = user?.is_membership == 1;
+  const isPremiumSong = currentSong?.is_premium == 1 || currentSong?.album_is_premium == 1;
+  
+  const isPremiumContent = isUserPremiumSub || isArtistMember || isPremiumSong;
+
+  // Refresh user profile if we have a user but status might be stale
+  useEffect(() => {
+    if (user && user.is_premium != 1) {
+      const refreshProfile = async () => {
+        try {
+          const response = await userService.getProfile();
+          if (response.success && response.data) {
+            if (response.data.is_premium != user.is_premium) {
+              updateUser(response.data);
+            }
+          }
+        } catch (error) {
+          // Silent fail
+        }
+      };
+      refreshProfile();
+    }
+  }, [user?.user_id]);
   const [showLyrics, setShowLyrics] = useState(false);
   const [isLyricsExpanded, setIsLyricsExpanded] = useState(false);
   const [showComments, setShowComments] = useState(false);
@@ -310,7 +339,11 @@ WHERE song_id = ${currentSong.song_id};`;
         >
           {/* Album Cover */}
           <View style={styles.coverContainer}>
-            <Animated.View style={[styles.coverWrapper, { transform: [{ scale: isPlaying ? coverScale : 1 }] }]}>
+            <Animated.View style={[
+              styles.coverWrapper, 
+              { transform: [{ scale: isPlaying ? coverScale : 1 }] },
+              isPremiumContent && styles.premiumCoverWrapper
+            ]}>
               <Image
                 source={{ uri: currentSong.cover_url || 'https://via.placeholder.com/300' }}
                 style={styles.cover}
@@ -321,7 +354,7 @@ WHERE song_id = ${currentSong.song_id};`;
           {/* Song Info */}
           <View style={styles.songInfo}>
             <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8}}>
-              <Text style={styles.songTitle} numberOfLines={2}>
+              <Text style={[styles.songTitle, isPremiumContent && { color: COLORS.warning }]} numberOfLines={2}>
                 {currentSong.title}
               </Text>
               {currentSong.album_is_premium === 1 ? (
@@ -411,9 +444,9 @@ WHERE song_id = ${currentSong.song_id};`;
                  // But since 'seekTo' effectively commits, we just need onSlidingComplete.
               }}
               onSlidingComplete={seekTo}
-              minimumTrackTintColor={COLORS.primary}
+              minimumTrackTintColor={isPremiumContent ? COLORS.warning : COLORS.primary}
               maximumTrackTintColor={COLORS.player.progressBackground}
-              thumbTintColor={COLORS.primary}
+              thumbTintColor={isPremiumContent ? COLORS.warning : COLORS.primary}
             />
             <View style={styles.timeContainer}>
               <Text style={styles.timeText}>{formatTime(position)}</Text>
@@ -429,38 +462,39 @@ WHERE song_id = ${currentSong.song_id};`;
               <Ionicons
                 name="shuffle"
                 size={24}
-                color={isShuffle ? COLORS.primary : COLORS.textSecondary}
+                color={isShuffle ? (isPremiumContent ? COLORS.warning : COLORS.primary) : COLORS.textSecondary}
               />
             </TouchableOpacity>
 
             <TouchableOpacity onPress={playPrevious} style={styles.controlButton}>
-              <Ionicons name="play-skip-back" size={36} color={COLORS.text} />
+              <Ionicons name="play-skip-back" size={36} color={isPremiumContent ? COLORS.warning : COLORS.text} />
             </TouchableOpacity>
 
             <TouchableOpacity onPress={togglePlayPause} style={styles.playButton}>
               <LinearGradient
-                colors={COLORS.gradient.primary}
-                style={styles.playButtonGradient}
+                colors={isPremiumContent ? ['#ea580c', '#fdba74', '#f97316'] : COLORS.gradient.primary}
+                style={[styles.playButtonGradient, isPremiumContent && styles.premiumPlayButton]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               >
+                <View style={isPremiumContent ? styles.shineOverlay : null} />
                 <Ionicons
                   name={isPlaying ? 'pause' : 'play'}
                   size={40}
-                  color={COLORS.white}
+                  color={isPremiumContent ? '#000' : COLORS.white}
                 />
               </LinearGradient>
             </TouchableOpacity>
 
             <TouchableOpacity onPress={playNext} style={styles.controlButton}>
-              <Ionicons name="play-skip-forward" size={36} color={COLORS.text} />
+              <Ionicons name="play-skip-forward" size={36} color={isPremiumContent ? COLORS.warning : COLORS.text} />
             </TouchableOpacity>
 
             <TouchableOpacity onPress={toggleRepeat} style={styles.controlButton}>
               <Ionicons
                 name={isRepeat ? 'repeat' : 'repeat-outline'}
                 size={24}
-                color={isRepeat ? COLORS.primary : COLORS.textSecondary}
+                color={isRepeat ? (isPremiumContent ? COLORS.warning : COLORS.primary) : COLORS.textSecondary}
               />
             </TouchableOpacity>
           </View>
@@ -493,7 +527,7 @@ WHERE song_id = ${currentSong.song_id};`;
               <Ionicons 
                 name={showComments ? 'chatbubbles' : 'chatbubbles-outline'} 
                 size={26} 
-                color={showComments ? COLORS.primary : COLORS.text} 
+                color={showComments ? (isPremiumContent ? COLORS.warning : COLORS.primary) : COLORS.text} 
               />
             </TouchableOpacity>
 
@@ -507,7 +541,7 @@ WHERE song_id = ${currentSong.song_id};`;
               <Ionicons 
                 name={showLyrics ? 'document-text' : 'document-text-outline'} 
                 size={26} 
-                color={showLyrics ? COLORS.primary : COLORS.text} 
+                color={showLyrics ? (isPremiumContent ? COLORS.warning : COLORS.primary) : COLORS.text} 
               />
             </TouchableOpacity>
 
@@ -568,7 +602,7 @@ WHERE song_id = ${currentSong.song_id};`;
               >
                 {activeQueueTab === 'queue' ? (
                   <LinearGradient
-                    colors={[COLORS.primary, '#9F1239']}
+                    colors={isPremiumContent ? ['#ea580c', '#f97316'] : [COLORS.primary, '#9F1239']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                     style={styles.tabButtonActiveGradient}
@@ -589,7 +623,7 @@ WHERE song_id = ${currentSong.song_id};`;
               >
                 {activeQueueTab === 'related' ? (
                   <LinearGradient
-                    colors={[COLORS.primary, '#9F1239']}
+                    colors={isPremiumContent ? ['#ea580c', '#f97316'] : [COLORS.primary, '#9F1239']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                     style={styles.tabButtonActiveGradient}
@@ -802,6 +836,14 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 15,
   },
+  premiumCoverWrapper: {
+    borderColor: COLORS.warning,
+    borderWidth: 2,
+    shadowColor: COLORS.warning,
+    shadowOpacity: 0.6,
+    shadowRadius: 25,
+    elevation: 20,
+  },
   cover: {
     width: '100%',
     height: '100%',
@@ -916,6 +958,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 12,
     elevation: 10,
+  },
+  premiumPlayButton: {
+    shadowColor: COLORS.warning,
+    shadowOpacity: 0.8,
+    shadowRadius: 20,
+    elevation: 15,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.4)',
   },
   playButtonGradient: {
     width: '100%',
@@ -1112,6 +1162,13 @@ const styles = StyleSheet.create({
   emptyNextText: {
     color: COLORS.textSecondary,
     fontSize: SIZES.md,
+  },
+  shineOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 40,
+    height: '50%', // Upper half shine for full player button (which is larger)
+    opacity: 0.5,
   },
 });
 

@@ -9,39 +9,30 @@ import {
   RefreshControl,
   TextInput,
   FlatList,
+  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SIZES } from '../../config/theme';
+import { COLORS, SIZES, SHADOWS } from '../../config/theme';
 import { adminService } from '../../services/adminService';
 import { useFocusEffect } from '@react-navigation/native';
-import { useAlert } from '../../context/AlertContext';
 import MiniPlayer from '../../components/Player/MiniPlayer';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const AdminMembershipScreen = ({ navigation }) => {
-  const { showError } = useAlert();
-  
+  const insets = useSafeAreaInsets();
   const [memberships, setMemberships] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
-  const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
-  const [loadingMore, setLoadingMore] = useState(false);
 
-  const fetchData = async (pageNum = 1, reset = false) => {
+  const fetchData = async () => {
     try {
-      if (pageNum === 1) {
-        setLoading(true);
-      } else {
-        setLoadingMore(true);
-      }
-
       const [membershipsRes, statsRes] = await Promise.all([
         adminService.getAllMemberships({
-          limit: 20,
-          offset: (pageNum - 1) * 20,
+          limit: 100,
           status: filterStatus !== 'all' ? filterStatus : undefined,
           search: searchText || undefined,
         }),
@@ -49,458 +40,175 @@ const AdminMembershipScreen = ({ navigation }) => {
       ]);
       
       if (membershipsRes.success) {
-        if (reset || pageNum === 1) {
-          setMemberships(membershipsRes.data.memberships || []);
-        } else {
-          setMemberships(prev => [...prev, ...(membershipsRes.data.memberships || [])]);
-        }
+        setMemberships(membershipsRes.data.memberships || []);
         setTotal(membershipsRes.data.total || 0);
       }
-      
-      if (statsRes.success) {
-        setStats(statsRes.data.stats || {});
-      }
-    } catch (error) {
-      console.error('Error fetching membership data:', error);
-      showError('Lỗi', 'Không thể tải dữ liệu hội viên');
+      if (statsRes.success) setStats(statsRes.data.stats || {});
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
       setRefreshing(false);
-      setLoadingMore(false);
     }
   };
 
   useFocusEffect(
     useCallback(() => {
-      fetchData(1, true);
+      fetchData();
     }, [filterStatus])
   );
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (searchText !== '') {
-        fetchData(1, true);
-      } else {
-        fetchData(1, true);
-      }
-    }, 500);
-
+    const timer = setTimeout(() => fetchData(), 500);
     return () => clearTimeout(timer);
   }, [searchText]);
 
   const onRefresh = () => {
     setRefreshing(true);
-    setPage(1);
-    fetchData(1, true);
+    fetchData();
   };
 
-  const loadMore = () => {
-    if (!loadingMore && memberships.length < total) {
-      const nextPage = page + 1;
-      setPage(nextPage);
-      fetchData(nextPage, false);
-    }
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('vi-VN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'active':
-        return COLORS.success;
-      case 'expired':
-        return COLORS.textSecondary;
-      case 'cancelled':
-        return '#EF5350';
-      default:
-        return COLORS.textSecondary;
-    }
-  };
-
-  const getStatusText = (status) => {
-    switch (status) {
-      case 'active':
-        return 'Đang hoạt động';
-      case 'expired':
-        return 'Hết hạn';
-      case 'cancelled':
-        return 'Đã hủy';
-      default:
-        return status;
-    }
-  };
-
-  const renderMembershipItem = ({ item }) => (
-    <TouchableOpacity
-      style={styles.membershipCard}
-      onPress={() => {
-        // Navigate to user or artist detail if needed
-      }}
-    >
-      <View style={styles.membershipHeader}>
-        <View style={styles.membershipInfo}>
-          <Text style={styles.memberName}>
-            {item.full_name || item.username || 'Người dùng'}
-          </Text>
-          <Text style={styles.artistName}>{item.artist_name}</Text>
-        </View>
-        <View
-          style={[
-            styles.statusBadge,
-            { backgroundColor: getStatusColor(item.status) + '20' },
-          ]}
-        >
-          <Text
-            style={[styles.statusText, { color: getStatusColor(item.status) }]}
-          >
-            {getStatusText(item.status)}
-          </Text>
-        </View>
-      </View>
-      
-      <View style={styles.membershipDetails}>
-        <View style={styles.detailRow}>
-          <Ionicons name="cash" size={16} color={COLORS.primary} />
-          <Text style={styles.detailText}>
-            {item.price_paid?.toLocaleString('vi-VN')}đ
-          </Text>
-        </View>
-        <View style={styles.detailRow}>
-          <Ionicons name="calendar" size={16} color={COLORS.textSecondary} />
-          <Text style={styles.detailText}>
-            {formatDate(item.start_date)} - {formatDate(item.expiry_date)}
-          </Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-
-  if (loading && memberships.length === 0) {
+  const renderItem = ({ item }) => {
+    const isActive = item.status === 'active';
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Đang tải...</Text>
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={styles.userBox}>
+            <View style={styles.userIcon}>
+              <Ionicons name="star" size={20} color={COLORS.warning} />
+            </View>
+            <View>
+              <Text style={styles.userName} numberOfLines={1}>{item.full_name || item.username || 'Hội viên'}</Text>
+              <Text style={styles.planText}>Gói: {item.artist_name || 'N/A'}</Text>
+            </View>
+          </View>
+          <View style={[styles.statusTag, { backgroundColor: isActive ? COLORS.success + '15' : COLORS.error + '15' }]}>
+            <Text style={[styles.statusTabText, { color: isActive ? COLORS.success : COLORS.error }]}>
+              {isActive ? 'Đang hoạt động' : 'Hết hạn'}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.cardDetails}>
+          <View style={styles.detailItem}>
+            <Ionicons name="cash-outline" size={14} color={COLORS.textSecondary} />
+            <Text style={styles.detailText}>{parseInt(item.price_paid || 0).toLocaleString('vi-VN')}đ</Text>
+          </View>
+          <View style={styles.detailItem}>
+            <Ionicons name="calendar-outline" size={14} color={COLORS.textSecondary} />
+            <Text style={styles.detailText}>
+              {new Date(item.start_date).toLocaleDateString('vi-VN')} - {new Date(item.expiry_date).toLocaleDateString('vi-VN')}
+            </Text>
+          </View>
+        </View>
       </View>
     );
-  }
+  };
 
   return (
     <View style={styles.container}>
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      >
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons name="arrow-back" size={24} color={COLORS.text} />
+      <StatusBar barStyle="light-content" />
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+        <View style={styles.headerTop}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <Ionicons name="chevron-back" size={28} color="#FFF" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Quản lý hội viên</Text>
-          <View style={styles.placeholder} />
+          <Text style={styles.headerTitle}>QUẢN LÝ HỘI VIÊN</Text>
+          <View style={styles.backBtn} />
         </View>
 
-        {/* Stats */}
-        {stats && (
-          <View style={styles.statsContainer}>
-            <View style={styles.statCard}>
-              <Ionicons name="people" size={32} color={COLORS.primary} />
-              <Text style={styles.statValue}>{stats.active_members || 0}</Text>
-              <Text style={styles.statLabel}>Đang hoạt động</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Ionicons name="cash" size={32} color={COLORS.success} />
-              <Text style={styles.statValue}>
-                {(stats.total_revenue || 0).toLocaleString('vi-VN')}đ
-              </Text>
-              <Text style={styles.statLabel}>Tổng doanh thu</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Ionicons name="list" size={32} color={COLORS.accent} />
-              <Text style={styles.statValue}>{stats.total_memberships || 0}</Text>
-              <Text style={styles.statLabel}>Tổng hội viên</Text>
-            </View>
+        <View style={styles.statsSummary}>
+          <View style={styles.sumBox}>
+            <Text style={styles.sumVal}>{stats?.active_members || 0}</Text>
+            <Text style={styles.sumLab}>Đang hoạt động</Text>
           </View>
-        )}
-
-        {/* Search and Filter */}
-        <View style={styles.filterSection}>
-          <View style={styles.searchContainer}>
-            <Ionicons name="search" size={20} color={COLORS.textSecondary} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Tìm kiếm theo tên, email, artist..."
-              placeholderTextColor={COLORS.textSecondary}
-              value={searchText}
-              onChangeText={setSearchText}
-            />
-            {searchText.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchText('')}>
-                <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          <View style={styles.filterButtons}>
-            {['all', 'active', 'expired', 'cancelled'].map((status) => (
-              <TouchableOpacity
-                key={status}
-                style={[
-                  styles.filterButton,
-                  filterStatus === status && styles.filterButtonActive,
-                ]}
-                onPress={() => {
-                  setFilterStatus(status);
-                  setPage(1);
-                }}
-              >
-                <Text
-                  style={[
-                    styles.filterButtonText,
-                    filterStatus === status && styles.filterButtonTextActive,
-                  ]}
-                >
-                  {status === 'all' ? 'Tất cả' : getStatusText(status)}
-                </Text>
-              </TouchableOpacity>
-            ))}
+          <View style={styles.sumDivider} />
+          <View style={styles.sumBox}>
+            <Text style={styles.sumVal}>{(stats?.total_revenue || 0).toLocaleString('vi-VN')}đ</Text>
+            <Text style={styles.sumLab}>Doanh thu</Text>
           </View>
         </View>
 
-        {/* Memberships List */}
-        <View style={styles.listSection}>
-          <Text style={styles.sectionTitle}>
-            Danh sách hội viên ({total})
-          </Text>
-          {memberships.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Ionicons name="people-outline" size={64} color={COLORS.textSecondary} />
-              <Text style={styles.emptyText}>Không có hội viên nào</Text>
-            </View>
-          ) : (
-            <FlatList
-              data={memberships}
-              renderItem={renderMembershipItem}
-              keyExtractor={(item) => item.membership_id.toString()}
-              scrollEnabled={false}
-              onEndReached={loadMore}
-              onEndReachedThreshold={0.5}
-              ListFooterComponent={
-                loadingMore ? (
-                  <View style={styles.loadingMore}>
-                    <ActivityIndicator size="small" color={COLORS.primary} />
-                  </View>
-                ) : null
-              }
-            />
-          )}
+        <View style={styles.searchBar}>
+          <Ionicons name="search" size={20} color={COLORS.textDisabled} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Tìm kiếm hội viên..."
+            placeholderTextColor={COLORS.textDisabled}
+            value={searchText}
+            onChangeText={setSearchText}
+          />
         </View>
-      </ScrollView>
+      </View>
+
+      <View style={styles.filterRow}>
+        {['all', 'active', 'expired'].map(s => (
+          <TouchableOpacity 
+            key={s} 
+            style={[styles.filterBtn, filterStatus === s && styles.activeFilter]}
+            onPress={() => setFilterStatus(s)}
+          >
+            <Text style={[styles.filterText, filterStatus === s && styles.activeFilterText]}>
+              {s === 'all' ? 'Tất cả' : s === 'active' ? 'Hoạt động' : 'Hết hạn'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {loading && memberships.length === 0 ? (
+        <ActivityIndicator style={{ marginTop: 40 }} color={COLORS.primary} size="large" />
+      ) : (
+        <FlatList
+          data={memberships}
+          renderItem={renderItem}
+          keyExtractor={(item, index) => (item.membership_id || index).toString()}
+          contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Ionicons name="people-outline" size={60} color={COLORS.textDisabled} />
+              <Text style={styles.emptyText}>Không tìm thấy hội viên nào</Text>
+            </View>
+          }
+        />
+      )}
       <MiniPlayer bottomOffset={0} />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 100,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-  },
-  loadingText: {
-    color: COLORS.textSecondary,
-    fontSize: SIZES.md,
-    marginTop: 12,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SIZES.padding,
-    paddingTop: 60,
-    paddingBottom: 20,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: SIZES.xl,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    flex: 1,
-    textAlign: 'center',
-  },
-  placeholder: {
-    width: 40,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    marginHorizontal: SIZES.padding,
-    marginBottom: 20,
-    gap: 12,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: COLORS.card,
-    padding: 16,
-    borderRadius: SIZES.borderRadius,
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: SIZES.lg,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: SIZES.xs,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-  },
-  filterSection: {
-    marginHorizontal: SIZES.padding,
-    marginBottom: 20,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.surface,
-    borderRadius: SIZES.borderRadius,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 12,
-    gap: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: SIZES.md,
-    color: COLORS.text,
-  },
-  filterButtons: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  filterButton: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: SIZES.borderRadius,
-    backgroundColor: COLORS.surface,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  filterButtonActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  filterButtonText: {
-    fontSize: SIZES.sm,
-    color: COLORS.textSecondary,
-    fontWeight: '600',
-  },
-  filterButtonTextActive: {
-    color: '#FFF',
-  },
-  listSection: {
-    marginHorizontal: SIZES.padding,
-  },
-  sectionTitle: {
-    fontSize: SIZES.lg,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: 12,
-  },
-  emptyContainer: {
-    paddingVertical: 60,
-    alignItems: 'center',
-  },
-  emptyText: {
-    color: COLORS.textSecondary,
-    fontSize: SIZES.md,
-    marginTop: 16,
-  },
-  membershipCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: SIZES.borderRadius,
-    padding: 16,
-    marginBottom: 12,
-  },
-  membershipHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  membershipInfo: {
-    flex: 1,
-  },
-  memberName: {
-    fontSize: SIZES.md,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: 4,
-  },
-  artistName: {
-    fontSize: SIZES.sm,
-    color: COLORS.textSecondary,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusText: {
-    fontSize: SIZES.xs,
-    fontWeight: '600',
-  },
-  membershipDetails: {
-    gap: 8,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  detailText: {
-    fontSize: SIZES.sm,
-    color: COLORS.textSecondary,
-  },
-  loadingMore: {
-    paddingVertical: 20,
-    alignItems: 'center',
-  },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  header: { backgroundColor: COLORS.backgroundSecondary, borderBottomWidth: 1, borderBottomColor: COLORS.divider, paddingBottom: 20 },
+  headerTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, marginBottom: 20 },
+  headerTitle: { fontSize: 14, fontWeight: '900', color: '#FFF', letterSpacing: 1.2 },
+  backBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+  statsSummary: { flexDirection: 'row', paddingHorizontal: 24, marginBottom: 20 },
+  sumBox: { flex: 1, alignItems: 'center' },
+  sumVal: { fontSize: 20, fontWeight: 'bold', color: '#FFF' },
+  sumLab: { fontSize: 11, color: COLORS.textSecondary, marginTop: 4 },
+  sumDivider: { width: 1, height: 30, backgroundColor: COLORS.divider },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surface, marginHorizontal: 20, paddingHorizontal: 16, borderRadius: 14, height: 46, borderWidth: 1, borderColor: COLORS.divider },
+  searchInput: { flex: 1, color: '#FFF', paddingLeft: 10, fontSize: 14 },
+  filterRow: { flexDirection: 'row', padding: 16, gap: 10 },
+  filterBtn: { flex: 1, paddingVertical: 10, borderRadius: 12, backgroundColor: COLORS.surface, alignItems: 'center' },
+  activeFilter: { backgroundColor: COLORS.primary + '20', borderWidth: 1, borderColor: COLORS.primary },
+  filterText: { fontSize: 12, color: COLORS.textSecondary, fontWeight: 'bold' },
+  activeFilterText: { color: COLORS.primary },
+  list: { padding: 16, paddingTop: 0 },
+  card: { backgroundColor: COLORS.surface, borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: COLORS.divider, ...SHADOWS.small },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16, alignItems: 'center' },
+  userBox: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 14 },
+  userIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: COLORS.warning + '15', justifyContent: 'center', alignItems: 'center' },
+  userName: { fontSize: 15, fontWeight: 'bold', color: '#FFF' },
+  planText: { fontSize: 12, color: COLORS.textDisabled, marginTop: 2 },
+  statusTag: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  statusTabText: { fontSize: 11, fontWeight: 'bold' },
+  cardDetails: { gap: 10, borderTopWidth: 1, borderTopColor: COLORS.divider, paddingTop: 16 },
+  detailItem: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  detailText: { fontSize: 13, color: COLORS.textSecondary },
+  empty: { marginTop: 100, alignItems: 'center' },
+  emptyText: { marginTop: 16, color: COLORS.textDisabled, fontSize: 14 },
 });
 
 export default AdminMembershipScreen;
-

@@ -6,14 +6,17 @@ import {
   FlatList,
   ActivityIndicator,
   RefreshControl,
+  TouchableOpacity,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../config/theme';
 import { walletService } from '../../services/walletService';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MiniPlayer from '../../components/Player/MiniPlayer';
 
-const TransactionHistoryScreen = () => {
+const TransactionHistoryScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -46,46 +49,48 @@ const TransactionHistoryScreen = () => {
   const getTransactionIcon = (type) => {
     switch (type) {
       case 'deposit':
-        return { name: 'arrow-down-circle', color: '#4CAF50' };
-      case 'purchase':
-        return { name: 'musical-note', color: COLORS.primary };
-      case 'subscription':
-        return { name: 'star', color: '#FFD700' };
+        return { name: 'add-circle-outline', color: '#10b981', label: 'Nạp tiền' };
       case 'revenue':
-        return { name: 'cash', color: '#4CAF50' };
+        return { name: 'cash-outline', color: '#10b981', label: 'Doanh thu' };
+      case 'purchase':
+        return { name: 'cart-outline', color: COLORS.primary, label: 'Mua sắm' };
+      case 'subscription':
+        return { name: 'star-outline', color: '#f59e0b', label: 'Gói Hội viên' };
       default:
-        return { name: 'swap-horizontal', color: COLORS.textSecondary };
+        return { name: 'swap-horizontal-outline', color: COLORS.textSecondary, label: 'Giao dịch' };
     }
-  };
-
-  const getTransactionSign = (type) => {
-    return (type === 'deposit' || type === 'revenue') ? '+' : '-';
   };
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
-    return date.toLocaleString('vi-VN');
+    return date.toLocaleDateString('vi-VN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   const getStatusColor = (status) => {
     switch (status) {
       case 'completed':
-        return '#4CAF50';
+        return '#10b981';
       case 'pending':
-        return '#FFA726';
+        return '#f59e0b';
       case 'cancelled':
-        return '#EF5350';
+        return '#ef4444';
       default:
-        return COLORS.textSecondary;
+        return COLORS.textMuted;
     }
   };
 
   const getStatusText = (status) => {
     switch (status) {
       case 'completed':
-        return 'Hoàn thành';
+        return 'Thành công';
       case 'pending':
-        return 'Đang chờ';
+        return 'Chờ duyệt';
       case 'cancelled':
         return 'Đã hủy';
       default:
@@ -95,70 +100,66 @@ const TransactionHistoryScreen = () => {
 
   const renderTransaction = ({ item }) => {
     const icon = getTransactionIcon(item.type);
-    const sign = getTransactionSign(item.type);
+    const isPositive = item.type === 'deposit' || item.type === 'revenue';
 
     return (
       <View style={styles.transactionItem}>
-        <View style={[styles.iconContainer, { backgroundColor: icon.color + '20' }]}>
+        <View style={[styles.iconContainer, { backgroundColor: icon.color + '15' }]}>
           <Ionicons name={icon.name} size={24} color={icon.color} />
         </View>
 
         <View style={styles.transactionInfo}>
-          <Text style={styles.transactionDescription} numberOfLines={2}>
-            {item.description || 'Giao dịch'}
+          <Text style={styles.transactionDescription} numberOfLines={1}>
+            {item.description || icon.label}
           </Text>
           <Text style={styles.transactionDate}>{formatDate(item.created_at)}</Text>
-          <Text style={[styles.transactionStatus, { color: getStatusColor(item.status) }]}>
-            {getStatusText(item.status)}
-          </Text>
           {item.reference_code && (
             <Text style={styles.referenceCode}>Mã: {item.reference_code}</Text>
           )}
         </View>
 
-        <Text
-          style={[
-            styles.transactionAmount,
-            { color: item.type === 'deposit' ? '#4CAF50' : COLORS.text },
-          ]}
-        >
-          {parseFloat(item.amount).toLocaleString('vi-VN')}đ
-        </Text>
+        <View style={styles.transactionRight}>
+          <Text
+            style={[
+              styles.transactionAmount,
+              { color: isPositive ? '#10b981' : COLORS.text },
+            ]}
+          >
+            {isPositive ? '+' : '-'}{parseFloat(item.amount).toLocaleString('vi-VN')}đ
+          </Text>
+          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) + '20' }]}>
+            <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>
+              {getStatusText(item.status)}
+            </Text>
+          </View>
+        </View>
       </View>
     );
   };
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </View>
-    );
-  }
-
-  if (transactions.length === 0) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.emptyContainer}>
-          <Ionicons name="receipt-outline" size={80} color={COLORS.textSecondary} />
-          <Text style={styles.emptyText}>Chưa có giao dịch nào</Text>
-        </View>
-        <MiniPlayer bottomOffset={0} />
-      </View>
-    );
-  }
-
   return (
-    <View style={styles.container}>
-      <FlatList
-        data={transactions}
-        renderItem={renderTransaction}
-        keyExtractor={(item) => `transaction-${item.transaction_id}`}
-        contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      />
+    <View style={[styles.container, { paddingTop: insets.top - 20 }]}>
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      ) : (
+        <FlatList
+          data={transactions}
+          renderItem={renderTransaction}
+          keyExtractor={(item) => `transaction-${item.transaction_id}`}
+          contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="receipt-outline" size={64} color={COLORS.textMuted} />
+              <Text style={styles.emptyText}>Chưa có lịch sử giao dịch</Text>
+            </View>
+          }
+        />
+      )}
       <MiniPlayer bottomOffset={0} />
     </View>
   );
@@ -169,39 +170,47 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    height: 56,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: COLORS.text,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.background,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-    padding: 32,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: COLORS.textSecondary,
-    marginTop: 16,
   },
   listContent: {
-    padding: 16,
+    paddingTop: 8,
   },
   transactionItem: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.card,
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 8,
+    marginHorizontal: 16,
+    padding: 14,
+    borderRadius: 20,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.03)',
   },
   iconContainer: {
     width: 48,
     height: 48,
-    borderRadius: 24,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -211,31 +220,51 @@ const styles = StyleSheet.create({
   },
   transactionDescription: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '700',
     color: COLORS.text,
     marginBottom: 4,
   },
   transactionDate: {
     fontSize: 12,
-    color: COLORS.textSecondary,
-    marginBottom: 2,
-  },
-  transactionStatus: {
-    fontSize: 11,
-    fontWeight: '600',
+    color: COLORS.textMuted,
     marginBottom: 2,
   },
   referenceCode: {
     fontSize: 10,
-    color: COLORS.textSecondary,
+    color: COLORS.textMuted,
     fontFamily: 'monospace',
+  },
+  transactionRight: {
+    alignItems: 'flex-end',
   },
   transactionAmount: {
     fontSize: 16,
-    fontWeight: 'bold',
-    marginLeft: 8,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 100,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: COLORS.textMuted,
+    marginTop: 16,
   },
 });
 
 export default TransactionHistoryScreen;
+
 

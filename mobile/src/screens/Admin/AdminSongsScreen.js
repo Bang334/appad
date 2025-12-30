@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,14 +10,16 @@ import {
   RefreshControl,
   ActivityIndicator,
   Image,
+  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SIZES } from '../../config/theme';
+import { COLORS, SIZES, SHADOWS } from '../../config/theme';
 import { adminService } from '../../services/adminService';
-import { songService } from '../../services/songService';
 import MiniPlayer from '../../components/Player/MiniPlayer';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const AdminSongsScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [songs, setSongs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -34,38 +36,30 @@ const AdminSongsScreen = ({ navigation }) => {
       setSongs(response.data || []);
     } catch (error) {
       console.error('Error loading songs:', error);
-      // Fallback to regular song API if admin API fails
-      try {
-        const fallbackResponse = await songService.getAllSongs(50, 0);
-        setSongs(fallbackResponse.data || []);
-      } catch (fallbackError) {
-        Alert.alert('Lỗi', 'Không thể tải danh sách bài hát');
-        setSongs([]);
-      }
+      Alert.alert('Lỗi', 'Không thể tải danh sách bài hát');
+      setSongs([]);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  const onRefresh = async () => {
+  const onRefresh = () => {
     setRefreshing(true);
-    await loadSongs();
-    setRefreshing(false);
+    loadSongs();
   };
 
-  const handleSearch = (query) => {
-    setSearchQuery(query);
-    setTimeout(() => loadSongs(), 500); // Debounce search
-  };
-
-  const handleEditSong = (song) => {
-    navigation.navigate('AdminEditSong', { song });
-  };
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadSongs();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const handleDeleteSong = async (song) => {
     Alert.alert(
       'Xóa bài hát',
-      `Bạn có chắc muốn xóa bài hát "${song.title}"? Hành động này không thể hoàn tác.`,
+      `Xóa bài hát "${song.title}" khỏi hệ thống?`,
       [
         { text: 'Hủy', style: 'cancel' },
         {
@@ -74,7 +68,6 @@ const AdminSongsScreen = ({ navigation }) => {
           onPress: async () => {
             try {
               await adminService.deleteSong(song.song_id);
-              Alert.alert('Thành công', 'Đã xóa bài hát');
               loadSongs();
             } catch (error) {
               Alert.alert('Lỗi', 'Không thể xóa bài hát');
@@ -86,40 +79,38 @@ const AdminSongsScreen = ({ navigation }) => {
   };
 
   const renderSongItem = ({ item }) => (
-    <View style={styles.songItem}>
-      <Image
-        source={{ uri: item.cover_url || 'https://via.placeholder.com/60' }}
-        style={styles.songImage}
-      />
-      <View style={styles.songInfo}>
-        <Text style={styles.songTitle} numberOfLines={1}>
-          {item.title}
-        </Text>
-        <Text style={styles.songArtist} numberOfLines={1}>
-          {item.artist_name}
-        </Text>
-        <Text style={styles.songAlbum} numberOfLines={1}>
-          {item.album_title || 'Single'}
-        </Text>
-        <View style={styles.songMeta}>
-          <Text style={styles.songGenre}>{item.genre_name}</Text>
-          <Text style={styles.songPlays}>
-            👁️ {(item.listen_count || 0).toLocaleString()}
-          </Text>
+    <View style={styles.songCard}>
+      <View style={styles.songMain}>
+        <Image
+          source={{ uri: item.cover_url || 'https://via.placeholder.com/150' }}
+          style={styles.cover}
+        />
+        <View style={styles.info}>
+          <Text style={styles.songTitle} numberOfLines={1}>{item.title}</Text>
+          <Text style={styles.artistName} numberOfLines={1}>🎤 {item.artist_name}</Text>
+          <View style={styles.statsRow}>
+            <View style={styles.stat}>
+              <Ionicons name="play-outline" size={12} color={COLORS.textDisabled} />
+              <Text style={styles.statText}>{(item.listen_count || 0).toLocaleString()}</Text>
+            </View>
+            <View style={styles.statDot} />
+            <Text style={styles.statText}>{item.genre_name || 'Khác'}</Text>
+          </View>
         </View>
       </View>
-      <View style={styles.songActions}>
-        <TouchableOpacity
-          style={[styles.actionButton, styles.editButton]}
-          onPress={() => handleEditSong(item)}
+      
+      <View style={styles.cardActions}>
+        <TouchableOpacity 
+          style={[styles.iconBtn, { backgroundColor: COLORS.primary + '15' }]}
+          onPress={() => navigation.navigate('AdminEditSong', { song: item })}
         >
-          <Ionicons name="create" size={20} color={COLORS.primary} />
+          <Ionicons name="create-outline" size={20} color={COLORS.primary} />
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.actionButton, styles.deleteButton]}
+        <TouchableOpacity 
+          style={[styles.iconBtn, { backgroundColor: COLORS.error + '10' }]}
           onPress={() => handleDeleteSong(item)}
         >
-          <Ionicons name="trash" size={20} color={COLORS.error} />
+          <Ionicons name="trash-outline" size={20} color={COLORS.error} />
         </TouchableOpacity>
       </View>
     </View>
@@ -127,48 +118,54 @@ const AdminSongsScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color={COLORS.text} />
-        </TouchableOpacity>
-        <Text style={styles.title}>Quản lý bài hát</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => navigation.navigate('AdminEditSong', { song: null })}
-        >
-          <Ionicons name="add" size={24} color={COLORS.primary} />
-        </TouchableOpacity>
-      </View>
+      <StatusBar barStyle="light-content" />
+      
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+        <View style={styles.headerTop}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <Ionicons name="chevron-back" size={28} color="#FFF" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>KHO BÀI HÁT</Text>
+          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.navigate('AdminEditSong', { song: null })}>
+            <Ionicons name="add" size={28} color={COLORS.primary} />
+          </TouchableOpacity>
+        </View>
 
-      <View style={styles.searchContainer}>
-        <Ionicons name="search" size={20} color={COLORS.textSecondary} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Tìm kiếm bài hát..."
-          placeholderTextColor={COLORS.textSecondary}
-          value={searchQuery}
-          onChangeText={handleSearch}
-        />
+        <View style={styles.searchBar}>
+          <Ionicons name="search" size={20} color={COLORS.textDisabled} />
+          <TextInput
+            placeholder="Tìm theo tiêu đề, nghệ sĩ..."
+            placeholderTextColor={COLORS.textDisabled}
+            style={styles.searchInput}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery !== '' && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={18} color={COLORS.textDisabled} />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {loading && songs.length === 0 ? (
-        <View style={styles.loadingContainer}>
+        <View style={styles.center}>
           <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Đang tải...</Text>
         </View>
       ) : (
         <FlatList
           data={songs}
           renderItem={renderSongItem}
           keyExtractor={(item) => item.song_id.toString()}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
-          contentContainerStyle={[styles.listContainer, { paddingBottom: 100 }]}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
+          contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]}
           showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Ionicons name="musical-notes-outline" size={60} color={COLORS.textDisabled} />
+              <Text style={styles.emptyText}>Không tìm thấy bài hát nào</Text>
+            </View>
+          }
         />
       )}
       <MiniPlayer bottomOffset={0} />
@@ -182,126 +179,130 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   header: {
+    backgroundColor: COLORS.backgroundSecondary,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.divider,
+    paddingBottom: 12,
+  },
+  headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 60,
-    paddingHorizontal: SIZES.padding,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    paddingHorizontal: 16,
+    marginBottom: 16,
   },
-  backButton: {
-    width: 40,
-    height: 40,
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#FFF',
+    letterSpacing: 1.2,
+  },
+  backBtn: {
+    width: 44,
+    height: 44,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  title: {
-    color: COLORS.text,
-    fontSize: SIZES.lg,
-    fontWeight: '600',
-    flex: 1,
-    textAlign: 'center',
-  },
-  addButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  searchContainer: {
+  searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.surface,
-    margin: SIZES.padding,
-    paddingHorizontal: SIZES.padding,
-    borderRadius: SIZES.borderRadius,
-    gap: 8,
+    marginHorizontal: 16,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.divider,
   },
   searchInput: {
     flex: 1,
-    paddingVertical: 12,
-    fontSize: SIZES.md,
-    color: COLORS.text,
+    height: 44,
+    color: '#FFF',
+    paddingLeft: 8,
+    fontSize: 14,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+  list: {
+    padding: 16,
   },
-  loadingText: {
-    color: COLORS.textSecondary,
-    fontSize: SIZES.md,
-    marginTop: 16,
-  },
-  listContainer: {
-    padding: SIZES.padding,
-  },
-  songItem: {
+  songCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.surface,
-    borderRadius: SIZES.borderRadius,
     padding: 12,
+    borderRadius: 20,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.divider,
   },
-  songImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-    marginRight: 12,
-  },
-  songInfo: {
+  songMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
     flex: 1,
   },
-  songTitle: {
-    color: COLORS.text,
-    fontSize: SIZES.md,
-    fontWeight: '600',
-    marginBottom: 4,
+  cover: {
+    width: 60,
+    height: 60,
+    borderRadius: 12,
+    marginRight: 16,
   },
-  songArtist: {
-    color: COLORS.textSecondary,
-    fontSize: SIZES.sm,
+  info: {
+    flex: 1,
+    paddingRight: 8,
+  },
+  songTitle: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#FFF',
     marginBottom: 2,
   },
-  songAlbum: {
+  artistName: {
+    fontSize: 13,
     color: COLORS.textSecondary,
-    fontSize: SIZES.sm,
-    marginBottom: 8,
+    marginBottom: 4,
   },
-  songMeta: {
+  statsRow: {
     flexDirection: 'row',
-    gap: 12,
+    alignItems: 'center',
   },
-  songGenre: {
-    color: COLORS.primary,
-    fontSize: SIZES.xs,
-    fontWeight: '500',
+  stat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
-  songPlays: {
-    color: COLORS.textSecondary,
-    fontSize: SIZES.xs,
+  statText: {
+    fontSize: 11,
+    color: COLORS.textDisabled,
   },
-  songActions: {
+  statDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: COLORS.textDisabled,
+    marginHorizontal: 8,
+  },
+  cardActions: {
     flexDirection: 'row',
     gap: 8,
   },
-  actionButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  iconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  editButton: {
-    backgroundColor: COLORS.primary + '20',
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  deleteButton: {
-    backgroundColor: COLORS.error + '20',
+  empty: {
+    marginTop: 100,
+    alignItems: 'center',
+  },
+  emptyText: {
+    marginTop: 16,
+    color: COLORS.textDisabled,
+    fontSize: 14,
   },
 });
 
