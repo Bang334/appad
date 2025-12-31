@@ -12,7 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../../config/theme';
 import { userService } from '../../services/userService';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+
 import SuccessModal from '../../components/Common/SuccessModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -217,7 +217,7 @@ const ChangePasswordScreen = ({ navigation }) => {
         onClose={handleAlertClose}
       />
       
-      <MiniPlayer bottomOffset={0} />
+      
     </View>
   );
 };
@@ -318,3 +318,4 @@ const styles = StyleSheet.create({
 });
 
 export default ChangePasswordScreen;
+

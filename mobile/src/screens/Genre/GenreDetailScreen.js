@@ -21,7 +21,7 @@ import PremiumBadge from '../../components/Common/PremiumBadge';
 import AccessBadge from '../../components/Common/AccessBadge';
 import PremiumAccessModal from '../../components/Common/PremiumAccessModal';
 import { premiumService } from '../../services/premiumService';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+
 import { LinearGradient } from 'expo-linear-gradient';
 
 const GenreDetailScreen = ({ route, navigation }) => {
@@ -448,7 +448,7 @@ const GenreDetailScreen = ({ route, navigation }) => {
         }}
       />
 
-      <MiniPlayer bottomOffset={0} />
+      
     </View>
   );
 };
@@ -720,4 +720,5 @@ const styles = StyleSheet.create({
 });
 
 export default GenreDetailScreen;
+
 

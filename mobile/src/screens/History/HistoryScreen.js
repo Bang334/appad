@@ -15,7 +15,8 @@ import { historyService } from '../../services/historyService';
 import { usePlayer } from '../../context/PlayerContext';
 import { COLORS, SIZES } from '../../config/theme';
 import PremiumBadge from '../../components/Common/PremiumBadge';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+//  // Removed redundant import
+
 
 const HistoryScreen = ({ navigation }) => {
   const [historyByDay, setHistoryByDay] = useState([]);
@@ -287,7 +288,7 @@ const HistoryScreen = ({ navigation }) => {
         }
         showsVerticalScrollIndicator={false}
       />
-      <MiniPlayer bottomOffset={0} />
+
     </View>
   );
 };
@@ -410,4 +411,5 @@ const styles = StyleSheet.create({
 });
 
 export default React.memo(HistoryScreen);
+
 

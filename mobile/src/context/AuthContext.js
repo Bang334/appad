@@ -66,6 +66,7 @@ export const AuthProvider = ({ children }) => {
     artist_bio = '',
     artist_country = '',
     artist_image_url = '',
+    autoLogin = true,
   ) => {
     try {
       console.log('Register attempt:', { username, email, apiUrl: api.defaults.baseURL });
@@ -84,13 +85,15 @@ export const AuthProvider = ({ children }) => {
       console.log('Register response:', response.data);
       
       if (response.data.success && response.data.data) {
-        const { token, ...userData } = response.data.data;
-        
-        await AsyncStorage.setItem('token', token);
-        await AsyncStorage.setItem('user', JSON.stringify(userData));
-        
-        setToken(token);
-        setUser(userData);
+        if (autoLogin) {
+          const { token, ...userData } = response.data.data;
+          
+          await AsyncStorage.setItem('token', token);
+          await AsyncStorage.setItem('user', JSON.stringify(userData));
+          
+          setToken(token);
+          setUser(userData);
+        }
         
         return { success: true };
       } else {
@@ -165,6 +168,23 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const refreshUser = async () => {
+    try {
+      const response = await api.get('/auth/me');
+      if (response.data.success) {
+        const userData = response.data.data;
+        // Don't overwrite token, it stays the same
+        await AsyncStorage.setItem('user', JSON.stringify(userData));
+        setUser(userData);
+        return { success: true, user: userData };
+      }
+      return { success: false };
+    } catch (error) {
+      console.error('Error refreshing user:', error);
+      return { success: false, error };
+    }
+  };
+
   const value = {
     user,
     token,
@@ -173,6 +193,7 @@ export const AuthProvider = ({ children }) => {
     register,
     logout,
     updateUser,
+    refreshUser,
     isAuthenticated: !!user,
   };
 

@@ -18,7 +18,7 @@ import { premiumService } from '../../services/premiumService';
 import { usePlayer } from '../../context/PlayerContext';
 import { COLORS, SIZES } from '../../config/theme';
 import { GlobalStyles } from '../../config/styles';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+
 import BottomSheet from '../../components/Common/BottomSheet';
 import PremiumBadge from '../../components/Common/PremiumBadge';
 import PremiumAccessModal from '../../components/Common/PremiumAccessModal';
@@ -519,7 +519,7 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
         onClose={handleAlertClose}
       />
 
-      <MiniPlayer bottomOffset={0} />
+      
     </View>
   );
 };
@@ -733,4 +733,5 @@ const styles = StyleSheet.create({
 });
 
 export default PlaylistDetailScreen;
+
 

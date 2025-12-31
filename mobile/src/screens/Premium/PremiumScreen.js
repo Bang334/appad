@@ -13,6 +13,7 @@ import { COLORS } from '../../config/theme';
 import { premiumService } from '../../services/premiumService';
 import { walletService } from '../../services/walletService';
 import { useAlert } from '../../context/AlertContext';
+import { useAuth } from '../../context/AuthContext';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -24,6 +25,7 @@ const PremiumScreen = ({ navigation }) => {
   const [subscribing, setSubscribing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const { showPurchaseSuccess, showError, showWarning, showInfo } = useAlert();
+  const { refreshUser } = useAuth();
   
   const PREMIUM_PRICE = 99000;
 
@@ -102,7 +104,8 @@ const PremiumScreen = ({ navigation }) => {
                   showPurchaseSuccess(
                     'Đăng ký Premium thành công!',
                     response.data.new_balance,
-                    () => {
+                    async () => {
+                      await refreshUser();
                       fetchPremiumStatus();
                     }
                   );
@@ -163,7 +166,8 @@ const PremiumScreen = ({ navigation }) => {
                     buttons: [
                       {
                         text: 'OK',
-                        onPress: () => {
+                        onPress: async () => {
+                          await refreshUser();
                           fetchPremiumStatus();
                         },
                       },

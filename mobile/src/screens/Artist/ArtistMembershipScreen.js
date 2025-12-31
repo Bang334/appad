@@ -17,7 +17,7 @@ import { artistService } from '../../services/artistService';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAlert } from '../../context/AlertContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+
 
 const ArtistMembershipScreen = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
@@ -317,7 +317,7 @@ const ArtistMembershipScreen = ({ route, navigation }) => {
         </View>
       </Modal>
 
-      <MiniPlayer bottomOffset={0} />
+      
     </View>
   );
 };
@@ -540,4 +540,5 @@ const styles = StyleSheet.create({
 });
 
 export default ArtistMembershipScreen;
+
 

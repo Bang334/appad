@@ -13,7 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../../config/theme';
 import { artistService } from '../../services/artistService';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const ArtistEditAlbumScreen = ({ route, navigation }) => {
@@ -262,7 +262,7 @@ const ArtistEditAlbumScreen = ({ route, navigation }) => {
         </View>
       </View>
       </ScrollView>
-      <MiniPlayer bottomOffset={0} />
+      
     </View>
   );
 };
@@ -412,3 +412,4 @@ const styles = StyleSheet.create({
 });
 
 export default ArtistEditAlbumScreen;
+

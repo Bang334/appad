@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Image,
   Platform,
+  Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,13 +21,9 @@ import Slider from '@react-native-community/slider';
 const MiniPlayer = ({ bottomOffset }) => {
   const insets = useSafeAreaInsets();
   
-  // Calculate dynamic dimensions consistent with safe area
   const baseTabBarHeight = 56;
   const safeAreaBottom = insets.bottom > 0 ? insets.bottom : (Platform.OS === 'android' ? 10 : 8);
   
-  // Position MiniPlayer:
-  // - If bottomOffset is provided (e.g. 0), we use it + safe area + small spacing
-  // - If not provided (in TabNavigator), we use tab bar height + safe area + small spacing
   const calculatedBottom = bottomOffset !== undefined 
     ? bottomOffset + safeAreaBottom + 8
     : baseTabBarHeight + safeAreaBottom + 8;
@@ -36,8 +33,6 @@ const MiniPlayer = ({ bottomOffset }) => {
   const { currentSong, isPlaying, togglePlayPause, playNext, playPrevious, stopPlayer, seekTo } = usePlayer();
   const { position, duration } = usePlayerProgress();
 
-  // Refresh user profile if we have a user but status might be stale
-  // This ensures that when a user subscribes, the MiniPlayer UI updates accordingly
   useEffect(() => {
     if (user && user.is_premium != 1) {
       const refreshProfile = async () => {
@@ -94,6 +89,78 @@ const MiniPlayer = ({ bottomOffset }) => {
   }, [duration, currentSong?.duration]);
 
   const [isCollapsed, setIsCollapsed] = React.useState(false);
+
+  // Animation values
+  const playButtonScale = React.useRef(new Animated.Value(1)).current;
+  const haloScale = React.useRef(new Animated.Value(1)).current;
+  const haloOpacity = React.useRef(new Animated.Value(0)).current;
+  const pulseAnimation = React.useRef(null);
+  const haloAnimation = React.useRef(null);
+
+  useEffect(() => {
+    if (isPlaying && !isCollapsed) {
+      pulseAnimation.current = Animated.loop(
+        Animated.sequence([
+          Animated.timing(playButtonScale, {
+            toValue: 1.1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(playButtonScale, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      
+      haloAnimation.current = Animated.loop(
+        Animated.parallel([
+          Animated.timing(haloScale, {
+            toValue: 2.2,
+            duration: 2000,
+            useNativeDriver: true,
+          }),
+          Animated.sequence([
+            Animated.timing(haloOpacity, {
+              toValue: 0.5,
+              duration: 500,
+              useNativeDriver: true,
+            }),
+            Animated.timing(haloOpacity, {
+              toValue: 0,
+              duration: 1500,
+              useNativeDriver: true,
+            }),
+          ]),
+        ])
+      );
+
+      pulseAnimation.current.start();
+      haloAnimation.current.start();
+    } else {
+      if (pulseAnimation.current) pulseAnimation.current.stop();
+      if (haloAnimation.current) haloAnimation.current.stop();
+      
+      Animated.parallel([
+        Animated.timing(playButtonScale, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(haloOpacity, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+
+    return () => {
+      if (pulseAnimation.current) pulseAnimation.current.stop();
+      if (haloAnimation.current) haloAnimation.current.stop();
+    };
+  }, [isPlaying, isCollapsed]);
 
   // Optimize progress calculation
   const progress = useMemo(() => {
@@ -229,20 +296,31 @@ const MiniPlayer = ({ bottomOffset }) => {
             </LinearGradient>
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={togglePlayPause} style={styles.playButton} hitSlop={{top: 5, bottom: 5, left: 5, right: 5}}>
-            <LinearGradient
-              colors={isPremiumContent ? ['#ea580c', '#fdba74', '#f97316'] : ['#8b5cf6', '#d8b4fe', '#ec4899']}
-              style={[styles.playButtonGradient, isPremiumContent && styles.premiumPlayButton]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <View style={styles.shineOverlay} />
-              <Ionicons
-                name={isPlaying ? 'pause' : 'play'}
-                size={22}
-                color={isPremiumContent ? '#000' : COLORS.white}
-              />
-            </LinearGradient>
+          <TouchableOpacity onPress={togglePlayPause} style={styles.playButtonContainer} hitSlop={{top: 5, bottom: 5, left: 5, right: 5}}>
+            <Animated.View style={[
+              styles.halo,
+              {
+                transform: [{ scale: haloScale }],
+                opacity: haloOpacity,
+                backgroundColor: isPremiumContent ? COLORS.warning : COLORS.primary,
+              }
+            ]} />
+            
+            <Animated.View style={{ transform: [{ scale: playButtonScale }] }}>
+              <LinearGradient
+                colors={isPremiumContent ? ['#ea580c', '#fdba74', '#f97316'] : ['#8b5cf6', '#d8b4fe', '#ec4899']}
+                style={[styles.playButtonGradient, isPremiumContent && styles.premiumPlayButton]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <View style={styles.shineOverlay} />
+                <Ionicons
+                  name={isPlaying ? 'pause' : 'play'}
+                  size={22}
+                  color={isPremiumContent ? '#000' : COLORS.white}
+                />
+              </LinearGradient>
+            </Animated.View>
           </TouchableOpacity>
           
           <TouchableOpacity onPress={playNext} style={styles.controlButton} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
@@ -426,6 +504,20 @@ const styles = StyleSheet.create({
   },
   controlButton: {
     padding: 6,
+  },
+  playButtonContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  halo: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
   },
   playButton: {
     borderRadius: 20,

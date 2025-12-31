@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../../config/theme';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const HelpScreen = ({ navigation }) => {
@@ -155,7 +155,7 @@ const HelpScreen = ({ navigation }) => {
         </Text>
       </View>
       </ScrollView>
-      <MiniPlayer bottomOffset={0} />
+      
     </View>
   );
 };
@@ -296,3 +296,4 @@ const styles = StyleSheet.create({
 });
 
 export default HelpScreen;
+

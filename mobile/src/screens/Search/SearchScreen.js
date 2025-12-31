@@ -415,11 +415,9 @@ const SearchScreen = ({ navigation }) => {
           newSet.delete(artistId);
           return newSet;
         });
-        showSuccess('Thành công', 'Đã bỏ theo dõi');
       } else {
         await followService.followArtist(artistId);
         setFollowedArtists(prev => new Set([...prev, artistId]));
-        showSuccess('Thành công', 'Đã theo dõi nghệ sĩ');
       }
     } catch (error) {
       console.error('Error toggling follow:', error);

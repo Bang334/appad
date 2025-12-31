@@ -16,7 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SIZES, SHADOWS } from '../../config/theme';
 import { artistService } from '../../services/artistService';
 import { useFocusEffect } from '@react-navigation/native';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -251,7 +251,7 @@ const ArtistDashboardScreen = ({ route, navigation }) => {
 
         <View style={{ height: 100 }} />
       </ScrollView>
-      <MiniPlayer bottomOffset={0} />
+      
     </View>
   );
 };
@@ -601,3 +601,4 @@ const styles = StyleSheet.create({
 });
 
 export default ArtistDashboardScreen;
+

@@ -42,6 +42,32 @@ const NotificationsScreen = ({ navigation, onUnreadCountChange }) => {
     }
   }, [unreadCount, onUnreadCountChange]);
 
+  React.useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={[styles.actionRow, { marginRight: 15 }]}>
+          {unreadCount > 0 && (
+            <TouchableOpacity onPress={handleMarkAllAsRead} style={styles.headerButton}>
+              <Ionicons name="checkmark-done" size={20} color={COLORS.primary} />
+            </TouchableOpacity>
+          )}
+          {notifications.length > 0 && (
+            <TouchableOpacity onPress={handleDeleteAll} style={styles.headerButton}>
+              <Ionicons name="trash-outline" size={18} color="#EF4444" />
+            </TouchableOpacity>
+          )}
+          {isAdmin && (
+            <TouchableOpacity onPress={() => setShowCreateModal(true)} style={styles.plusButton}>
+              <LinearGradient colors={[COLORS.primary, '#8B5CF6']} style={styles.plusGradient}>
+                <Ionicons name="add" size={20} color="#FFF" />
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
+        </View>
+      ),
+    });
+  }, [navigation, unreadCount, notifications.length, isAdmin, handleMarkAllAsRead, handleDeleteAll]);
+
   const loadNotifications = useCallback(async () => {
     try {
       const response = await notificationService.getNotifications();
@@ -280,67 +306,6 @@ const NotificationsScreen = ({ navigation, onUnreadCountChange }) => {
     <View style={styles.container}>
       <LinearGradient colors={['#0F172A', '#000000', '#000000']} style={StyleSheet.absoluteFill} />
       
-      {/* Custom Header Area */}
-      <View style={[styles.headerArea, { paddingTop: Math.max(insets.top, 30) }]}>
-        {/* Absolute Centered Title */}
-        <View style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end', alignItems: 'center', paddingBottom: 25, pointerEvents: 'none' }]}>
-            <View style={{ alignItems: 'center' }}>
-              <Text 
-                numberOfLines={1}
-                allowFontScaling={false}
-                style={{ 
-                  fontSize: 16, 
-                  fontWeight: '700', 
-                  color: isPremium ? COLORS.warning : COLORS.text, 
-                  textTransform: 'uppercase',
-                  letterSpacing: 2,
-                  textShadowColor: isPremium ? 'rgba(245, 158, 11, 0.5)' : undefined,
-                  textShadowOffset: isPremium ? { width: 0, height: 0 } : undefined,
-                  textShadowRadius: isPremium ? 10 : 0,
-                }}
-              >
-                THÔNG BÁO
-              </Text>
-              {isPremium && (
-                <View style={{ 
-                  marginTop: 4,
-                  width: 24,
-                  height: 2,
-                  backgroundColor: COLORS.warning,
-                  borderRadius: 1,
-                  shadowColor: COLORS.warning,
-                  shadowOffset: { width: 0, height: 0 },
-                  shadowOpacity: 0.8,
-                  shadowRadius: 5,
-                }} />
-              )}
-            </View>
-        </View>
-
-        {/* Spacer to push buttons to right */}
-        <View style={{ flex: 1 }} />
-
-        <View style={styles.actionRow}>
-          {unreadCount > 0 && (
-            <TouchableOpacity onPress={handleMarkAllAsRead} style={styles.headerButton}>
-              <Ionicons name="checkmark-done" size={22} color={COLORS.primary} />
-            </TouchableOpacity>
-          )}
-          {notifications.length > 0 && (
-            <TouchableOpacity onPress={handleDeleteAll} style={styles.headerButton}>
-              <Ionicons name="trash-outline" size={20} color="#EF4444" />
-            </TouchableOpacity>
-          )}
-          {isAdmin && (
-            <TouchableOpacity onPress={() => setShowCreateModal(true)} style={styles.plusButton}>
-              <LinearGradient colors={[COLORS.primary, '#8B5CF6']} style={styles.plusGradient}>
-                <Ionicons name="add" size={24} color="#FFF" />
-              </LinearGradient>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scrollBody, { paddingBottom: 120 }]}
@@ -380,50 +345,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  headerArea: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    backgroundColor: 'transparent',
-    zIndex: 10,
-    position: 'relative',
-    top: -10,
-  },
-  pageTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#FFF',
-    letterSpacing: -0.5,
-  },
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    position: 'relative',
-    top: 10,
   },
   headerButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   plusButton: {
-    borderRadius: 14,
+    borderRadius: 12,
     overflow: 'hidden',
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
   },
   plusGradient: {
-    width: 44,
-    height: 44,
+    width: 36,
+    height: 36,
     justifyContent: 'center',
     alignItems: 'center',
   },

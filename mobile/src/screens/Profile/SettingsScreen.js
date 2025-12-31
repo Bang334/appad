@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../../config/theme';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+
 import { historyService } from '../../services/historyService';
 import SuccessModal from '../../components/Common/SuccessModal';
 import { settingsDatabase } from '../../config/settingsDb';
@@ -256,7 +256,7 @@ const SettingsScreen = ({ navigation }) => {
         onClose={handleAlertClose}
       />
       
-      <MiniPlayer bottomOffset={0} />
+      
     </View>
   );
 };
@@ -338,3 +338,4 @@ const styles = StyleSheet.create({
 });
 
 export default SettingsScreen;
+

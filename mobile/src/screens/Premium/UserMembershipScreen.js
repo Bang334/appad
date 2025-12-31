@@ -17,12 +17,14 @@ import { premiumService } from '../../services/premiumService';
 import { artistService } from '../../services/artistService';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAlert } from '../../context/AlertContext';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+import { useAuth } from '../../context/AuthContext';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const UserMembershipScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const { showSuccess, showError, showWarning } = useAlert();
+  const { refreshUser } = useAuth();
   
   const [activeMemberships, setActiveMemberships] = useState([]);
   const [historyMemberships, setHistoryMemberships] = useState([]);
@@ -75,6 +77,7 @@ const UserMembershipScreen = ({ navigation }) => {
                 const response = await artistService.cancelMembership(artistId);
                 if (response.success) {
                   showSuccess('Thành công', 'Đã hủy hội viên thành công');
+                  await refreshUser();
                   await fetchData();
                 }
               } catch (error) {
@@ -322,7 +325,7 @@ const UserMembershipScreen = ({ navigation }) => {
           </View>
         )}
       </ScrollView>
-      <MiniPlayer bottomOffset={0} />
+      
     </View>
   );
 };
@@ -603,4 +606,5 @@ const styles = StyleSheet.create({
 });
 
 export default UserMembershipScreen;
+
 

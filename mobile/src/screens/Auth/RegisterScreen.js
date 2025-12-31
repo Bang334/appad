@@ -93,6 +93,7 @@ const RegisterScreen = ({ navigation }) => {
         registerAsArtist ? artistBio.trim() : '',
         registerAsArtist ? artistCountry.trim() : '',
         registerAsArtist ? artistImageUrl.trim() : '',
+        false, // autoLogin = false
       );
       setLoading(false);
 
@@ -110,8 +111,10 @@ const RegisterScreen = ({ navigation }) => {
 
   return (
     <LinearGradient
-      colors={[COLORS.gradient.start, COLORS.gradient.end]}
+      colors={COLORS.gradient.primary}
       style={styles.container}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}

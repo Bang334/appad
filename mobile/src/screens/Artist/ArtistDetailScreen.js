@@ -18,7 +18,8 @@ import { songService } from '../../services/songService';
 import { followService } from '../../services/followService';
 import { usePlayer } from '../../context/PlayerContext';
 import { useAlert } from '../../context/AlertContext';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+//  // Removed redundant import 
+
 import { walletService } from '../../services/walletService';
 import { premiumService } from '../../services/premiumService';
 import PremiumBadge from '../../components/Common/PremiumBadge';
@@ -115,12 +116,10 @@ const ArtistDetailScreen = ({ route, navigation }) => {
         await followService.unfollowArtist(artistId);
         setIsFollowing(false);
         setFollowerCount(prev => Math.max(0, prev - 1));
-        showSuccess('Thành công', 'Đã bỏ theo dõi nghệ sĩ');
       } else {
         await followService.followArtist(artistId);
         setIsFollowing(true);
         setFollowerCount(prev => prev + 1);
-        showSuccess('Thành công', 'Đã theo dõi nghệ sĩ');
       }
     } catch (error) {
       console.error('Error toggling follow:', error);
@@ -1059,7 +1058,7 @@ const ArtistDetailScreen = ({ route, navigation }) => {
           </View>
         </View>
       </Modal>
-      <MiniPlayer bottomOffset={0} />
+
     </View>
   );
 };
@@ -1667,3 +1666,4 @@ const styles = StyleSheet.create({
 });
 
 export default ArtistDetailScreen;
+

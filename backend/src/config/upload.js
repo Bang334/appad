@@ -1,25 +1,7 @@
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
 
-// Create upload directories if they don't exist
-const createUploadDirs = () => {
-  const dirs = [
-    './uploads',
-    './uploads/songs',
-    './uploads/images',
-    './uploads/avatars',
-    './uploads/covers'
-  ];
-  
-  dirs.forEach(dir => {
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-  });
-};
 
-createUploadDirs();
 
 // Storage configuration
 const storage = multer.diskStorage({

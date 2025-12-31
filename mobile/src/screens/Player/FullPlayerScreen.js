@@ -12,6 +12,8 @@ import {
   Alert,
   ActivityIndicator,
   InteractionManager,
+  Modal,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -34,7 +36,12 @@ const { width, height } = Dimensions.get('window');
 
 const FullPlayerScreen = ({ navigation, route }) => {
   const { user, updateUser } = useAuth();
-  const { currentSong, isPlaying, togglePlayPause, playNext, playPrevious, seekTo, currentPlaylist, playlist, currentIndex, playSong, refreshCurrentSong, isRepeat, toggleRepeat, isShuffle, toggleShuffle } = usePlayer();
+  const { 
+    currentSong, isPlaying, togglePlayPause, playNext, playPrevious, seekTo, 
+    currentPlaylist, playlist, currentIndex, playSong, refreshCurrentSong, 
+    isRepeat, toggleRepeat, isShuffle, toggleShuffle,
+    startSleepTimer, cancelSleepTimer, sleepTimerTarget 
+  } = usePlayer();
   const { position, duration } = usePlayerProgress();
   
   // Calculate premium status
@@ -68,6 +75,7 @@ const FullPlayerScreen = ({ navigation, route }) => {
   const [isFavorite, setIsFavorite] = useState(false);
   const [showAddToPlaylist, setShowAddToPlaylist] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [showSleepTimer, setShowSleepTimer] = useState(false);
   const [nextSongs, setNextSongs] = useState([]);
   const [relatedSongs, setRelatedSongs] = useState([]);
   const [activeQueueTab, setActiveQueueTab] = useState('queue'); // 'queue' or 'related'
@@ -81,6 +89,11 @@ const FullPlayerScreen = ({ navigation, route }) => {
   const nextSongsRequestIdRef = React.useRef(0);
 
   const coverScale = new Animated.Value(1);
+  const playButtonScale = React.useRef(new Animated.Value(1)).current;
+  const haloScale = React.useRef(new Animated.Value(1)).current;
+  const haloOpacity = React.useRef(new Animated.Value(0)).current;
+  const pulseAnimation = React.useRef(null);
+  const haloAnimation = React.useRef(null);
 
   useEffect(() => {
     // Animate cover when playing
@@ -89,12 +102,12 @@ const FullPlayerScreen = ({ navigation, route }) => {
         Animated.sequence([
           Animated.timing(coverScale, {
             toValue: 1.05,
-            duration: 1000,
+            duration: 1500,
             useNativeDriver: true,
           }),
           Animated.timing(coverScale, {
             toValue: 1,
-            duration: 1000,
+            duration: 1500,
             useNativeDriver: true,
           }),
         ])
@@ -103,6 +116,71 @@ const FullPlayerScreen = ({ navigation, route }) => {
 
     return () => task.cancel();
   }, []);
+
+  useEffect(() => {
+    if (isPlaying) {
+      pulseAnimation.current = Animated.loop(
+        Animated.sequence([
+          Animated.timing(playButtonScale, {
+            toValue: 1.15,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(playButtonScale, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      
+      haloAnimation.current = Animated.loop(
+        Animated.parallel([
+          Animated.timing(haloScale, {
+            toValue: 2.2,
+            duration: 2000,
+            useNativeDriver: true,
+          }),
+          Animated.sequence([
+            Animated.timing(haloOpacity, {
+              toValue: 0.5,
+              duration: 500,
+              useNativeDriver: true,
+            }),
+            Animated.timing(haloOpacity, {
+              toValue: 0,
+              duration: 1500,
+              useNativeDriver: true,
+            }),
+          ]),
+        ])
+      );
+
+      pulseAnimation.current.start();
+      haloAnimation.current.start();
+    } else {
+      if (pulseAnimation.current) pulseAnimation.current.stop();
+      if (haloAnimation.current) haloAnimation.current.stop();
+      
+      Animated.parallel([
+        Animated.timing(playButtonScale, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(haloOpacity, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+
+    return () => {
+      if (pulseAnimation.current) pulseAnimation.current.stop();
+      if (haloAnimation.current) haloAnimation.current.stop();
+    };
+  }, [isPlaying]);
 
   useEffect(() => {
     if (!currentSong) return;
@@ -175,14 +253,17 @@ const FullPlayerScreen = ({ navigation, route }) => {
          const res = await songService.getTrendingSongs(10); 
          const trending = res.data || [];
          
-         for (const s of trending) {
+          for (const s of trending) {
             if (finalSongs.length >= needCount) break;
             if (!existingIds.has(s.song_id)) {
                finalSongs.push({...s, isRecommendation: true}); 
                existingIds.add(s.song_id);
             }
-         }
-      }
+          }
+        } else {
+          // If we had something in finalSongs but less than needCount, ensure unique
+          // (Though current logic for playlist doesn't fill with trending, let's be safe)
+        }
 
       if (nextSongsRequestIdRef.current === requestId) {
          setNextSongs(finalSongs);
@@ -218,26 +299,32 @@ const FullPlayerScreen = ({ navigation, route }) => {
       // 2. If genre songs are few, add Artist songs
       if (songs.length < 5 && currentSong.artist_id) {
         const res = await songService.getSongsByArtist(currentSong.artist_id);
-        if (res.data && res.data.length > 0) {
+        const artistData = res.data || [];
+        if (artistData.length > 0) {
            // Merge and deduplicate
            const existingIds = new Set(songs.map(s => s.song_id));
-           const artistSongs = res.data.filter(s => !existingIds.has(s.song_id));
-           songs = [...songs, ...artistSongs];
+           existingIds.add(currentSong.song_id);
+           
+           for (const s of artistData) {
+             if (songs.length >= 8) break; 
+             if (!existingIds.has(s.song_id)) {
+               songs.push(s);
+               existingIds.add(s.song_id);
+             }
+           }
         }
       }
 
-      // 3. Fallback/Fill to ensure 5 songs
+      // 3. Fallback/Fill to ensure at least 5 songs
       if (songs.length < 5) {
-        const fillCount = 5 - songs.length;
-        const res = await songService.getRecommendedSongs(10); // Fetch more to filter safely
+        const res = await songService.getRecommendedSongs(10);
         const recSongs = res.data || [];
         
-        // Merge and deduplicate
         const existingIds = new Set(songs.map(s => s.song_id));
         existingIds.add(currentSong.song_id);
         
         for (const s of recSongs) {
-           if (songs.length >= 5) break; 
+           if (songs.length >= 10) break; 
            if (!existingIds.has(s.song_id)) {
               songs.push(s);
               existingIds.add(s.song_id);
@@ -470,20 +557,31 @@ WHERE song_id = ${currentSong.song_id};`;
               <Ionicons name="play-skip-back" size={36} color={isPremiumContent ? COLORS.warning : COLORS.text} />
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={togglePlayPause} style={styles.playButton}>
-              <LinearGradient
-                colors={isPremiumContent ? ['#ea580c', '#fdba74', '#f97316'] : COLORS.gradient.primary}
-                style={[styles.playButtonGradient, isPremiumContent && styles.premiumPlayButton]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <View style={isPremiumContent ? styles.shineOverlay : null} />
-                <Ionicons
-                  name={isPlaying ? 'pause' : 'play'}
-                  size={40}
-                  color={isPremiumContent ? '#000' : COLORS.white}
-                />
-              </LinearGradient>
+            <TouchableOpacity onPress={togglePlayPause} style={styles.playButtonContainer}>
+              <Animated.View style={[
+                styles.halo,
+                {
+                  transform: [{ scale: haloScale }],
+                  opacity: haloOpacity,
+                  backgroundColor: isPremiumContent ? COLORS.warning : COLORS.primary,
+                }
+              ]} />
+              
+              <Animated.View style={{ transform: [{ scale: playButtonScale }] }}>
+                <LinearGradient
+                  colors={isPremiumContent ? ['#ea580c', '#fdba74', '#f97316'] : COLORS.gradient.primary}
+                  style={[styles.playButtonGradient, isPremiumContent && styles.premiumPlayButton]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <View style={isPremiumContent ? styles.shineOverlay : null} />
+                  <Ionicons
+                    name={isPlaying ? 'pause' : 'play'}
+                    size={40}
+                    color={isPremiumContent ? '#000' : COLORS.white}
+                  />
+                </LinearGradient>
+              </Animated.View>
             </TouchableOpacity>
 
             <TouchableOpacity onPress={playNext} style={styles.controlButton}>
@@ -546,6 +644,17 @@ WHERE song_id = ${currentSong.song_id};`;
             </TouchableOpacity>
 
             <TouchableOpacity 
+              onPress={() => setShowSleepTimer(true)}
+              style={styles.actionButton}
+            >
+              <Ionicons 
+                name={sleepTimerTarget ? 'moon' : 'moon-outline'} 
+                size={26} 
+                color={sleepTimerTarget ? COLORS.warning : COLORS.text} 
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity 
               onPress={() => setShowAddToPlaylist(true)}
               style={styles.actionButton}
             >
@@ -602,7 +711,7 @@ WHERE song_id = ${currentSong.song_id};`;
               >
                 {activeQueueTab === 'queue' ? (
                   <LinearGradient
-                    colors={isPremiumContent ? ['#ea580c', '#f97316'] : [COLORS.primary, '#9F1239']}
+                    colors={isPremiumContent ? ['#F59E0B', '#F97316'] : ['#8B5CF6', '#7C3AED']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                     style={styles.tabButtonActiveGradient}
@@ -623,7 +732,7 @@ WHERE song_id = ${currentSong.song_id};`;
               >
                 {activeQueueTab === 'related' ? (
                   <LinearGradient
-                    colors={isPremiumContent ? ['#ea580c', '#f97316'] : [COLORS.primary, '#9F1239']}
+                    colors={isPremiumContent ? ['#F59E0B', '#F97316'] : ['#8B5CF6', '#7C3AED']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                     style={styles.tabButtonActiveGradient}
@@ -645,7 +754,7 @@ WHERE song_id = ${currentSong.song_id};`;
                 <Text style={styles.loadingText}>Đang tải...</Text>
               </View>
             ) : (activeQueueTab === 'queue' ? nextSongs : relatedSongs).length > 0 ? (
-              (activeQueueTab === 'queue' ? nextSongs : relatedSongs).map((song) => {
+              (activeQueueTab === 'queue' ? nextSongs : relatedSongs).map((song, index) => {
                 const isFromRecommendations = activeQueueTab === 'related';
                 const isAlbumSuggestion = !!song.album_id;
                 const gradientColors = isAlbumSuggestion && !isFromRecommendations
@@ -668,7 +777,7 @@ WHERE song_id = ${currentSong.song_id};`;
 
                 return (
                   <TouchableOpacity
-                    key={song.song_id}
+                    key={`${activeQueueTab}-${song.song_id}-${index}`}
                     style={styles.nextSongWrapper}
                     activeOpacity={0.85}
                     onPress={handlePress}
@@ -758,11 +867,75 @@ WHERE song_id = ${currentSong.song_id};`;
         message={successMessage}
         icon={successMessage.includes('lỗi') ? 'alert-circle' : 'checkmark-circle'}
       />
+
+      {/* Sleep Timer Modal */}
+      <Modal
+        visible={showSleepTimer}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowSleepTimer(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowSleepTimer(false)}>
+          <View style={styles.centerModalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.centerModalContainer}>
+                <Text style={styles.modalTitle}>Hẹn giờ tắt nhạc</Text>
+                
+                {sleepTimerTarget && (
+                  <View style={styles.activeTimerContainer}>
+                    <Ionicons name="time" size={20} color={COLORS.warning} />
+                    <Text style={styles.activeTimerText}>
+                      Tắt lúc {new Date(sleepTimerTarget).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </View>
+                )}
+
+                <View style={styles.timerOptionsGrid}>
+                  {[1, 15, 30, 45, 60].map((min) => (
+                    <TouchableOpacity
+                      key={min}
+                      style={styles.timerOptionButton}
+                      onPress={() => {
+                        startSleepTimer(min);
+                        setShowSleepTimer(false);
+                        setSuccessMessage(`Đã hẹn giờ tắt sau ${min} phút`);
+                        setShowSuccessModal(true);
+                      }}
+                    >
+                      <Text style={styles.timerOptionText}>{min} phút</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {sleepTimerTarget && (
+                  <TouchableOpacity
+                    style={styles.cancelTimerButton}
+                    onPress={() => {
+                      cancelSleepTimer();
+                      setShowSleepTimer(false);
+                    }}
+                  >
+                    <Text style={styles.cancelTimerText}>Hủy hẹn giờ</Text>
+                  </TouchableOpacity>
+                )}
+                
+                <TouchableOpacity
+                  style={styles.closeModalButton}
+                  onPress={() => setShowSleepTimer(false)}
+                >
+                  <Text style={styles.closeModalText}>Đóng</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  // ... (keep existing styles up to centerModalOverlay)
   safeArea: {
     flex: 1,
     backgroundColor: COLORS.background,
@@ -948,16 +1121,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  playButtonContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  halo: {
+    position: 'absolute',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+  },
   playButton: {
     width: 80,
     height: 80,
     borderRadius: 40,
     overflow: 'hidden',
     shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.6,
+    shadowRadius: 16,
+    elevation: 12,
   },
   premiumPlayButton: {
     shadowColor: COLORS.warning,
@@ -968,10 +1155,11 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.4)',
   },
   playButtonGradient: {
-    width: '100%',
-    height: '100%',
+    width: 80,
+    height: 80,
     justifyContent: 'center',
     alignItems: 'center',
+    borderRadius: 40,
   },
   actions: {
     flexDirection: 'row',
@@ -1028,15 +1216,15 @@ const styles = StyleSheet.create({
   },
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
     borderRadius: 30,
-    padding: 2,
+    padding: 4,
     marginBottom: 24,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.05)',
     alignSelf: 'center',
-    width: '70%', // Compact width
-    maxWidth: 300,
+    width: '80%', 
+    maxWidth: 340,
   },
   tabButtonWrapper: {
     flex: 1,
@@ -1048,15 +1236,15 @@ const styles = StyleSheet.create({
     borderRadius: 24,
   },
   tabButtonActiveGradient: {
-    paddingVertical: 8,
+    paddingVertical: 10,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 24,
     shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 8,
   },
   tabText: {
     color: COLORS.textMuted,
@@ -1170,6 +1358,101 @@ const styles = StyleSheet.create({
     height: '50%', // Upper half shine for full player button (which is larger)
     opacity: 0.5,
   },
+  centerModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  centerModalContainer: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#1E1E1E', 
+    borderRadius: 28,
+    padding: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.6,
+    shadowRadius: 32,
+    elevation: 24,
+  },
+  modalTitle: {
+    color: COLORS.white,
+    fontSize: 22,
+    fontWeight: '800',
+    marginBottom: 24,
+    textAlign: 'center',
+    letterSpacing: 0.5,
+  },
+  activeTimerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(245, 158, 11, 0.15)', // Richer orange
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    marginBottom: 24,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.4)',
+  },
+  activeTimerText: {
+    color: '#F59E0B',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  timerOptionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  timerOptionButton: {
+    width: '30%', // Grid of 3
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    paddingVertical: 16,
+    borderRadius: 18,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  timerOptionText: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  cancelTimerButton: {
+    width: '100%',
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    paddingVertical: 16,
+    borderRadius: 20,
+    alignItems: 'center',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.4)',
+  },
+  cancelTimerText: {
+    color: '#F87171',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  closeModalButton: {
+    width: '100%',
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderRadius: 20,
+  },
+  closeModalText: {
+    color: COLORS.textSecondary,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
 });
 
 export default FullPlayerScreen;

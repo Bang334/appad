@@ -17,7 +17,7 @@ import { COLORS, SIZES } from '../../config/theme';
 import { userService } from '../../services/userService';
 import { useSuccessModal } from '../../hooks/useSuccessModal';
 import SuccessModal from '../../components/Common/SuccessModal';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 
@@ -222,7 +222,7 @@ const EditProfileScreen = ({ navigation }) => {
         icon={modalData.icon}
       />
       </ScrollView>
-      <MiniPlayer bottomOffset={0} />
+      
     </View>
   );
 };
@@ -480,3 +480,4 @@ const styles = StyleSheet.create({
 });
 
 export default EditProfileScreen;
+

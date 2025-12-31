@@ -16,7 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../context/AuthContext';
 import { COLORS, SIZES, SHADOWS } from '../../config/theme';
 import { adminService } from '../../services/adminService';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 
@@ -295,7 +295,7 @@ const AdminDashboard = ({ navigation }) => {
 
         <View style={{ height: 120 }} />
       </ScrollView>
-      <MiniPlayer bottomOffset={0} />
+      
     </View>
   );
 };
@@ -516,3 +516,4 @@ const styles = StyleSheet.create({
 });
 
 export default AdminDashboard;
+

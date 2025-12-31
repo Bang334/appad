@@ -22,7 +22,8 @@ import { albumService } from '../../services/albumService';
 import { artistService } from '../../services/artistService';
 import { premiumService } from '../../services/premiumService';
 import { usePlayer } from '../../context/PlayerContext';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+//  // Removed redundant import
+
 import AddToPlaylistModal from '../../components/Playlist/AddToPlaylistModal';
 import AlbumPurchaseModal from '../../components/Common/AlbumPurchaseModal';
 import SongPurchaseModal from '../../components/Common/SongPurchaseModal';
@@ -533,7 +534,7 @@ const AlbumDetailScreen = ({ route, navigation }) => {
         contentContainerStyle={styles.scrollContent}
       />
       
-      {isFocused && <MiniPlayer bottomOffset={0} />}
+
 
 
 
@@ -750,4 +751,5 @@ const styles = StyleSheet.create({
 });
 
 export default AlbumDetailScreen;
+
 

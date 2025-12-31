@@ -18,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SIZES, SHADOWS } from '../../config/theme';
 import { adminService } from '../../services/adminService';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const AdminUsersScreen = ({ navigation, route }) => {
@@ -404,7 +404,7 @@ const AdminUsersScreen = ({ navigation, route }) => {
           }
         />
       )}
-      <MiniPlayer bottomOffset={0} />
+      
     </View>
   );
 };
@@ -777,3 +777,4 @@ const styles = StyleSheet.create({
 });
 
 export default AdminUsersScreen;
+

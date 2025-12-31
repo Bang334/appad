@@ -21,7 +21,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { COLORS, SIZES, SHADOWS } from '../../config/theme';
 import { adminService } from '../../services/adminService';
 import { songService } from '../../services/songService';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const AdminEditSongScreen = ({ navigation, route }) => {
@@ -263,7 +263,7 @@ const AdminEditSongScreen = ({ navigation, route }) => {
         </View>
       </Modal>
 
-      <MiniPlayer bottomOffset={0} />
+      
     </View>
   );
 };
@@ -305,3 +305,4 @@ const styles = StyleSheet.create({
 });
 
 export default AdminEditSongScreen;
+

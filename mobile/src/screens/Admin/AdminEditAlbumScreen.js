@@ -19,7 +19,7 @@ import { COLORS, SIZES, SHADOWS } from '../../config/theme';
 import { adminService } from '../../services/adminService';
 import { artistService } from '../../services/artistService';
 import { songService } from '../../services/songService';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const AdminEditAlbumScreen = ({ route, navigation }) => {
@@ -331,7 +331,7 @@ const AdminEditAlbumScreen = ({ route, navigation }) => {
           )}
         </ScrollView>
       </KeyboardAvoidingView>
-      <MiniPlayer bottomOffset={0} />
+      
     </View>
   );
 };
@@ -557,3 +557,4 @@ const styles = StyleSheet.create({
 });
 
 export default AdminEditAlbumScreen;
+

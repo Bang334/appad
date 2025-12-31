@@ -19,7 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES, SHADOWS } from '../../config/theme';
 import { adminService } from '../../services/adminService';
 import { useFocusEffect } from '@react-navigation/native';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const AdminTransactionsScreen = ({ navigation }) => {
@@ -230,7 +230,7 @@ const AdminTransactionsScreen = ({ navigation }) => {
         </View>
       </Modal>
 
-      <MiniPlayer bottomOffset={0} />
+      
     </View>
   );
 };
@@ -283,3 +283,4 @@ const styles = StyleSheet.create({
 });
 
 export default AdminTransactionsScreen;
+

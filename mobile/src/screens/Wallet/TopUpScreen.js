@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../../config/theme';
 import { walletService } from '../../services/walletService';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+
 import SuccessModal from '../../components/Common/SuccessModal';
 
 const TopUpScreen = ({ navigation }) => {
@@ -200,7 +200,7 @@ const TopUpScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
         </ScrollView>
-        <MiniPlayer bottomOffset={0} />
+        
         
         <SuccessModal
           visible={alertVisible}
@@ -289,7 +289,7 @@ const TopUpScreen = ({ navigation }) => {
         </TouchableOpacity>
       </View>
       </ScrollView>
-      <MiniPlayer bottomOffset={0} />
+      
       
       <SuccessModal
         visible={alertVisible}
@@ -529,4 +529,5 @@ const styles = StyleSheet.create({
 });
 
 export default TopUpScreen;
+
 

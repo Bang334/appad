@@ -14,7 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES, SHADOWS } from '../../config/theme';
 import { adminService } from '../../services/adminService';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const AdminAlbumsScreen = ({ navigation }) => {
@@ -158,7 +158,7 @@ const AdminAlbumsScreen = ({ navigation }) => {
           }
         />
       )}
-      <MiniPlayer bottomOffset={0} />
+      
     </View>
   );
 };
@@ -303,3 +303,4 @@ const styles = StyleSheet.create({
 });
 
 export default AdminAlbumsScreen;
+

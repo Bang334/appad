@@ -17,7 +17,6 @@ import SearchScreen from '../screens/Search/SearchScreen';
 import LibraryScreen from '../screens/Library/LibraryScreen';
 import ProfileScreen from '../screens/Profile/ProfileScreen';
 import NotificationsScreen from '../screens/Profile/NotificationsScreen';
-import FullPlayerScreen from '../screens/Player/FullPlayerScreen';
 import PlaylistDetailScreen from '../screens/Playlist/PlaylistDetailScreen';
 import ArtistDetailScreen from '../screens/Artist/ArtistDetailScreen';
 import AlbumDetailScreen from '../screens/Album/AlbumDetailScreen';
@@ -232,7 +231,6 @@ const TabNavigator = () => {
           options={{ 
             title: 'Thông báo',
             tabBarLabel: 'Thông báo',
-            headerShown: false,
           }}
         >
           {(props) => (
@@ -248,7 +246,6 @@ const TabNavigator = () => {
           options={{ title: 'Cá nhân' }}
         />
       </Tab.Navigator>
-      <MiniPlayer />
     </View>
   );
 };
@@ -264,23 +261,6 @@ const MainTabNavigator = () => {
         }}
       >
         <Stack.Screen name="MainTabs" component={TabNavigator} />
-        <Stack.Screen 
-          name="FullPlayer" 
-          component={FullPlayerScreen}
-          options={{
-            presentation: 'modal',
-            gestureEnabled: false,
-            cardStyleInterpolator: ({ current: { progress } }) => ({
-              cardStyle: {
-                opacity: progress.interpolate({
-                  inputRange: [0, 0.5, 0.9, 1],
-                  outputRange: [0, 0.25, 0.7, 1],
-                }),
-              },
-            }),
-          }}
-        />
-        {/* ... existing screens ... */}
       <Stack.Screen 
         name="ArtistDetail" 
         component={ArtistDetailScreen}
@@ -743,6 +723,7 @@ const MainTabNavigator = () => {
         />
 
       </Stack.Navigator>
+      <MiniPlayer />
     </View>
   );
 };

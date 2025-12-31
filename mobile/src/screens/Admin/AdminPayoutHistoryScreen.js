@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, SHADOWS } from '../../config/theme';
 import adminService from '../../services/adminService';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+
 
 const AdminPayoutHistoryScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
@@ -191,7 +191,7 @@ const AdminPayoutHistoryScreen = ({ navigation }) => {
         </View>
       </Modal>
 
-      <MiniPlayer bottomOffset={0} />
+      
     </View>
   );
 };
@@ -368,3 +368,4 @@ const styles = StyleSheet.create({
 });
 
 export default AdminPayoutHistoryScreen;
+

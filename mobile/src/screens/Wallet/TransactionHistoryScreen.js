@@ -13,7 +13,7 @@ import { COLORS } from '../../config/theme';
 import { walletService } from '../../services/walletService';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+
 
 const TransactionHistoryScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
@@ -160,7 +160,7 @@ const TransactionHistoryScreen = ({ navigation }) => {
           }
         />
       )}
-      <MiniPlayer bottomOffset={0} />
+      
     </View>
   );
 };
@@ -266,5 +266,6 @@ const styles = StyleSheet.create({
 });
 
 export default TransactionHistoryScreen;
+
 
 

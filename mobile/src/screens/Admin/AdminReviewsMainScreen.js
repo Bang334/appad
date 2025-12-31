@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SHADOWS, SIZES } from '../../config/theme';
 import { adminService } from '../../services/adminService';
-import MiniPlayer from '../../components/Player/MiniPlayer';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const AdminReviewsMainScreen = ({ navigation }) => {
@@ -197,7 +197,7 @@ const AdminReviewsMainScreen = ({ navigation }) => {
         contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
         showsVerticalScrollIndicator={false}
       />
-      <MiniPlayer bottomOffset={0} />
+      
     </View>
   );
 };
@@ -411,3 +411,4 @@ const styles = StyleSheet.create({
 });
 
 export default AdminReviewsMainScreen;
+

@@ -18,6 +18,7 @@ import { COLORS, SIZES, SHADOWS } from '../../config/theme';
 import { walletService } from '../../services/walletService';
 import { artistService } from '../../services/artistService';
 import { premiumService } from '../../services/premiumService';
+import { useAuth } from '../../context/AuthContext';
 import PurchaseConfirmationModal from './PurchaseConfirmationModal';
 
 const { width } = Dimensions.get('window');
@@ -31,6 +32,7 @@ const PremiumAccessModal = ({ visible, song, onClose, onPurchaseSong, onSubscrib
   const [confirmType, setConfirmType] = useState(null); // 'song', 'membership', 'premium', 'album'
   const [loadingConfirm, setLoadingConfirm] = useState(false);
   const navigation = useNavigation();
+  const { refreshUser } = useAuth();
 
   useEffect(() => {
     if (visible && song?.artist_id) {
@@ -138,6 +140,8 @@ const PremiumAccessModal = ({ visible, song, onClose, onPurchaseSong, onSubscrib
             playSong(song, [song], 0);
           }
           
+          await refreshUser();
+          
           setTimeout(() => {
             navigation.navigate('FullPlayer');
           }, 300);
@@ -172,6 +176,8 @@ const PremiumAccessModal = ({ visible, song, onClose, onPurchaseSong, onSubscrib
             playSong(song, [song], 0);
           }
           
+          await refreshUser();
+          
           setTimeout(() => {
             navigation.navigate('FullPlayer');
           }, 300);
@@ -202,6 +208,8 @@ const PremiumAccessModal = ({ visible, song, onClose, onPurchaseSong, onSubscrib
           } else {
             playSong(song, [song], 0);
           }
+          
+          await refreshUser();
           
           setTimeout(() => {
              navigation.navigate('FullPlayer');

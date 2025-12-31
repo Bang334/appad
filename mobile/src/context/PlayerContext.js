@@ -41,7 +41,9 @@ export const PlayerProvider = ({ children }) => {
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [purchaseSong, setPurchaseSong] = useState(null);
   
-  // Player ref instead of hook
+  // Sleep Timer State
+  const [sleepTimerTarget, setSleepTimerTarget] = useState(null);
+  const sleepTimerRef = useRef(null);
   const playerRef = useRef(null);
   
   // Refs
@@ -286,26 +288,38 @@ export const PlayerProvider = ({ children }) => {
       // Update playing state
       setIsPlaying(status.isPlaying || false);
       
-      // Get song duration for finish detection (duration is in seconds in database)
-      const songDurationRaw = song?.duration || 0;
-      const songDurationMs = songDurationRaw * 1000; // Convert seconds to ms
-      const songDurationSeconds = songDurationMs / 1000;
+      // Get song duration for finish detection
+      // Prefer actual duration from audio status if available, otherwise fallback to DB
+      const audioDurationMs = status.durationMillis || 0;
+      const dbDurationMs = (song?.duration || 0) * 1000;
+      const targetDurationMs = audioDurationMs > 0 ? audioDurationMs : dbDurationMs;
       
       // Handle playback finished - use didJustFinish or check if at end
+      
+      // Determine if we are effectively at the end (within 1s)
+      // Use 1500ms threshold to be safe with 1000ms update interval
+      const isAtEnd = targetDurationMs > 0 && 
+                     status.positionMillis >= targetDurationMs - 1500;
+
       if (status.didJustFinish && !lastDidFinishRef.current) {
+        console.log('🎵 [Player] didJustFinish fired');
         lastDidFinishRef.current = true;
         handlePlaybackFinished();
-      } else if (status.isPlaying) {
-        lastDidFinishRef.current = false;
-      } else {
-        // Also check if at end using position and duration
-        const isAtEnd = songDurationSeconds > 0 && 
-                       status.positionMillis >= songDurationMs - 500 && 
-                       !status.isPlaying;
-        if (isAtEnd && !lastDidFinishRef.current) {
+      } else if (isAtEnd && !lastDidFinishRef.current) {
+          // Manual finish detection
+          // This catches cases where didJustFinish doesn't fire but we are at the end
+          // EVEN IF isPlaying is true (stuck at end)
+          console.log('🎵 [Player] Manual finish detection triggered', {
+            position: status.positionMillis,
+            duration: targetDurationMs,
+            isPlaying: status.isPlaying
+          });
           lastDidFinishRef.current = true;
           handlePlaybackFinished();
-        }
+      } else if (!isAtEnd && status.isPlaying) {
+        // Reset flag ONLY if we are playing and NOT at the end
+        // This prevents re-firing while validly playing comfortably in the middle
+        lastDidFinishRef.current = false;
       }
     });
   }, [handlePlaybackFinished]);
@@ -1025,9 +1039,73 @@ export const PlayerProvider = ({ children }) => {
     // Retry playing the song after purchase
     if (premiumSong) {
       playSongInternal(premiumSong, null, 0, null, true);
-      setPremiumSong(null);
     }
   };
+
+  // Sleep Timer Logic
+  const startSleepTimer = (minutes) => {
+    // Clear existing timer if any
+    if (sleepTimerRef.current) {
+      clearTimeout(sleepTimerRef.current);
+    }
+
+    if (minutes <= 0) {
+      setSleepTimerTarget(null);
+      return;
+    }
+
+    const durationMs = minutes * 60 * 1000;
+    const targetTime = Date.now() + durationMs;
+    
+    setSleepTimerTarget(targetTime);
+    
+    console.log(`⏰ [SleepTimer] Set for ${minutes} minutes. Ends at: ${new Date(targetTime).toLocaleTimeString()}`);
+
+    sleepTimerRef.current = setTimeout(async () => {
+      console.log('⏰ [SleepTimer] Time up! Pausing player.');
+      // Stop timer first
+      setSleepTimerTarget(null);
+      
+      // PAUSE instead of STOP
+      if (playerRef.current) {
+         try {
+           const status = await playerRef.current.getStatusAsync();
+           if (status.isPlaying) {
+             // Use togglePlayPause logic but force pause
+             if (playStartTimeRef.current) {
+                const playDuration = Date.now() - playStartTimeRef.current;
+                accumulatedDurationRef.current += playDuration;
+                playStartTimeRef.current = null;
+             }
+             await playerRef.current.pauseAsync();
+             setIsPlaying(false);
+           }
+         } catch (e) {
+           console.error('Error pausing in Sleep Timer:', e);
+         }
+      }
+      // Do NOT call stopPlayer() to keep UI state
+      // stopPlayer(); 
+    }, durationMs);
+  };
+
+  const cancelSleepTimer = () => {
+    if (sleepTimerRef.current) {
+      clearTimeout(sleepTimerRef.current);
+      sleepTimerRef.current = null;
+    }
+    setSleepTimerTarget(null);
+    console.log('⏰ [SleepTimer] Cancelled');
+  };
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (sleepTimerRef.current) {
+        clearTimeout(sleepTimerRef.current);
+      }
+    };
+  }, []);
 
   // Optimize Context Values
   // Main player state (excluding fast-changing progress)
@@ -1043,6 +1121,7 @@ export const PlayerProvider = ({ children }) => {
     premiumSong,
     showPurchaseModal,
     purchaseSong,
+    sleepTimerTarget,
   }), [
     currentSong,
     isPlaying,
@@ -1055,6 +1134,7 @@ export const PlayerProvider = ({ children }) => {
     premiumSong,
     showPurchaseModal,
     purchaseSong,
+    sleepTimerTarget,
   ]);
 
   // Progress state (updates every second)
@@ -1096,6 +1176,8 @@ export const PlayerProvider = ({ children }) => {
     updatePlaylist,
     setShowPremiumModal,
     setShowPurchaseModal,
+    startSleepTimer,
+    cancelSleepTimer,
   }), []); // Actions should be stable
 
   const contextValue = React.useMemo(() => ({
