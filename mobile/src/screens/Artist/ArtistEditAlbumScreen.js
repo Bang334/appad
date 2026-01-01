@@ -13,6 +13,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../../config/theme';
 import { artistService } from '../../services/artistService';
+import * as ImagePicker from 'expo-image-picker';
+
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -47,11 +49,39 @@ const ArtistEditAlbumScreen = ({ route, navigation }) => {
     description: album?.description || '', // Added description field support just in case
   });
 
+  const [coverFile, setCoverFile] = useState(null);
+
+
   const handleInputChange = (field, value) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
     }));
+  };
+
+  const pickCoverImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        setCoverFile({
+          uri: asset.uri,
+          type: asset.mimeType || 'image/jpeg',
+          name: asset.fileName || 'cover.jpg',
+        });
+        setFormData(prev => ({ ...prev, cover_url: asset.uri }));
+      }
+    } catch (error) {
+      console.error('Error picking cover image:', error);
+      Alert.alert('Lỗi', 'Không thể chọn ảnh bìa');
+    }
   };
 
   const validateForm = () => {
@@ -66,6 +96,7 @@ const ArtistEditAlbumScreen = ({ route, navigation }) => {
     // Simple validation for datetime format could be added here
     return true;
   };
+
 
   const handleSave = async () => {
     if (!validateForm()) return;
@@ -84,17 +115,18 @@ const ArtistEditAlbumScreen = ({ route, navigation }) => {
 
       if (album) {
         // Update existing album
-        await artistService.updateAlbum(artistId, album.album_id, submitData);
+        await artistService.updateAlbum(artistId, album.album_id, submitData, coverFile ? { cover: coverFile } : null);
         Alert.alert('Thành công', 'Đã cập nhật album', [
           { text: 'OK', onPress: () => navigation.goBack() }
         ]);
       } else {
         // Create new album
-        await artistService.createAlbum(artistId, submitData);
+        await artistService.createAlbum(artistId, submitData, coverFile ? { cover: coverFile } : null);
         Alert.alert('Thành công', 'Đã tạo album mới', [
           { text: 'OK', onPress: () => navigation.goBack() }
         ]);
       }
+
     } catch (error) {
       console.error('Error saving album:', error);
       Alert.alert('Lỗi', 'Không thể lưu album: ' + (error.message || 'Lỗi không xác định'));
@@ -165,13 +197,19 @@ const ArtistEditAlbumScreen = ({ route, navigation }) => {
               </View>
             )}
           </View>
-          <TextInput
-            style={styles.input}
-            placeholder="URL ảnh bìa album"
-            value={formData.cover_url}
-            onChangeText={(value) => handleInputChange('cover_url', value)}
-            placeholderTextColor={COLORS.textSecondary}
-          />
+          <TouchableOpacity 
+            style={styles.uploadButton}
+            onPress={pickCoverImage}
+          >
+            <Ionicons name="image" size={20} color={COLORS.white} />
+            <Text style={styles.uploadButtonText}>
+              {formData.cover_url ? 'Thay đổi ảnh bìa' : 'Chọn ảnh bìa từ máy'}
+            </Text>
+          </TouchableOpacity>
+          {formData.cover_url ? (
+            <Text style={styles.fileStatusText}>✓ Đã chọn ảnh bìa</Text>
+          ) : null}
+
         </View>
 
         {/* Album Title */}
@@ -409,7 +447,30 @@ const styles = StyleSheet.create({
     fontSize: SIZES.sm,
     marginTop: 4,
   },
+  uploadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+    padding: 12,
+    borderRadius: SIZES.borderRadius,
+    gap: 8,
+    marginTop: 8,
+  },
+  uploadButtonText: {
+    color: COLORS.white,
+    fontSize: SIZES.md,
+    fontWeight: '600',
+  },
+  fileStatusText: {
+    color: COLORS.success,
+    fontSize: SIZES.sm,
+    marginTop: 8,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
 });
+
 
 export default ArtistEditAlbumScreen;
 

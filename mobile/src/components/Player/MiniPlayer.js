@@ -529,6 +529,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
   },
   premiumPlayButton: {
     shadowColor: COLORS.warning,
@@ -537,6 +538,7 @@ const styles = StyleSheet.create({
     elevation: 8,
     borderWidth: 1.5,
     borderColor: 'rgba(255, 255, 255, 0.4)',
+    borderRadius: 20,
   },
   smallControlGradient: {
     width: 36,

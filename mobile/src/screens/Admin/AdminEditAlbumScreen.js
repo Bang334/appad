@@ -15,6 +15,8 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+
 import { COLORS, SIZES, SHADOWS } from '../../config/theme';
 import { adminService } from '../../services/adminService';
 import { artistService } from '../../services/artistService';
@@ -37,6 +39,8 @@ const AdminEditAlbumScreen = ({ route, navigation }) => {
     is_premium: album?.is_premium === 1,
     price: album?.price ? album.price.toString() : '0',
   });
+  const [coverFile, setCoverFile] = useState(null);
+
 
   useEffect(() => {
     loadArtists();
@@ -61,7 +65,33 @@ const AdminEditAlbumScreen = ({ route, navigation }) => {
     }
   };
 
+  const pickCoverImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        setCoverFile({
+          uri: asset.uri,
+          type: asset.mimeType || 'image/jpeg',
+          name: asset.fileName || 'cover.jpg',
+        });
+        setFormData({ ...formData, cover_url: asset.uri });
+      }
+    } catch (error) {
+      console.error('Error picking cover image:', error);
+      Alert.alert('Lỗi', 'Không thể chọn ảnh bìa');
+    }
+  };
+
   const loadArtists = async () => {
+
     try {
       const response = await artistService.getArtists();
       setArtists(response.data || []);
@@ -77,14 +107,15 @@ const AdminEditAlbumScreen = ({ route, navigation }) => {
     setLoading(true);
     try {
       if (album) {
-        await adminService.updateAlbum(album.album_id, formData);
+        await adminService.updateAlbum(album.album_id, formData, coverFile ? { cover: coverFile } : null);
         Alert.alert('Thành công', 'Đã lưu thay đổi album');
       } else {
-        await adminService.createAlbum(formData);
+        await adminService.createAlbum(formData, coverFile ? { cover: coverFile } : null);
         Alert.alert('Thành công', 'Đã tạo album mới');
       }
       navigation.goBack();
     } catch (error) {
+
       Alert.alert('Lỗi', 'Không thể lưu dữ liệu');
     } finally {
       setLoading(false);
@@ -129,15 +160,18 @@ const AdminEditAlbumScreen = ({ route, navigation }) => {
               </View>
             </View>
             <View style={styles.coverInputBox}>
-              <InputLabel label="URL Ảnh Bìa" />
-              <TextInput
-                style={styles.input}
-                value={formData.cover_url}
-                onChangeText={v => setFormData({ ...formData, cover_url: v })}
-                placeholder="Nhập liên kết hình ảnh..."
-                placeholderTextColor={COLORS.textDisabled}
-              />
+              <TouchableOpacity 
+                style={styles.uploadBtn}
+                onPress={pickCoverImage}
+              >
+                <Ionicons name="image" size={18} color="#000" />
+                <Text style={styles.uploadBtnText}>CHỌN ẢNH TỪ MÁY</Text>
+              </TouchableOpacity>
+              {formData.cover_url ? (
+                <Text style={styles.uploadStatus}>✓ Đã chọn ảnh bìa</Text>
+              ) : null}
             </View>
+
           </View>
 
           {/* Form Fields */}
@@ -554,7 +588,31 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.error + '20',
   },
+  uploadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    gap: 8,
+  },
+  uploadBtnText: {
+    color: '#000',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  uploadStatus: {
+    color: COLORS.primary,
+    fontSize: 11,
+    fontWeight: 'bold',
+    marginTop: 8,
+    textAlign: 'center',
+  },
 });
+
 
 export default AdminEditAlbumScreen;
 

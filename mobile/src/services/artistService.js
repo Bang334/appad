@@ -142,11 +142,12 @@ export const artistService = {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
-        timeout: 120000, // Tăng timeout lên 120s cho Cloudinary
+        timeout: 120000, 
         transformRequest: (data, headers) => {
-          return data; // Bảo vệ FormData khỏi bị serialize
+          return data; 
         },
       });
+
 
       return response.data;
     } catch (error) {
@@ -172,11 +173,12 @@ export const artistService = {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
-        timeout: 60000, // 60s cho ảnh
+        timeout: 60000, 
         transformRequest: (data, headers) => {
           return data;
         },
       });
+
 
       return response.data;
     } catch (error) {
@@ -286,16 +288,15 @@ export const artistService = {
 
     const response = await api.post(`/artists/${artistId}/albums`, formData, {
       headers: {
-        'Accept': 'application/json',
         'Content-Type': 'multipart/form-data',
       },
       transformRequest: (data, headers) => {
-        return data;
+        return data; // Prevent axios from stringifying FormData
       },
     });
     return response.data;
-    return response.data;
   },
+
 
   updateAlbum: async (artistId, albumId, albumData, files = null) => {
     const formData = new FormData();
@@ -318,7 +319,6 @@ export const artistService = {
 
     const response = await api.put(`/artists/${artistId}/albums/${albumId}`, formData, {
       headers: {
-        'Accept': 'application/json',
         'Content-Type': 'multipart/form-data',
       },
       transformRequest: (data, headers) => {
@@ -326,8 +326,8 @@ export const artistService = {
       },
     });
     return response.data;
-    return response.data;
   },
+
 
   deleteAlbum: async (artistId, albumId) => {
     const response = await api.delete(`/artists/${artistId}/albums/${albumId}`);

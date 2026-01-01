@@ -80,15 +80,69 @@ export const adminService = {
     return response.data;
   },
 
-  createAlbum: async (albumData) => {
-    const response = await api.post('/admin/albums', albumData);
+  createAlbum: async (albumData, files = null) => {
+    const formData = new FormData();
+    
+    // Add text fields
+    Object.keys(albumData).forEach(key => {
+      if (albumData[key] !== null && albumData[key] !== undefined) {
+        formData.append(key, albumData[key].toString());
+      }
+    });
+
+    // Add files
+    if (files && files.cover) {
+      formData.append('cover', {
+        uri: files.cover.uri,
+        type: files.cover.type || 'image/jpeg',
+        name: files.cover.name || 'cover.jpg',
+      });
+    }
+
+    const response = await api.post('/admin/albums', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      transformRequest: (data, headers) => {
+        return data; 
+      },
+    });
     return response.data;
   },
 
-  updateAlbum: async (albumId, albumData) => {
-    const response = await api.put(`/admin/albums/${albumId}`, albumData);
+
+
+  updateAlbum: async (albumId, albumData, files = null) => {
+    const formData = new FormData();
+    
+    // Add text fields
+    Object.keys(albumData).forEach(key => {
+      if (albumData[key] !== null && albumData[key] !== undefined) {
+        formData.append(key, albumData[key].toString());
+      }
+    });
+
+    // Add files
+    if (files && files.cover) {
+      formData.append('cover', {
+        uri: files.cover.uri,
+        type: files.cover.type || 'image/jpeg',
+        name: files.cover.name || 'cover.jpg',
+      });
+    }
+
+    const response = await api.put(`/admin/albums/${albumId}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      transformRequest: (data, headers) => {
+        return data;
+      },
+    });
     return response.data;
   },
+
+
 
   deleteAlbum: async (albumId) => {
     const response = await api.delete(`/admin/albums/${albumId}`);
@@ -148,10 +202,8 @@ export const adminService = {
     return response.data;
   },
 
-  createAlbum: async (albumData) => {
-    const response = await api.post('/admin/albums', albumData);
-    return response.data;
-  },
+  // Removed duplicate createAlbum
+
 
   createGenre: async (genreData) => {
     const response = await api.post('/admin/genres', genreData);
@@ -212,8 +264,12 @@ export const adminService = {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
-        timeout: 60000, // 60 seconds timeout
+        timeout: 60000, 
+        transformRequest: (data, headers) => {
+          return data; 
+        },
       });
+
       
       return response.data;
     } catch (error) {
@@ -238,8 +294,12 @@ export const adminService = {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
-        timeout: 60000, // 60 seconds timeout
+        timeout: 60000, 
+        transformRequest: (data, headers) => {
+          return data; 
+        },
       });
+
       
       return response.data;
     } catch (error) {

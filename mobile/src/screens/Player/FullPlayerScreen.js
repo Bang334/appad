@@ -1153,6 +1153,7 @@ const styles = StyleSheet.create({
     elevation: 15,
     borderWidth: 1.5,
     borderColor: 'rgba(255, 255, 255, 0.4)',
+    borderRadius: 40,
   },
   playButtonGradient: {
     width: 80,
@@ -1160,6 +1161,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 40,
+    overflow: 'hidden',
   },
   actions: {
     flexDirection: 'row',
