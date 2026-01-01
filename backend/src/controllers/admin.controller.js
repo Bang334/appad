@@ -594,10 +594,15 @@ class AdminController {
   async createAlbum(req, res) {
     try {
       const { title, artist_id, cover_url, release_date } = req.body;
+      
+      let finalCoverUrl = cover_url;
+      if (req.file) {
+        finalCoverUrl = req.file.path;
+      }
 
       const [result] = await db.query(
         'INSERT INTO albums (title, artist_id, cover_url, release_date) VALUES (?, ?, ?, ?)',
-        [title, artist_id, cover_url || null, release_date || null]
+        [title, artist_id, finalCoverUrl || null, release_date || null]
       );
 
       res.status(201).json({
@@ -619,9 +624,14 @@ class AdminController {
       const { id } = req.params;
       const { title, artist_id, cover_url, release_date } = req.body;
 
+      let finalCoverUrl = cover_url;
+      if (req.file) {
+        finalCoverUrl = req.file.path;
+      }
+
       await db.query(
         'UPDATE albums SET title = ?, artist_id = ?, cover_url = ?, release_date = ? WHERE album_id = ?',
-        [title, artist_id, cover_url || null, release_date || null, id]
+        [title, artist_id, finalCoverUrl || null, release_date || null, id]
       );
 
       res.json({

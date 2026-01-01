@@ -64,8 +64,8 @@ router.delete('/reviews/:id', AdminController.deleteReview);
 
 // Album management
 router.get('/albums', AdminController.getAllAlbums);
-router.post('/albums', AdminController.createAlbum);
-router.put('/albums/:id', AdminController.updateAlbum);
+router.post('/albums', uploadCover.single('cover'), AdminController.createAlbum);
+router.put('/albums/:id', uploadCover.single('cover'), AdminController.updateAlbum);
 router.delete('/albums/:id', AdminController.deleteAlbum);
 
 // Genre management

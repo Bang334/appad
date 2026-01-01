@@ -42,6 +42,13 @@ app.use(cors({
   origin: process.env.CORS_ORIGIN || '*',
   credentials: true
 }));
+
+// DEBUG: Log ALL incoming requests
+app.use((req, res, next) => {
+  console.log(`\n🔍 [SERVER] ${req.method} ${req.url}`);
+  console.log(`   Content-Type: ${req.headers['content-type'] || 'none'}`);
+  next();
+});
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 

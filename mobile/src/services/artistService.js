@@ -122,69 +122,117 @@ export const artistService = {
     return response.data;
   },
 
-  // Upload helper methods
+  // Upload helper methods - Dùng fetch với retry để tránh network issues
   uploadSongFile: async (artistId, file) => {
-    try {
-      const formData = new FormData();
-      // Handle both file object or uri string (backward compatibility)
-      const fileUri = file.uri || file;
-      const fileName = file.name || fileUri.split('/').pop() || 'song.mp3';
-      const fileType = file.mimeType || 'audio/mpeg';
-      
-      formData.append('song', {
-        uri: fileUri,
-        type: fileType,
-        name: fileName,
-      });
-
-      // Sử dụng axios giống như adminService để đảm bảo đồng bộ
-      const response = await api.post(`/artists/${artistId}/upload-song`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        timeout: 120000, 
-        transformRequest: (data, headers) => {
-          return data; 
-        },
-      });
-
-
-      return response.data;
-    } catch (error) {
-      console.error('Upload song error:', error);
-      throw error;
+    console.log('📤 [uploadSongFile] Starting upload with FETCH...');
+    
+    const fileUri = file.uri || file;
+    const fileName = file.name || fileUri.split('/').pop() || 'song.mp3';
+    const fileType = file.mimeType || 'audio/mpeg';
+    
+    console.log('   File:', fileName, fileType);
+    
+    const token = await AsyncStorage.getItem('token');
+    const maxRetries = 3;
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`   Attempt ${attempt}/${maxRetries}...`);
+        
+        const formData = new FormData();
+        formData.append('song', {
+          uri: fileUri,
+          type: fileType,
+          name: fileName,
+        });
+        
+        const response = await fetch(`${API_BASE_URL}/artists/${artistId}/upload-song`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Connection': 'close',
+          },
+          body: formData,
+          cache: 'no-store',
+        });
+        
+        console.log('   Response status:', response.status);
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || 'Upload failed');
+        }
+        
+        const data = await response.json();
+        console.log('✅ [uploadSongFile] Success!');
+        return data;
+        
+      } catch (error) {
+        console.log(`   ❌ Attempt ${attempt} failed:`, error.message);
+        lastError = error;
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
     }
+    throw lastError;
   },
 
   uploadCoverFile: async (artistId, file) => {
-    try {
-      const formData = new FormData();
-      const fileUri = file.uri || file;
-      const fileName = file.name || fileUri.split('/').pop() || 'cover.jpg';
-      const fileType = file.mimeType || 'image/jpeg';
-      
-      formData.append('cover', {
-        uri: fileUri,
-        type: fileType,
-        name: fileName,
-      });
-
-      const response = await api.post(`/artists/${artistId}/upload-cover`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        timeout: 60000, 
-        transformRequest: (data, headers) => {
-          return data;
-        },
-      });
-
-
-      return response.data;
-    } catch (error) {
-      console.error('Upload cover error:', error);
-      throw error;
+    console.log('📤 [uploadCoverFile] Starting upload with FETCH...');
+    
+    const fileUri = file.uri || file;
+    const fileName = file.name || fileUri.split('/').pop() || 'cover.jpg';
+    const fileType = file.mimeType || 'image/jpeg';
+    
+    console.log('   File:', fileName, fileType);
+    
+    const token = await AsyncStorage.getItem('token');
+    const maxRetries = 3;
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`   Attempt ${attempt}/${maxRetries}...`);
+        
+        const formData = new FormData();
+        formData.append('cover', {
+          uri: fileUri,
+          type: fileType,
+          name: fileName,
+        });
+        
+        const response = await fetch(`${API_BASE_URL}/artists/${artistId}/upload-cover`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Connection': 'close',
+          },
+          body: formData,
+          cache: 'no-store',
+        });
+        
+        console.log('   Response status:', response.status);
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || 'Upload failed');
+        }
+        
+        const data = await response.json();
+        console.log('✅ [uploadCoverFile] Success!');
+        return data;
+        
+      } catch (error) {
+        console.log(`   ❌ Attempt ${attempt} failed:`, error.message);
+        lastError = error;
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
     }
+    throw lastError;
   },
 
   createSong: async (artistId, songData, files = null) => {
@@ -286,46 +334,72 @@ export const artistService = {
       });
     }
 
-    const response = await api.post(`/artists/${artistId}/albums`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-      transformRequest: (data, headers) => {
-        return data; // Prevent axios from stringifying FormData
-      },
-    });
+    const response = await api.post(`/artists/${artistId}/albums`, formData);
     return response.data;
   },
 
 
   updateAlbum: async (artistId, albumId, albumData, files = null) => {
-    const formData = new FormData();
-    
-    // Add text fields
-    Object.keys(albumData).forEach(key => {
-      if (albumData[key] !== null && albumData[key] !== undefined) {
-        formData.append(key, albumData[key].toString());
-      }
-    });
-
-    // Add files
-    if (files && files.cover) {
-      formData.append('cover', {
-        uri: files.cover.uri,
-        type: files.cover.type || 'image/jpeg',
-        name: files.cover.name || 'cover.jpg',
-      });
+    // Nếu không có file, dùng axios bình thường (JSON)
+    if (!files || !files.cover) {
+      console.log(`📤 [artistService.updateAlbum] Updating album ${albumId} (JSON)`);
+      const response = await api.put(`/artists/${artistId}/albums/${albumId}`, albumData);
+      return response.data;
     }
 
-    const response = await api.put(`/artists/${artistId}/albums/${albumId}`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-      transformRequest: (data, headers) => {
+    // Có file -> dùng fetch với retry
+    console.log(`📤 [artistService.updateAlbum] Starting upload with FETCH for album ${albumId}...`);
+    
+    const token = await AsyncStorage.getItem('token');
+    const maxRetries = 3;
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`   Attempt ${attempt}/${maxRetries}...`);
+        
+        const formData = new FormData();
+        Object.keys(albumData).forEach(key => {
+          if (albumData[key] !== null && albumData[key] !== undefined) {
+            formData.append(key, albumData[key].toString());
+          }
+        });
+        formData.append('cover', {
+          uri: files.cover.uri,
+          type: files.cover.type || 'image/jpeg',
+          name: files.cover.name || 'cover.jpg',
+        });
+        
+        const response = await fetch(`${API_BASE_URL}/artists/${artistId}/albums/${albumId}`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Connection': 'close',
+          },
+          body: formData,
+          cache: 'no-store',
+        });
+        
+        console.log('   Response status:', response.status);
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || 'Upload failed');
+        }
+        
+        const data = await response.json();
+        console.log('✅ [artistService.updateAlbum] Success!');
         return data;
-      },
-    });
-    return response.data;
+        
+      } catch (error) {
+        console.log(`   ❌ Attempt ${attempt} failed:`, error.message);
+        lastError = error;
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+    }
+    throw lastError;
   },
 
 

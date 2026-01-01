@@ -1,4 +1,5 @@
-import api from '../config/api';
+import api, { API_BASE_URL } from '../config/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const adminService = {
   // Dashboard
@@ -81,65 +82,128 @@ export const adminService = {
   },
 
   createAlbum: async (albumData, files = null) => {
-    const formData = new FormData();
-    
-    // Add text fields
-    Object.keys(albumData).forEach(key => {
-      if (albumData[key] !== null && albumData[key] !== undefined) {
-        formData.append(key, albumData[key].toString());
-      }
-    });
-
-    // Add files
-    if (files && files.cover) {
-      formData.append('cover', {
-        uri: files.cover.uri,
-        type: files.cover.type || 'image/jpeg',
-        name: files.cover.name || 'cover.jpg',
-      });
+    // Nếu không có file, dùng axios bình thường (JSON)
+    if (!files || !files.cover) {
+      const response = await api.post('/admin/albums', albumData);
+      return response.data;
     }
 
-    const response = await api.post('/admin/albums', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-      transformRequest: (data, headers) => {
-        return data; 
-      },
-    });
-    return response.data;
+    // Có file -> dùng fetch với retry
+    console.log('📤 [createAlbum] Starting upload with FETCH...');
+    
+    const token = await AsyncStorage.getItem('token');
+    const maxRetries = 3;
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`   Attempt ${attempt}/${maxRetries}...`);
+        
+        const formData = new FormData();
+        Object.keys(albumData).forEach(key => {
+          if (albumData[key] !== null && albumData[key] !== undefined) {
+            formData.append(key, albumData[key].toString());
+          }
+        });
+        formData.append('cover', {
+          uri: files.cover.uri,
+          type: files.cover.type || 'image/jpeg',
+          name: files.cover.name || 'cover.jpg',
+        });
+        
+        const response = await fetch(`${API_BASE_URL}/admin/albums`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Connection': 'close',
+          },
+          body: formData,
+          cache: 'no-store',
+        });
+        
+        console.log('   Response status:', response.status);
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || 'Upload failed');
+        }
+        
+        const data = await response.json();
+        console.log('✅ [createAlbum] Success!');
+        return data;
+        
+      } catch (error) {
+        console.log(`   ❌ Attempt ${attempt} failed:`, error.message);
+        lastError = error;
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+    }
+    throw lastError;
   },
 
-
-
   updateAlbum: async (albumId, albumData, files = null) => {
-    const formData = new FormData();
-    
-    // Add text fields
-    Object.keys(albumData).forEach(key => {
-      if (albumData[key] !== null && albumData[key] !== undefined) {
-        formData.append(key, albumData[key].toString());
-      }
-    });
-
-    // Add files
-    if (files && files.cover) {
-      formData.append('cover', {
-        uri: files.cover.uri,
-        type: files.cover.type || 'image/jpeg',
-        name: files.cover.name || 'cover.jpg',
-      });
+    // Nếu không có file, dùng axios bình thường (JSON)
+    if (!files || !files.cover) {
+      console.log(`📤 [updateAlbum] Updating album ${albumId} (JSON)`);
+      const response = await api.put(`/admin/albums/${albumId}`, albumData);
+      return response.data;
     }
 
-    const response = await api.put(`/admin/albums/${albumId}`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-      transformRequest: (data, headers) => {
+    // Có file -> dùng fetch với retry
+    console.log(`📤 [updateAlbum] Starting upload with FETCH for album ${albumId}...`);
+    
+    const token = await AsyncStorage.getItem('token');
+    const maxRetries = 3;
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`   Attempt ${attempt}/${maxRetries}...`);
+        
+        const formData = new FormData();
+        Object.keys(albumData).forEach(key => {
+          if (albumData[key] !== null && albumData[key] !== undefined) {
+            formData.append(key, albumData[key].toString());
+          }
+        });
+        formData.append('cover', {
+          uri: files.cover.uri,
+          type: files.cover.type || 'image/jpeg',
+          name: files.cover.name || 'cover.jpg',
+        });
+        
+        const response = await fetch(`${API_BASE_URL}/admin/albums/${albumId}`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Connection': 'close',
+          },
+          body: formData,
+          cache: 'no-store',
+        });
+        
+        console.log('   Response status:', response.status);
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || 'Upload failed');
+        }
+        
+        const data = await response.json();
+        console.log('✅ [updateAlbum] Success!');
         return data;
-      },
-    });
-    return response.data;
+        
+      } catch (error) {
+        console.log(`   ❌ Attempt ${attempt} failed:`, error.message);
+        lastError = error;
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+    }
+    throw lastError;
   },
 
 
@@ -247,65 +311,111 @@ export const adminService = {
     return response.data;
   },
 
-  // Upload files
+  // Upload files - Dùng fetch với retry để tránh network issues
   uploadSong: async (fileUri) => {
-    try {
-      const uriParts = fileUri.split('/');
-      const fileName = uriParts[uriParts.length - 1] || 'song.mp3';
-      
-      const formData = new FormData();
-      formData.append('song', {
-        uri: fileUri,
-        type: 'audio/mpeg',
-        name: fileName,
-      });
-      
-      const response = await api.post('/admin/upload-song', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        timeout: 60000, 
-        transformRequest: (data, headers) => {
-          return data; 
-        },
-      });
-
-      
-      return response.data;
-    } catch (error) {
-      console.error('Upload song error:', error.message);
-      throw error;
+    console.log('📤 [adminService.uploadSong] Starting upload with FETCH...');
+    
+    const fileName = fileUri.split('/').pop() || 'song.mp3';
+    console.log('   File:', fileName);
+    
+    const token = await AsyncStorage.getItem('token');
+    const maxRetries = 3;
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`   Attempt ${attempt}/${maxRetries}...`);
+        
+        const formData = new FormData();
+        formData.append('song', {
+          uri: fileUri,
+          type: 'audio/mpeg',
+          name: fileName,
+        });
+        
+        const response = await fetch(`${API_BASE_URL}/admin/upload-song`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Connection': 'close',
+          },
+          body: formData,
+          cache: 'no-store',
+        });
+        
+        console.log('   Response status:', response.status);
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || 'Upload failed');
+        }
+        
+        const data = await response.json();
+        console.log('✅ [adminService.uploadSong] Success!');
+        return data;
+        
+      } catch (error) {
+        console.log(`   ❌ Attempt ${attempt} failed:`, error.message);
+        lastError = error;
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
     }
+    throw lastError;
   },
 
   uploadCover: async (fileUri) => {
-    try {
-      const uriParts = fileUri.split('/');
-      const fileName = uriParts[uriParts.length - 1] || 'cover.jpg';
-      
-      const formData = new FormData();
-      formData.append('cover', {
-        uri: fileUri,
-        type: 'image/jpeg',
-        name: fileName,
-      });
-      
-      const response = await api.post('/admin/upload-cover', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        timeout: 60000, 
-        transformRequest: (data, headers) => {
-          return data; 
-        },
-      });
-
-      
-      return response.data;
-    } catch (error) {
-      console.error('Upload cover error:', error.message);
-      throw error;
+    console.log('📤 [adminService.uploadCover] Starting upload with FETCH...');
+    
+    const fileName = fileUri.split('/').pop() || 'cover.jpg';
+    console.log('   File:', fileName);
+    
+    const token = await AsyncStorage.getItem('token');
+    const maxRetries = 3;
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`   Attempt ${attempt}/${maxRetries}...`);
+        
+        const formData = new FormData();
+        formData.append('cover', {
+          uri: fileUri,
+          type: 'image/jpeg',
+          name: fileName,
+        });
+        
+        const response = await fetch(`${API_BASE_URL}/admin/upload-cover`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Connection': 'close',
+          },
+          body: formData,
+          cache: 'no-store',
+        });
+        
+        console.log('   Response status:', response.status);
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || 'Upload failed');
+        }
+        
+        const data = await response.json();
+        console.log('✅ [adminService.uploadCover] Success!');
+        return data;
+        
+      } catch (error) {
+        console.log(`   ❌ Attempt ${attempt} failed:`, error.message);
+        lastError = error;
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
     }
+    throw lastError;
   },
 
   // Artist Withdrawal Management

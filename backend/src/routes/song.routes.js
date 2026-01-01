@@ -38,7 +38,10 @@ router.post('/', authenticateToken, isAdmin, upload.fields([
   { name: 'audio', maxCount: 1 },
   { name: 'cover', maxCount: 1 }
 ]), createSongValidation, validate, SongController.create);
-router.put('/:id', authenticateToken, isAdmin, SongController.update);
+router.put('/:id', authenticateToken, isAdmin, upload.fields([
+  { name: 'audio', maxCount: 1 },
+  { name: 'cover', maxCount: 1 }
+]), SongController.update);
 router.delete('/:id', authenticateToken, isAdmin, SongController.delete);
 
 module.exports = router;

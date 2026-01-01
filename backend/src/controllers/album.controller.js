@@ -110,6 +110,10 @@ class AlbumController {
       const { id } = req.params;
       const albumData = req.body;
 
+      if (req.file) {
+        albumData.cover_url = `/uploads/covers/${req.file.filename}`;
+      }
+
       const updated = await AlbumModel.update(id, albumData);
       
       if (!updated) {

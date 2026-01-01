@@ -330,6 +330,16 @@ class SongController {
       const { id } = req.params;
       const songData = req.body;
 
+      // Handle file uploads if present
+      if (req.files) {
+        if (req.files.audio) {
+          songData.file_url = `/uploads/songs/${req.files.audio[0].filename}`;
+        }
+        if (req.files.cover) {
+          songData.cover_url = `/uploads/covers/${req.files.cover[0].filename}`;
+        }
+      }
+
       const updated = await SongModel.update(id, songData);
       
       if (!updated) {

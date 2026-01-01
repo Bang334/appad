@@ -23,7 +23,7 @@ router.get('/artist/:artistId', AlbumController.getByArtist);
 
 // Admin routes
 router.post('/', authenticateToken, isAdmin, upload.single('cover'), createAlbumValidation, validate, AlbumController.create);
-router.put('/:id', authenticateToken, isAdmin, AlbumController.update);
+router.put('/:id', authenticateToken, isAdmin, upload.single('cover'), AlbumController.update);
 router.delete('/:id', authenticateToken, isAdmin, AlbumController.delete);
 
 module.exports = router;

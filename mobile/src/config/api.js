@@ -11,23 +11,7 @@ export const API_BASE_URL = config.API_BASE_URL;
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 60000, // Tăng timeout lên 60s
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  // Quan trọng: transformRequest để ngăn axios serialize FormData
-  transformRequest: [
-    (data, headers) => {
-      if (data instanceof FormData) {
-        // Nếu là FormData, để React Native tự xử lý Content-Type (kèm boundary)
-        // Chúng ta xóa header Content-Type nếu nó đã được set là application/json
-        if (headers['Content-Type'] === 'application/json') {
-          delete headers['Content-Type'];
-        }
-        return data;
-      }
-      return JSON.stringify(data);
-    },
-  ],
+  // KHÔNG set headers mặc định - để axios tự xử lý
 });
 
 // Log API config for debugging
@@ -40,6 +24,19 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    // QUAN TRỌNG: Nếu data là FormData, KHÔNG set Content-Type
+    // Để React Native / Axios tự động thêm boundary
+    if (!(config.data instanceof FormData)) {
+      // Chỉ set Content-Type cho non-FormData requests
+      config.headers['Content-Type'] = 'application/json';
+    }
+    
+    // DEBUG: Log request details
+    console.log(`\n🚀 [AXIOS] ${config.method?.toUpperCase()} ${config.url}`);
+    console.log(`   isFormData: ${config.data instanceof FormData}`);
+    console.log(`   Content-Type: ${config.headers['Content-Type'] || 'NOT SET (good for FormData)'}`);
+    
     return config;
   },
   (error) => {
@@ -62,4 +59,3 @@ api.interceptors.response.use(
 );
 
 export default api;
-
