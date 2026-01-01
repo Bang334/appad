@@ -272,7 +272,7 @@ const WalletScreen = ({ navigation }) => {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingBottom: 50}]}>
       <Animated.FlatList
         data={transactions}
         renderItem={renderTransaction}

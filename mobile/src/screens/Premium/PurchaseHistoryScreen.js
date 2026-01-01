@@ -222,7 +222,7 @@ const PurchaseHistoryScreen = ({ navigation }) => {
             }
             return `history-${item.type}-${item.purchase_id || item.album_id || item.song_id}`;
           }}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: Math.max(insets.bottom, 20) + 100 }]}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }

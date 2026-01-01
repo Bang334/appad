@@ -251,6 +251,8 @@ const TabNavigator = () => {
 };
 
 const MainTabNavigator = () => {
+  const [currentRouteName, setCurrentRouteName] = useState('MainTabs');
+
   return (
     <View style={[styles.container, { backgroundColor: COLORS.background }]}>
       <Stack.Navigator 
@@ -258,6 +260,15 @@ const MainTabNavigator = () => {
           headerShown: false,
           cardStyle: { backgroundColor: COLORS.background },
           detachPreviousScreen: Platform.OS === 'ios' ? false : true,
+        }}
+        screenListeners={{
+          state: (e) => {
+            // Update current route name when navigation state changes
+            const routes = e.data.state.routes;
+            const index = e.data.state.index;
+            const route = routes[index];
+            setCurrentRouteName(route.name);
+          },
         }}
       >
         <Stack.Screen name="MainTabs" component={TabNavigator} />
@@ -723,7 +734,7 @@ const MainTabNavigator = () => {
         />
 
       </Stack.Navigator>
-      <MiniPlayer />
+      <MiniPlayer currentRouteName={currentRouteName} />
     </View>
   );
 };

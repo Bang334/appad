@@ -8,6 +8,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -40,6 +41,7 @@ const formatListenCount = (count) => {
 };
 
 const PlaylistDetailScreen = ({ navigation, route }) => {
+  const insets = useSafeAreaInsets();
   const { playlistId, playlistName } = route.params;
   const [playlist, setPlaylist] = useState(null);
   const [songs, setSongs] = useState([]);
@@ -413,7 +415,7 @@ const PlaylistDetailScreen = ({ navigation, route }) => {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 20) }]}>
       {/* Header */}
       <LinearGradient
         colors={COLORS.gradient.primary}

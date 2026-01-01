@@ -12,6 +12,7 @@ import {
   TextInput,
   InteractionManager,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -36,6 +37,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { API_BASE_URL } from '../../config/api';
 
 const AlbumDetailScreen = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { albumId } = route.params;
   const isFocused = useIsFocused();
   const { playSong, currentSong, isPlaying, togglePlayPause, playlist, currentIndex, moveSongInPlaylist } = usePlayer();
@@ -518,7 +520,7 @@ const AlbumDetailScreen = ({ route, navigation }) => {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 20) }]}>
       <DraggableFlatList
         data={songs}
         renderItem={renderSongItem}

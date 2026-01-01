@@ -7,12 +7,14 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../config/theme';
 import { artistService } from '../../services/artistService';
 import { useFocusEffect } from '@react-navigation/native';
 
 const ArtistWithdrawalsScreen = ({ route }) => {
+  const insets = useSafeAreaInsets();
   const { artistId } = route.params;
   const [withdrawals, setWithdrawals] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -190,7 +192,7 @@ const ArtistWithdrawalsScreen = ({ route }) => {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 20) }]}>
       <FlatList
         data={withdrawals}
         renderItem={renderWithdrawal}

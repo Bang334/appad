@@ -156,7 +156,7 @@ const PurchasedSongsScreen = ({ navigation }) => {
         data={songs}
         renderItem={renderSongItem}
         keyExtractor={(item) => `purchased-${item.song_id}`}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: Math.max(insets.bottom, 20) + 100 }]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }

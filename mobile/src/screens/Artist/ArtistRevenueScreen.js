@@ -352,7 +352,7 @@ const ArtistRevenueScreen = ({ route, navigation }) => {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 20) }]}>
       <StatusBar barStyle="light-content" />
       
       {/* Header Section */}

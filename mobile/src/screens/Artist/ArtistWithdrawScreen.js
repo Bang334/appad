@@ -95,7 +95,11 @@ const ArtistWithdrawScreen = ({ route, navigation }) => {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingTop: insets.top, paddingBottom: insets.bottom }}>
+    <View style={[styles.container, { paddingBottom: 80 }]}>
+      <ScrollView 
+        style={styles.container} 
+        contentContainerStyle={{ paddingTop: Math.max(insets.top, 20), paddingBottom: 20 }}
+      >
       <View style={styles.content}>
         {/* Balance Display */}
         <View style={styles.balanceCard}>
@@ -224,7 +228,8 @@ const ArtistWithdrawScreen = ({ route, navigation }) => {
           )}
         </TouchableOpacity>
       </View>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 };
 

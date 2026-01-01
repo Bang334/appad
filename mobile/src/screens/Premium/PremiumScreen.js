@@ -207,12 +207,14 @@ const PremiumScreen = ({ navigation }) => {
   const isPremium = premiumStatus?.is_premium;
 
   return (
-    <ScrollView
-      style={styles.container}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-    >
+    <View style={[styles.container, { paddingBottom: 50}]}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={{ paddingBottom: 20 }}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
       <View style={[styles.header, { paddingTop: Math.max(insets.top, 20) }]}>
         <Ionicons name="star" size={80} color="#FFD700" />
         <Text style={styles.title}>Premium</Text>
@@ -330,7 +332,8 @@ const PremiumScreen = ({ navigation }) => {
           <Text style={styles.membershipButtonText}>Hội viên của tôi</Text>
         </TouchableOpacity>
       </View>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 };
 

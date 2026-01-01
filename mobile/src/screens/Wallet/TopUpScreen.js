@@ -111,7 +111,7 @@ const TopUpScreen = ({ navigation }) => {
 
   if (qrData) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 20) }]}>
         <ScrollView 
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
@@ -214,7 +214,7 @@ const TopUpScreen = ({ navigation }) => {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: 80 }]}>
       <ScrollView 
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -311,7 +311,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 100, // Space for MiniPlayer
+    paddingBottom: 40,
   },
   content: {
     padding: 20,

@@ -10,6 +10,7 @@ import {
   FlatList,
   Modal,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../../config/theme';
@@ -28,6 +29,7 @@ import PremiumAccessModal from '../../components/Common/PremiumAccessModal';
 import AddToPlaylistModal from '../../components/Playlist/AddToPlaylistModal';
 
 const ArtistDetailScreen = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { artistId } = route.params;
   const { playSong, currentSong, isPlaying, togglePlayPause } = usePlayer();
   const { showSuccess, showError, showWarning } = useAlert();
@@ -382,7 +384,7 @@ const ArtistDetailScreen = ({ route, navigation }) => {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 20) }]}>
       <ScrollView 
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}

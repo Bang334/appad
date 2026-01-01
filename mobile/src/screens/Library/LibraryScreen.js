@@ -11,6 +11,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { favoriteService } from '../../services/favoriteService';
@@ -31,6 +32,7 @@ import AddToPlaylistModal from '../../components/Playlist/AddToPlaylistModal';
 import { API_BASE_URL } from '../../config/api';
 
 const LibraryScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState('favorites'); // favorites, playlists, premium
   const [showDropdown, setShowDropdown] = useState(false);
   const [favorites, setFavorites] = useState([]);
@@ -1117,7 +1119,7 @@ const LibraryScreen = ({ navigation }) => {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 20) }]}>
       {/* Fixed Dropdown Navigation */}
       <View style={styles.dropdownContainer}>
         <TouchableOpacity

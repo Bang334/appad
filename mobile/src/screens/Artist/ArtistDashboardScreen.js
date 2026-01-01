@@ -85,7 +85,7 @@ const ArtistDashboardScreen = ({ route, navigation }) => {
   const { wallet, stats, revenue_stats, unpaid, artist } = dashboard;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 20) }]}>
       <StatusBar barStyle="light-content" />
 
       <ScrollView

@@ -9,6 +9,7 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { historyService } from '../../services/historyService';
@@ -19,6 +20,7 @@ import PremiumBadge from '../../components/Common/PremiumBadge';
 
 
 const HistoryScreen = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [historyByDay, setHistoryByDay] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -272,7 +274,7 @@ const HistoryScreen = ({ navigation }) => {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 20) }]}>
       <FlatList
         data={historyByDay}
         renderItem={renderDaySection}

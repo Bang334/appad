@@ -109,7 +109,7 @@ const AdminAlbumsScreen = ({ navigation }) => {
   );
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 20) }]}>
       <StatusBar barStyle="light-content" />
       
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>

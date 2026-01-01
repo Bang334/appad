@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   TextInput,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { COLORS, SIZES } from '../../config/theme';
@@ -25,6 +26,7 @@ import { premiumService } from '../../services/premiumService';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const GenreDetailScreen = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { genreId } = route.params;
   const [genre, setGenre] = useState(null);
   const [songs, setSongs] = useState([]);
@@ -287,7 +289,7 @@ const GenreDetailScreen = ({ route, navigation }) => {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: Math.max(insets.top, 40), paddingBottom: Math.max(insets.bottom, 20) }]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity

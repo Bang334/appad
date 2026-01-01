@@ -18,15 +18,23 @@ import { usePlayer, usePlayerProgress } from '../../context/PlayerContext';
 import { COLORS, SIZES } from '../../config/theme';
 import Slider from '@react-native-community/slider';
 
-const MiniPlayer = ({ bottomOffset }) => {
+const MiniPlayer = ({ bottomOffset, currentRouteName }) => {
   const insets = useSafeAreaInsets();
+  
+  // Update: Receive currentRouteName from props (passed from MainTabNavigator)
+  // This is more reliable than using useNavigationState from outside the stack
+  const isOnMainTabScreen = currentRouteName === 'MainTabs' || !currentRouteName;
   
   const baseTabBarHeight = 56;
   const safeAreaBottom = insets.bottom > 0 ? insets.bottom : (Platform.OS === 'android' ? 10 : 8);
   
+  // Nếu CÓ tab bar (isOnMainTabScreen = true): cần offset thêm chiều cao tab bar
+  // Nếu KHÔNG có tab bar (stack screen): chỉ cần offset safe area
   const calculatedBottom = bottomOffset !== undefined 
     ? bottomOffset + safeAreaBottom + 8
-    : baseTabBarHeight + safeAreaBottom + 8;
+    : isOnMainTabScreen 
+      ? baseTabBarHeight + safeAreaBottom + 8  // Có tab bar
+      : safeAreaBottom + 8;                     // Không có tab bar
 
   const { user, updateUser } = useAuth();
   const navigation = useNavigation();
@@ -308,6 +316,7 @@ const MiniPlayer = ({ bottomOffset }) => {
             
             <Animated.View style={{ transform: [{ scale: playButtonScale }] }}>
               <LinearGradient
+                key={isPremiumContent ? 'premium-grad' : 'free-grad'} // Force re-render on mode change
                 colors={isPremiumContent ? ['#ea580c', '#fdba74', '#f97316'] : ['#8b5cf6', '#d8b4fe', '#ec4899']}
                 style={[styles.playButtonGradient, isPremiumContent && styles.premiumPlayButton]}
                 start={{ x: 0, y: 0 }}
@@ -315,6 +324,7 @@ const MiniPlayer = ({ bottomOffset }) => {
               >
                 <View style={styles.shineOverlay} />
                 <Ionicons
+                  key={`icon-${isPremiumContent ? 'p' : 'f'}-${isPlaying ? 'play' : 'pause'}`}
                   name={isPlaying ? 'pause' : 'play'}
                   size={22}
                   color={isPremiumContent ? '#000' : COLORS.white}

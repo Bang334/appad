@@ -10,11 +10,13 @@ import {
   Alert,
   Modal,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../config/theme';
 import { artistService } from '../../services/artistService';
 
 const ArtistBankInfoScreen = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { artistId, wallet } = route.params;
   
   const [bankName, setBankName] = useState(wallet?.bank_name || '');
@@ -67,7 +69,8 @@ const ArtistBankInfoScreen = ({ route, navigation }) => {
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <View style={[styles.container, { paddingBottom: 80 }]}>
+      <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 20 }}>
       <View style={styles.content}>
         <View style={styles.header}>
           <Ionicons name="card" size={60} color={COLORS.primary} />
@@ -188,6 +191,7 @@ const ArtistBankInfoScreen = ({ route, navigation }) => {
         </View>
       </Modal>
     </ScrollView>
+    </View>
   );
 };
 
