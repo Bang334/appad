@@ -273,8 +273,10 @@ const HomeScreen = ({ navigation, route }) => {
       return;
     }
 
+    const isSongPremiumSingle = song.is_premium === 1 || song.is_premium === '1' || song.is_premium === true;
+
     // Check if song is FREE but in a PREMIUM album
-    if (song.album_is_premium === 1 && song.is_premium !== 1) {
+    if (song.album_is_premium === 1 && !isSongPremiumSingle) {
       try {
         const response = await premiumService.checkSongAccess(song.song_id);
         if (!response.data?.hasAccess) {
@@ -299,7 +301,7 @@ const HomeScreen = ({ navigation, route }) => {
     }
 
     // Check if song is premium (single)
-    if (song.is_premium === 1) {
+    if (isSongPremiumSingle) {
       try {
         const response = await premiumService.checkSongAccess(song.song_id);
         if (!response.data?.hasAccess) {
@@ -343,7 +345,10 @@ const HomeScreen = ({ navigation, route }) => {
     }
 
     // Check if song is FREE but in a PREMIUM album
-    if (song.album_is_premium === 1 && song.is_premium !== 1) {
+    const isSongPremiumSingle = song.is_premium === 1 || song.is_premium === '1' || song.is_premium === true;
+    const isSongInPremiumAlbum = isPremiumSong(song);
+
+    if (isSongInPremiumAlbum && !isSongPremiumSingle) {
       try {
         const response = await premiumService.checkSongAccess(song.song_id);
         if (!response.data?.hasAccess) {
@@ -368,7 +373,7 @@ const HomeScreen = ({ navigation, route }) => {
     }
 
     // Check access for premium songs (singles)
-    if (song.is_premium === 1) {
+    if (isSongPremiumSingle) {
       try {
         const response = await premiumService.checkSongAccess(song.song_id);
         if (!response.data?.hasAccess) {
@@ -428,10 +433,24 @@ const HomeScreen = ({ navigation, route }) => {
     setShowPlaylistModal(true);
   };
 
+  const isPremiumSong = (song) => {
+    if (song.is_premium === 1 || song.is_premium === '1' || song.is_premium === true) return true;
+    if (song.album_is_premium === 1 || song.album_is_premium === '1' || song.album_is_premium === true) return true;
+    
+    // Backup check: look up in newAlbums
+    if (song.album_id && newAlbums.length > 0) {
+      const album = newAlbums.find(a => a.album_id === song.album_id);
+      if (album && (album.is_premium === 1 || album.is_premium === '1' || album.is_premium === true)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   const userHasAccessToSong = (song) => {
     if (purchasedSongIds.has(song.song_id)) return true;
     if (songAccessTypes[song.song_id]) return true;
-    if (userIsPremium && song.is_premium === 1) return true;
+    if (userIsPremium && isPremiumSong(song)) return true;
     return false;
   };
 
@@ -457,8 +476,15 @@ const HomeScreen = ({ navigation, route }) => {
     const song = item;
     const index = getIndex();
     const list = getListData();
+    const isSongPremiumSingle = song.is_premium == 1 || song.is_premium == '1' || song.is_premium === true;
+    const isSongInPremiumAlbum = isPremiumSong(song);
+    const isInPremiumAlbumOnly = isSongInPremiumAlbum && !isSongPremiumSingle;
+
     const isCurrentSong = currentSong?.song_id === song.song_id;
-    const showPrice = song.is_premium === 1 && !userHasAccessToSong(song) && Number(song.price) > 0;
+    const isPlayingSong = isCurrentSong && isPlaying;
+    const isSongPurchased = purchasedSongIds.has(song.song_id) || songAccessTypes[song.song_id] === 'purchase';
+    const hasSongAccess = userHasAccessToSong(song);
+    const showPrice = isSongPremiumSingle && !hasSongAccess && Number(song.price) > 0;
 
     const gradientColors = isCurrentSong
       ? ['#2B124C', '#08040F']
@@ -507,12 +533,12 @@ const HomeScreen = ({ navigation, route }) => {
                         {song.title}
                         </Text>
                         <View style={{display: 'flex', flexDirection: 'row', position: 'relative', top: -10, right:-30}}>
-                        {song.album_is_premium === 1 ? (
+                        {isSongInPremiumAlbum && !isSongPremiumSingle ? (
                           <PremiumBadge text="ALBUM PRE" size="small" style={GlobalStyles.premiumBadge} />
                         ) : (
-                          song.is_premium === 1 && <PremiumBadge size="small" style={GlobalStyles.premiumBadge} />
+                          isSongPremiumSingle && <PremiumBadge size="small" style={GlobalStyles.premiumBadge} />
                         )}
-                        {(song.album_is_premium === 1 || song.is_premium === 1) && songAccessTypes[song.song_id] && (
+                        {(isSongInPremiumAlbum || isSongPremiumSingle) && songAccessTypes[song.song_id] && (
                             <AccessBadge accessType={songAccessTypes[song.song_id]} size={16} />
                         )}
                         </View>

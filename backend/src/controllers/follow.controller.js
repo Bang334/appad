@@ -70,6 +70,16 @@ class FollowController {
         });
       }
 
+      // Delete notification for artist
+      try {
+        const artist = await ArtistModel.findById(artist_id);
+        if (artist && artist.user_id) {
+          await NotificationModel.deleteFollowNotification(userId, artist.user_id);
+        }
+      } catch (notifyError) {
+        console.error('Delete follow notification error:', notifyError);
+      }
+
       res.json({
         success: true,
         message: 'Successfully unfollowed artist'

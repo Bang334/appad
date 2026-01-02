@@ -831,6 +831,15 @@ class ArtistController {
         });
       }
 
+      // Update associated notifications if title changed
+      if (songData.title && songData.title !== song.title) {
+        try {
+          await NotificationModel.updateSongNotifications(song_id, songData.title);
+        } catch (notifError) {
+          console.error('Error updating song notifications:', notifError);
+        }
+      }
+
       res.json({
         success: true,
         message: 'Song updated successfully'

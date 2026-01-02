@@ -1,6 +1,7 @@
 const SongModel = require('../models/song.model');
 const HistoryModel = require('../models/history.model');
 const UserModel = require('../models/user.model');
+const NotificationModel = require('../models/notification.model');
 
 class SongController {
   // Get all songs
@@ -349,6 +350,15 @@ class SongController {
         });
       }
 
+      // Update associated notifications if title changed
+      if (songData.title) {
+        try {
+          await NotificationModel.updateSongNotifications(id, songData.title);
+        } catch (notifError) {
+          console.error('Error updating song notifications:', notifError);
+        }
+      }
+
       res.json({
         success: true,
         message: 'Song updated successfully'
@@ -373,6 +383,13 @@ class SongController {
           success: false,
           message: 'Song not found'
         });
+      }
+
+      // Delete associated notifications
+      try {
+        await NotificationModel.deleteByRelatedEntity('new_song', 'song_id', id);
+      } catch (notifError) {
+        console.error('Error deleting song notifications:', notifError);
       }
 
       res.json({

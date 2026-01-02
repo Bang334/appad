@@ -87,7 +87,7 @@ const SearchScreen = ({ navigation }) => {
         songService.getAllSongs(100, 0),
         artistService.getArtists(),
         genreService.getAllGenresWithSongCount().catch(() => ({ data: [] })),
-        albumService.getAllAlbums(50, 0).catch(() => ({ data: [] })),
+        albumService.getAllAlbums(200, 0).catch(() => ({ data: [] })),
         premiumService.getPurchasedSongs().catch(() => ({ data: [] })),
         followService.getMyFollowedArtists().catch(() => ({ data: [] })),
         premiumService.checkStatus().catch(() => ({ data: { is_premium: false } })),
@@ -161,10 +161,30 @@ const SearchScreen = ({ navigation }) => {
     setShowPlaylistModal(true);
   };
 
+  const isPremiumSong = (song) => {
+    if (!song) return false;
+    
+    // 1. Check direct song premium status
+    if (song.is_premium == 1 || song.is_premium === true || song.is_premium === '1') return true;
+    
+    // 2. Check album premium status from song object (returned by JOIN in backend)
+    if (song.album_is_premium == 1 || song.album_is_premium === true || song.album_is_premium === '1') return true;
+    
+    // 3. Backup: Manual lookup in allAlbums list (in case backend field is missing or for extra safety)
+    if (song.album_id && allAlbums && allAlbums.length > 0) {
+      const album = allAlbums.find(a => String(a.album_id) === String(song.album_id));
+      if (album && (album.is_premium == 1 || album.is_premium === true || album.is_premium === '1')) {
+        return true;
+      }
+    }
+    
+    return false;
+  };
+
   const userHasAccessToSong = (song) => {
     if (purchasedSongIds.has(song.song_id)) return true;
     if (songAccessTypes[song.song_id]) return true;
-    if (userIsPremium && song.is_premium === 1) return true;
+    if (userIsPremium && isPremiumSong(song)) return true;
     return false;
   };
 
@@ -182,9 +202,9 @@ const SearchScreen = ({ navigation }) => {
 
     // Apply premium filter
     if (premiumFilter === 'premium') {
-      filtered = filtered.filter(song => song.is_premium === 1);
+      filtered = filtered.filter(song => isPremiumSong(song));
     } else if (premiumFilter === 'free') {
-      filtered = filtered.filter(song => song.is_premium === 0 || !song.is_premium);
+      filtered = filtered.filter(song => !isPremiumSong(song));
     }
 
     // Apply search filter
@@ -200,7 +220,7 @@ const SearchScreen = ({ navigation }) => {
 
     setFilteredSongs(filtered);
     setCurrentPage(1);
-  }, [searchQuery, premiumFilter, allSongs, activeTab]);
+  }, [searchQuery, premiumFilter, allSongs, activeTab, allAlbums]);
 
   // Filter and sort artists
   useEffect(() => {
@@ -281,7 +301,10 @@ const SearchScreen = ({ navigation }) => {
     }
 
     // Check if song is FREE but in a PREMIUM album
-    if (song.album_is_premium === 1 && song.is_premium !== 1) {
+    const isSongPremiumSingle = song.is_premium === 1 || song.is_premium === '1' || song.is_premium === true;
+    const isSongInPremiumAlbum = isPremiumSong(song);
+
+    if (isSongInPremiumAlbum && !isSongPremiumSingle) {
       try {
         const response = await premiumService.checkSongAccess(song.song_id);
         if (!response.data?.hasAccess) {
@@ -306,7 +329,7 @@ const SearchScreen = ({ navigation }) => {
     }
 
     // Check if song is premium
-    if (song.is_premium === 1) {
+    if (isSongPremiumSingle) {
       try {
         const response = await premiumService.checkSongAccess(song.song_id);
         if (!response.data?.hasAccess) {
@@ -346,8 +369,8 @@ const SearchScreen = ({ navigation }) => {
       return;
     }
 
-    // Check if song is in a premium album (and not a premium single)
-    if (song.album_is_premium === 1 && song.is_premium !== 1) {
+    // Check if song is in a premium album
+    if (isSongInPremiumAlbum && !isSongPremiumSingle) {
       try {
         const response = await premiumService.checkSongAccess(song.song_id);
         if (!response.data?.hasAccess) {
@@ -372,7 +395,7 @@ const SearchScreen = ({ navigation }) => {
     }
 
     // Check access for premium songs (singles)
-    if (song.is_premium === 1) {
+    if (isSongPremiumSingle) {
       try {
         const response = await premiumService.checkSongAccess(song.song_id);
         if (!response.data?.hasAccess) {
@@ -594,9 +617,10 @@ const SearchScreen = ({ navigation }) => {
     const isCurrentPlaying = isCurrentSong && isPlaying;
     const showPrice = item.is_premium === 1 && !userHasAccessToSong(item) && Number(item.price) > 0;
     
-    // Check album status
     const isAlbumUnreleased = item.album_release_date && new Date(item.album_release_date) > new Date();
-    const isInPremiumAlbum = item.album_is_premium === 1 && item.is_premium !== 1;
+    const isSongPremiumSingle = item.is_premium === 1 || item.is_premium === '1' || item.is_premium === true;
+    const isSongInPremiumAlbum = isPremiumSong(item);
+    const isInPremiumAlbumOnly = isSongInPremiumAlbum && !isSongPremiumSingle;
 
     const gradientColors = isCurrentSong
       ? ['#2B124C', '#08040F']
@@ -654,12 +678,12 @@ const SearchScreen = ({ navigation }) => {
                       <Text style={styles.upcomingBadgeText}>SẮP RA MẮT</Text>
                     </View>
                   )}
-                  {item.album_is_premium === 1 ? (
+                  {isInPremiumAlbumOnly ? (
                     <PremiumBadge text="ALBUM PRE" size="small" style={GlobalStyles.premiumBadge} />
                   ) : (
-                    item.is_premium === 1 && <PremiumBadge size="small" style={GlobalStyles.premiumBadge} />
+                    isSongPremiumSingle && <PremiumBadge size="small" style={GlobalStyles.premiumBadge} />
                   )}
-                  {(item.album_is_premium === 1 || item.is_premium === 1) && songAccessTypes[item.song_id] && (
+                  {isSongInPremiumAlbum && songAccessTypes[item.song_id] && (
                     <AccessBadge accessType={songAccessTypes[item.song_id]} size={16} />
                   )}
                 </View>
@@ -879,20 +903,30 @@ const SearchScreen = ({ navigation }) => {
   const renderDropdown = () => (
     <View style={styles.dropdownContainer}>
       <TouchableOpacity
-        style={styles.dropdownButton}
+        style={[styles.dropdownButton, showDropdown && styles.dropdownButtonOpen]}
         onPress={() => setShowDropdown(!showDropdown)}
+        activeOpacity={0.7}
       >
-        <Ionicons
-          name={getTabIcon()}
-          size={20}
-          color={getTabIconColor()}
-        />
-        <Text style={styles.dropdownButtonText}>{getTabLabel()}</Text>
-        <Ionicons
-          name={showDropdown ? "chevron-up" : "chevron-down"}
-          size={20}
-          color={COLORS.textSecondary}
-        />
+        <LinearGradient
+          colors={showDropdown ? [COLORS.primary, COLORS.secondary || '#7B1FA2'] : [COLORS.surface, COLORS.surface]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.dropdownGradient}
+        >
+          <Ionicons
+            name={getTabIcon()}
+            size={20}
+            color={showDropdown ? '#FFF' : getTabIconColor()}
+          />
+          <Text style={[styles.dropdownButtonText, showDropdown && { color: '#FFF' }]}>
+            {getTabLabel()}
+          </Text>
+          <Ionicons
+            name={showDropdown ? "chevron-up" : "chevron-down"}
+            size={20}
+            color={showDropdown ? '#FFF' : COLORS.textSecondary}
+          />
+        </LinearGradient>
       </TouchableOpacity>
 
       {showDropdown && (
@@ -1318,20 +1352,32 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   dropdownButton: {
+    padding: 0, // Reset padding because we use gradient
+    borderRadius: SIZES.borderRadius,
+    backgroundColor: COLORS.surface,
+    overflow: 'hidden',
+  },
+  dropdownButtonOpen: {
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  dropdownGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 12,
     paddingHorizontal: 16,
-    borderRadius: SIZES.borderRadius,
-    backgroundColor: COLORS.surface,
     gap: 8,
   },
   dropdownButtonText: {
     flex: 1,
     color: COLORS.text,
     fontSize: SIZES.md,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   dropdownMenu: {
     position: 'absolute',

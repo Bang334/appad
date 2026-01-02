@@ -43,6 +43,7 @@ const ArtistDetailScreen = ({ route, navigation }) => {
   const [followLoading, setFollowLoading] = useState(false);
   const [membershipStatus, setMembershipStatus] = useState(null);
   const [membershipLoading, setMembershipLoading] = useState(false);
+  const [newAlbums, setNewAlbums] = useState([]);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [selectedSong, setSelectedSong] = useState(null);
   const [selectedSongList, setSelectedSongList] = useState([]);
@@ -60,24 +61,28 @@ const ArtistDetailScreen = ({ route, navigation }) => {
   const loadArtistData = async () => {
     setLoading(true);
     try {
-      const [artistRes, albumsRes, songsRes, followRes, followerCountRes, membershipRes, purchasedRes, premiumStatusRes] = await Promise.all([
+      const [artistRes, albumsRes, songsRes, followRes, followerCountRes, allSongsRes, allAlbumsRes, purchasedRes, premiumStatusRes, membershipRes] = await Promise.all([
         artistService.getArtistById(artistId),
         artistService.getArtistAlbums(artistId),
         artistService.getArtistSongs(artistId),
         followService.checkFollowing(artistId).catch(() => ({ data: { is_following: false } })),
         followService.getFollowerCount(artistId).catch(() => ({ data: { follower_count: 0 } })),
-        artistService.getMembershipStatus(artistId).catch(() => ({ success: false })),
+        songService.getAllSongs(20, 0),
+        albumService.getAllAlbums(50, 0).catch(() => ({ data: [] })),
         premiumService.getPurchasedSongs().catch(() => ({ data: [] })),
         premiumService.checkStatus().catch(() => ({ data: { is_premium: false } })),
+        artistService.getMembershipStatus(artistId).catch(() => ({ success: false })), // Moved membershipRes to the end to match new Promise.all order
       ]);
       
       const artistData = artistRes.data;
       const albumsData = albumsRes.data || [];
       const songsData = songsRes.data || [];
+      const allAlbumsData = allAlbumsRes.data || []; // Get all albums data
 
       setArtist(artistData);
       setAlbums(albumsData);
       setSongs(songsData);
+      setNewAlbums(allAlbumsData); // Set newAlbums state
       setIsFollowing(followRes.data?.is_following || false);
       setFollowerCount(followerCountRes.data?.follower_count || 0);
       if (membershipRes.success) {
@@ -89,7 +94,7 @@ const ArtistDetailScreen = ({ route, navigation }) => {
 
       // Preload access types for this artist's premium songs (similar to SearchScreen)
       const accessTypesMap = {};
-      const artistPremiumSongs = songsData.filter(s => s.is_premium === 1).slice(0, 50);
+      const artistPremiumSongs = songsData.filter(s => s.is_premium === 1 || s.album_is_premium === 1).slice(0, 50);
 
       const accessChecks = artistPremiumSongs.map(async (song) => {
         try {
@@ -333,9 +338,37 @@ const ArtistDetailScreen = ({ route, navigation }) => {
     }
   };
 
+  const isPremiumSong = (song) => {
+    if (!song) return false;
+    
+    // 1. Check direct song premium status
+    if (song.is_premium == 1 || song.is_premium === true || song.is_premium == '1') return true;
+    
+    // 2. Check album premium status from song object (returned by JOIN in backend)
+    if (song.album_is_premium == 1 || song.album_is_premium === true || song.album_is_premium == '1') return true;
+    
+    // 3. Backup: Manual lookup in albums list (current artist's albums)
+    if (song.album_id && albums && albums.length > 0) {
+      const album = albums.find(a => String(a.album_id) === String(song.album_id));
+      if (album && (album.is_premium == 1 || album.is_premium === true || album.is_premium == '1')) {
+        return true;
+      }
+    }
+
+    // 4. Second Backup: Manual lookup in global allAlbums list if available
+    if (song.album_id && newAlbums && newAlbums.length > 0) {
+      const album = newAlbums.find(a => String(a.album_id) === String(song.album_id));
+      if (album && (album.is_premium == 1 || album.is_premium === true || album.is_premium == '1')) {
+        return true;
+      }
+    }
+    
+    return false;
+  };
+
   const userHasAccessToSong = (song) => {
     if (membershipStatus?.has_membership) return true;
-    if (userIsPremium && (song.is_premium == 1 || song.album_is_premium == 1)) return true;
+    if (userIsPremium && isPremiumSong(song)) return true;
     if (purchasedSongIds.has(song.song_id)) return true;
     if (songAccessTypes[song.song_id]) return true;
     return false;

@@ -452,9 +452,11 @@ WHERE song_id = ${currentSong.song_id};`;
             </View>
             <TouchableOpacity
               onPress={() => {
-                if (currentSong.artist_id) {
-                  navigation.navigate('ArtistDetail', { artistId: currentSong.artist_id });
-                }
+                  navigation.goBack();
+                  navigation.navigate('Main', {
+                    screen: 'ArtistDetail',
+                    params: { artistId: currentSong.artist_id }
+                  });
               }}
             >
           <View style={styles.artistRow}>
@@ -465,9 +467,11 @@ WHERE song_id = ${currentSong.song_id};`;
               <TouchableOpacity
                 style={styles.genreTag}
                 onPress={() => {
-                  if (currentSong.genre_id) {
-                    navigation.navigate('GenreDetail', { genreId: currentSong.genre_id });
-                  }
+                  navigation.goBack();
+                  navigation.navigate('Main', {
+                    screen: 'GenreDetail',
+                    params: { genreId: currentSong.genre_id }
+                  });
                 }}
                 activeOpacity={currentSong.genre_id ? 0.7 : 1}
               >
@@ -484,7 +488,11 @@ WHERE song_id = ${currentSong.song_id};`;
                 style={styles.metaItem}
                 onPress={() => {
                   if (currentSong.album_id) {
-                    navigation.navigate('AlbumDetail', { albumId: currentSong.album_id });
+                    navigation.goBack();
+                    navigation.navigate('Main', {
+                      screen: 'AlbumDetail',
+                      params: { albumId: currentSong.album_id }
+                    });
                   }
                 }}
                 activeOpacity={currentSong.album_id ? 0.7 : 1}

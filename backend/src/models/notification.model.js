@@ -212,6 +212,59 @@ class NotificationModel {
     );
     return result.affectedRows;
   }
+  // Delete follow notification
+  static async deleteFollowNotification(followerId, artistUserId) {
+    const pattern = `%"follower_id":${followerId}%`;
+    const patternNoQuote = `%"follower_id": ${followerId}%`;
+    
+    const [result] = await db.execute(
+      'DELETE FROM notifications WHERE user_id = ? AND type = ? AND (data LIKE ? OR data LIKE ?)',
+      [artistUserId, 'new_follower', pattern, patternNoQuote]
+    );
+    return result.affectedRows;
+  }
+
+  // Update song notifications
+  static async updateSongNotifications(songId, newTitle) {
+    const pattern = `%"song_id":${songId}%`;
+    const patternNoQuote = `%"song_id": ${songId}%`;
+    
+    // Get all related notifications
+    const [rows] = await db.execute(
+      'SELECT notification_id, message, data FROM notifications WHERE type = ? AND (data LIKE ? OR data LIKE ?)',
+      ['new_song', pattern, patternNoQuote]
+    );
+    
+    if (rows.length === 0) return 0;
+    
+    // Update each notification
+    let updatedCount = 0;
+    for (const row of rows) {
+      let data = row.data;
+      if (typeof data === 'string') {
+        try {
+          data = JSON.parse(data);
+        } catch (e) { continue; }
+      }
+      
+      // Update title in data
+      data.song_title = newTitle;
+      
+      // Update message if it contains the old title (heuristic)
+      // Message format: `${artist?.name || 'Nghệ sĩ'} vừa ra mắt bài hát "${songData.title}"`
+      // We reconstruct message using available data
+      const artistName = data.artist_name || 'Nghệ sĩ';
+      const newMessage = `${artistName} vừa ra mắt bài hát "${newTitle}"`;
+      
+      await db.execute(
+        'UPDATE notifications SET message = ?, data = ? WHERE notification_id = ?',
+        [newMessage, JSON.stringify(data), row.notification_id]
+      );
+      updatedCount++;
+    }
+    
+    return updatedCount;
+  }
 }
 
 module.exports = NotificationModel;

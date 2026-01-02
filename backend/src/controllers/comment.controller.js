@@ -252,6 +252,13 @@ class CommentController {
         await CommentController.updateSongAverageRating(comment.song_id);
       }
 
+      // Delete associated notification
+      try {
+        await NotificationModel.deleteByRelatedEntity('new_comment', 'comment_id', id);
+      } catch (notifError) {
+        console.error('Error deleting comment notification:', notifError);
+      }
+
       res.json({
         success: true,
         message: 'Comment deleted successfully'
