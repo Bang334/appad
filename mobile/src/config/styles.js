@@ -34,6 +34,7 @@ export const GlobalStyles = StyleSheet.create({
   // Sections
   section: {
     marginVertical: 16,
+    marginRight: 5,
   },
   sectionHeader: {
     flexDirection: 'row',

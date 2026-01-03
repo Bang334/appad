@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   RefreshControl,
   Dimensions,
   Platform,
+  InteractionManager,
+  ActivityIndicator,
 } from 'react-native';
 import { songService } from '../../services/songService';
 import { albumService } from '../../services/albumService';
@@ -17,7 +19,7 @@ import { usePlayer } from '../../context/PlayerContext';
 import { COLORS, SIZES } from '../../config/theme';
 import { GlobalStyles } from '../../config/styles';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import AddToPlaylistModal from '../../components/Playlist/AddToPlaylistModal';
 import PremiumBadge from '../../components/Common/PremiumBadge';
 import PremiumAccessModal from '../../components/Common/PremiumAccessModal';
@@ -28,8 +30,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import DraggableFlatList, { ScaleDecorator, OpacityDecorator, ShadowDecorator } from 'react-native-draggable-flatlist';
 
 const { width } = Dimensions.get('window');
+const PREMIUM_CARD_WIDTH = width * 0.3; // 30% of screen width
+const STANDARD_CARD_WIDTH = 112; 
+const CARD_GAP = 12; // Gap between cards
 
 const HomeScreen = ({ navigation, route }) => {
+  const isFocused = useIsFocused();
   const [trendingSongs, setTrendingSongs] = useState([]);
   const [frequentSongs, setFrequentSongs] = useState([]);
   const [recommendedSongs, setRecommendedSongs] = useState([]);
@@ -55,10 +61,49 @@ const HomeScreen = ({ navigation, route }) => {
   const [isAtTop, setIsAtTop] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
 
+  // Define all functions used by hooks FIRST
+  const handleUpdateList = useCallback((data) => {
+    if (activeTab === 0) setRecentSongs(data);
+    else if (activeTab === 1) setFrequentSongs(data);
+    else if (activeTab === 2) setRecommendedSongs(data);
+    
+    // Update player playlist if the current song is in this list
+    if (currentSong && data.some(s => s.song_id === currentSong.song_id)) {
+        updatePlaylist(data);
+    }
+  }, [activeTab, currentSong, updatePlaylist]);
+
+  const isPremiumSong = useCallback((song) => {
+    if (song.is_premium === 1 || song.is_premium === '1' || song.is_premium === true) return true;
+    if (song.album_is_premium === 1 || song.album_is_premium === '1' || song.album_is_premium === true) return true;
+    
+    // Backup check: look up in newAlbums
+    if (song.album_id && newAlbums.length > 0) {
+      const album = newAlbums.find(a => a.album_id === song.album_id);
+      if (album && (album.is_premium === 1 || album.is_premium === '1' || album.is_premium === true)) {
+        return true;
+      }
+    }
+    return false;
+  }, [newAlbums]);
+
+  const userHasAccessToSong = useCallback((song) => {
+    if (purchasedSongIds.has(song.song_id)) return true;
+    if (songAccessTypes[song.song_id]) return true;
+    if (userIsPremium && isPremiumSong(song)) return true;
+    return false;
+  }, [purchasedSongIds, songAccessTypes, userIsPremium, isPremiumSong]);
+
+  const getListData = useCallback(() => {
+    if (activeTab === 0) return recentSongs;
+    if (activeTab === 1) return frequentSongs;
+    if (activeTab === 2) return recommendedSongs;
+    return [];
+  }, [activeTab, recentSongs, frequentSongs, recommendedSongs]);
+
   // Generate infinite lists for UI looping
   const infiniteTrendingSongs = useMemo(() => {
     if (trendingSongs.length === 0) return [];
-    // Duplicate list 50 times to simulate infinite scrolling
     return Array(50).fill(trendingSongs).flat();
   }, [trendingSongs]);
 
@@ -68,7 +113,10 @@ const HomeScreen = ({ navigation, route }) => {
   }, [newAlbums]);
 
   useEffect(() => {
-    loadData();
+    const task = InteractionManager.runAfterInteractions(() => {
+      loadData();
+    });
+    return () => task.cancel();
   }, []);
 
   // Listen for refresh trigger from header button
@@ -86,7 +134,7 @@ const HomeScreen = ({ navigation, route }) => {
 
   // Auto-scroll carousel for Trending
   useEffect(() => {
-    if (infiniteTrendingSongs.length === 0) return;
+    if (infiniteTrendingSongs.length === 0 || !isFocused) return;
 
     const interval = setInterval(() => {
       if (flatListRef.current) {
@@ -111,7 +159,7 @@ const HomeScreen = ({ navigation, route }) => {
 
   // Auto-scroll carousel for Albums
   useEffect(() => {
-    if (infiniteAlbums.length === 0) return;
+    if (infiniteAlbums.length === 0 || !isFocused) return;
 
     const interval = setInterval(() => {
       if (albumCarouselRef.current) {
@@ -131,7 +179,105 @@ const HomeScreen = ({ navigation, route }) => {
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [infiniteAlbums]);
+  }, [infiniteAlbums, isFocused]);
+
+  // Move handlePlaySong and handleSongPress logic here
+  const handlePlaySong = useCallback(async (song, index, list) => {
+    if (currentSong?.song_id === song.song_id) {
+      togglePlayPause();
+      return;
+    }
+    if (song.album_release_date && new Date(song.album_release_date) > new Date()) {
+      const { Alert } = require('react-native');
+      const releaseDate = new Date(song.album_release_date);
+      const formattedDate = releaseDate.toLocaleString('vi-VN', {
+        hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
+      });
+      Alert.alert('🎵 Sắp ra mắt', `Bài hát "${song.title}" sẽ được phát hành vào:\n\n⏰ ${formattedDate}`, [{ text: 'Đã hiểu' }]);
+      return;
+    }
+    const isSongPremiumSingle = song.is_premium === 1 || song.is_premium === '1' || song.is_premium === true;
+    if (song.album_is_premium === 1 && !isSongPremiumSingle) {
+      try {
+        const response = await premiumService.checkSongAccess(song.song_id);
+        if (!response.data?.hasAccess) {
+          const { Alert } = require('react-native');
+          Alert.alert('🔒 Nội dung Premium', `Bài hát "${song.title}" thuộc album Premium.\n\nMua album để nghe!`, [
+              { text: 'Để sau', style: 'cancel' },
+              { text: 'Xem Album', onPress: () => navigation.navigate('AlbumDetail', { albumId: song.album_id }) }
+            ]);
+          return;
+        }
+      } catch (error) { console.error('Error checking song access:', error); return; }
+    }
+    if (isSongPremiumSingle) {
+      try {
+        const response = await premiumService.checkSongAccess(song.song_id);
+        if (!response.data?.hasAccess) {
+          setSelectedSong(song);
+          setSelectedSongList(list);
+          setShowPremiumModal(true);
+          return;
+        }
+      } catch (error) { console.error('Error checking song access:', error); return; }
+    }
+    playSong(song, list, index);
+  }, [currentSong, togglePlayPause, playSong, navigation]);
+
+  const handleSongPress = useCallback(async (song, index, list) => {
+    if (currentSong?.song_id === song.song_id) {
+      navigation.navigate('FullPlayer');
+      return;
+    }
+    if (song.album_release_date && new Date(song.album_release_date) > new Date()) {
+      const { Alert } = require('react-native');
+      const releaseDate = new Date(song.album_release_date);
+      const formattedDate = releaseDate.toLocaleString('vi-VN', {
+        hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
+      });
+      Alert.alert('🎵 Sắp ra mắt', `Bài hát "${song.title}" thuộc album "${song.album_title}" sẽ được phát hành vào:\n\n⏰ ${formattedDate}`, [{ text: 'Đã hiểu' }]);
+      return;
+    }
+    const isSongPremiumSingle = song.is_premium === 1 || song.is_premium === '1' || song.is_premium === true;
+    const isSongInPremiumAlbum = isPremiumSong(song);
+    if (isSongInPremiumAlbum && !isSongPremiumSingle) {
+      try {
+        const response = await premiumService.checkSongAccess(song.song_id);
+        if (!response.data?.hasAccess) {
+          const { Alert } = require('react-native');
+          Alert.alert('🔒 Nội dung Premium', `Bài hát "${song.title}" thuộc album Premium "${song.album_title}".\n\nMua album để nghe tất cả bài hát!`, [
+              { text: 'Để sau', style: 'cancel' },
+              { text: 'Xem Album', onPress: () => navigation.navigate('AlbumDetail', { albumId: song.album_id }) }
+            ]);
+          return;
+        }
+      } catch (error) { console.error('Error checking song access:', error); }
+    }
+    if (isSongPremiumSingle) {
+      try {
+        const response = await premiumService.checkSongAccess(song.song_id);
+        if (!response.data?.hasAccess) {
+          setSelectedSong(song);
+          setSelectedSongList(list);
+          setShowPremiumModal(true);
+          return;
+        }
+      } catch (error) { console.error('Error checking song access:', error); }
+    }
+    navigation.navigate('FullPlayer');
+    await playSong(song, list, index);
+    try {
+      const accessRes = await premiumService.checkSongAccess(song.song_id);
+      if (accessRes.success && accessRes.data?.hasAccess && accessRes.data?.accessType) {
+        setSongAccessTypes(prev => ({ ...prev, [song.song_id]: accessRes.data.accessType }));
+      }
+    } catch (error) {}
+  }, [currentSong, navigation, playSong, isPremiumSong]);
+
+  const handleAddToPlaylist = useCallback((song) => {
+    setSelectedSong(song);
+    setShowPlaylistModal(true);
+  }, []);
 
   const loadData = async () => {
     try {
@@ -251,162 +397,6 @@ const HomeScreen = ({ navigation, route }) => {
     console.log('✅ [REFRESH] Finished refreshing');
   };
 
-  const handlePlaySong = async (song, index, list) => {
-    // If clicking on currently playing song, toggle play/pause
-    if (currentSong?.song_id === song.song_id) {
-      togglePlayPause();
-      return;
-    }
-
-    // Check if song is in an unreleased album
-    if (song.album_release_date && new Date(song.album_release_date) > new Date()) {
-      const { Alert } = require('react-native');
-      const releaseDate = new Date(song.album_release_date);
-      const formattedDate = releaseDate.toLocaleString('vi-VN', {
-        hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
-      });
-      Alert.alert(
-        '🎵 Sắp ra mắt',
-        `Bài hát "${song.title}" sẽ được phát hành vào:\n\n⏰ ${formattedDate}`,
-        [{ text: 'Đã hiểu' }]
-      );
-      return;
-    }
-
-    const isSongPremiumSingle = song.is_premium === 1 || song.is_premium === '1' || song.is_premium === true;
-
-    // Check if song is FREE but in a PREMIUM album
-    if (song.album_is_premium === 1 && !isSongPremiumSingle) {
-      try {
-        const response = await premiumService.checkSongAccess(song.song_id);
-        if (!response.data?.hasAccess) {
-          const { Alert } = require('react-native');
-          Alert.alert(
-            '🔒 Nội dung Premium',
-            `Bài hát "${song.title}" thuộc album Premium.\n\nMua album để nghe!`,
-            [
-              { text: 'Để sau', style: 'cancel' },
-              { 
-                text: 'Xem Album', 
-                onPress: () => navigation.navigate('AlbumDetail', { albumId: song.album_id })
-              }
-            ]
-          );
-          return;
-        }
-      } catch (error) {
-        console.error('Error checking song access:', error);
-        return; // Don't play if we can't verify access
-      }
-    }
-
-    // Check if song is premium (single)
-    if (isSongPremiumSingle) {
-      try {
-        const response = await premiumService.checkSongAccess(song.song_id);
-        if (!response.data?.hasAccess) {
-          // Show premium access modal with 3 options
-          setSelectedSong(song);
-          setSelectedSongList(list);
-          setShowPremiumModal(true);
-          return;
-        }
-      } catch (error) {
-        console.error('Error checking song access:', error);
-        return; // Don't play if we can't verify access
-      }
-    }
-
-    // Play new song (will pause current if playing)
-    playSong(song, list, index);
-    // Don't navigate to FullPlayer, just show MiniPlayer
-  };
-
-  const handleSongPress = async (song, index, list) => {
-    // If clicking on currently playing song, navigate to FullPlayer
-    if (currentSong?.song_id === song.song_id) {
-      navigation.navigate('FullPlayer');
-      return;
-    }
-
-    // Check if song is in an unreleased album
-    if (song.album_release_date && new Date(song.album_release_date) > new Date()) {
-      const { Alert } = require('react-native');
-      const releaseDate = new Date(song.album_release_date);
-      const formattedDate = releaseDate.toLocaleString('vi-VN', {
-        hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
-      });
-      Alert.alert(
-        '🎵 Sắp ra mắt',
-        `Bài hát "${song.title}" thuộc album "${song.album_title}" sẽ được phát hành vào:\n\n⏰ ${formattedDate}`,
-        [{ text: 'Đã hiểu' }]
-      );
-      return;
-    }
-
-    // Check if song is FREE but in a PREMIUM album
-    const isSongPremiumSingle = song.is_premium === 1 || song.is_premium === '1' || song.is_premium === true;
-    const isSongInPremiumAlbum = isPremiumSong(song);
-
-    if (isSongInPremiumAlbum && !isSongPremiumSingle) {
-      try {
-        const response = await premiumService.checkSongAccess(song.song_id);
-        if (!response.data?.hasAccess) {
-          // Redirect to album detail page to purchase
-          const { Alert } = require('react-native');
-          Alert.alert(
-            '🔒 Nội dung Premium',
-            `Bài hát "${song.title}" thuộc album Premium "${song.album_title}".\n\nMua album để nghe tất cả bài hát!`,
-            [
-              { text: 'Để sau', style: 'cancel' },
-              { 
-                text: 'Xem Album', 
-                onPress: () => navigation.navigate('AlbumDetail', { albumId: song.album_id })
-              }
-            ]
-          );
-          return;
-        }
-      } catch (error) {
-        console.error('Error checking song access:', error);
-      }
-    }
-
-    // Check access for premium songs (singles)
-    if (isSongPremiumSingle) {
-      try {
-        const response = await premiumService.checkSongAccess(song.song_id);
-        if (!response.data?.hasAccess) {
-          // Show premium access modal with 3 options
-          setSelectedSong(song);
-          setSelectedSongList(list);
-          setShowPremiumModal(true);
-          return;
-        }
-      } catch (error) {
-        console.error('Error checking song access:', error);
-        // If error, try to play anyway
-      }
-    }
-
-    // Navigate first for faster UX, then start playback
-    navigation.navigate('FullPlayer');
-    await playSong(song, list, index);
-    
-    // Update access type if we just checked it
-    try {
-      const accessRes = await premiumService.checkSongAccess(song.song_id);
-      if (accessRes.success && accessRes.data?.hasAccess && accessRes.data?.accessType) {
-        setSongAccessTypes(prev => ({
-          ...prev,
-          [song.song_id]: accessRes.data.accessType
-        }));
-      }
-    } catch (error) {
-      // Silent fail
-    }
-  };
-
   const formatListenCount = (count) => {
     if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
     if (count >= 1000) return `${(count / 1000).toFixed(1)}K`;
@@ -415,64 +405,14 @@ const HomeScreen = ({ navigation, route }) => {
 
   const formatDuration = (duration) => {
     if (!duration) return '0:00';
-    
-    // Handle both seconds and milliseconds
     let totalSeconds = duration;
-    if (duration > 10000) {
-      // Likely in milliseconds, convert to seconds
-      totalSeconds = Math.round(duration / 1000);
-    }
-    
+    if (duration > 10000) totalSeconds = Math.round(duration / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  const handleAddToPlaylist = (song) => {
-    setSelectedSong(song);
-    setShowPlaylistModal(true);
-  };
-
-  const isPremiumSong = (song) => {
-    if (song.is_premium === 1 || song.is_premium === '1' || song.is_premium === true) return true;
-    if (song.album_is_premium === 1 || song.album_is_premium === '1' || song.album_is_premium === true) return true;
-    
-    // Backup check: look up in newAlbums
-    if (song.album_id && newAlbums.length > 0) {
-      const album = newAlbums.find(a => a.album_id === song.album_id);
-      if (album && (album.is_premium === 1 || album.is_premium === '1' || album.is_premium === true)) {
-        return true;
-      }
-    }
-    return false;
-  };
-
-  const userHasAccessToSong = (song) => {
-    if (purchasedSongIds.has(song.song_id)) return true;
-    if (songAccessTypes[song.song_id]) return true;
-    if (userIsPremium && isPremiumSong(song)) return true;
-    return false;
-  };
-
-  const getListData = () => {
-    if (activeTab === 0) return recentSongs;
-    if (activeTab === 1) return frequentSongs;
-    if (activeTab === 2) return recommendedSongs;
-    return [];
-  };
-
-  const handleUpdateList = (data) => {
-    if (activeTab === 0) setRecentSongs(data);
-    else if (activeTab === 1) setFrequentSongs(data);
-    else if (activeTab === 2) setRecommendedSongs(data);
-    
-    // Update player playlist if the current song is in this list
-    if (currentSong && data.some(s => s.song_id === currentSong.song_id)) {
-        updatePlaylist(data);
-    }
-  };
-
-  const renderDraggableItem = ({ item, drag, isActive, getIndex }) => {
+  const renderDraggableItem = useCallback(({ item, drag, isActive, getIndex }) => {
     const song = item;
     const index = getIndex();
     const list = getListData();
@@ -611,22 +551,41 @@ const HomeScreen = ({ navigation, route }) => {
         </OpacityDecorator>
       </ScaleDecorator>
     );
-  };
+  }, [currentSong, isPlaying, purchasedSongIds, songAccessTypes, handleSongPress, handlePlaySong, handleAddToPlaylist, isPremiumSong, userHasAccessToSong, getListData]);
 
   const renderHeader = () => (
     <>
-      {/* Trending Songs */}
       <View style={GlobalStyles.section}>
-        <Text style={GlobalStyles.sectionTitle}>🔥 Trending</Text>
+        <View style={GlobalStyles.sectionHeader}>
+          <Text style={[
+            GlobalStyles.sectionTitle, 
+            userIsPremium && styles.premiumSectionTitle,
+            !userIsPremium && { fontSize: 16 } // Match the reduced size user wanted
+          ]}>
+            🔥 Trending
+          </Text>
+          {userIsPremium && (
+            <LinearGradient
+              colors={['#FFD700', '#FFA500']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 6 }}
+            >
+              <Text style={{ color: '#000', fontSize: 9, fontWeight: '800' }}>VIP</Text>
+            </LinearGradient>
+          )}
+        </View>
         <FlatList
           ref={flatListRef}
           horizontal
           showsHorizontalScrollIndicator={false}
           data={infiniteTrendingSongs}
           keyExtractor={(item, index) => `trending-${item.song_id}-${index}`}
-          pagingEnabled
-          snapToInterval={112 + SIZES.padding}
+          snapToInterval={PREMIUM_CARD_WIDTH + CARD_GAP}
+          snapToAlignment="start"
           decelerationRate="fast"
+          contentContainerStyle={{ paddingHorizontal: 5 }}
+          ItemSeparatorComponent={() => <View style={{ width: CARD_GAP }} />}
           initialNumToRender={3}
           maxToRenderPerBatch={5}
           windowSize={5}
@@ -639,37 +598,56 @@ const HomeScreen = ({ navigation, route }) => {
             
             return (
               <TouchableOpacity
-                style={GlobalStyles.trendingItem}
+                style={[
+                  userIsPremium ? styles.premiumTrendingItem : styles.standardTrendingItem,
+                  { marginLeft: 0 }
+                ]}
                 onPress={() => handlePlaySong(item, originalIndex, trendingSongs)}
               >
                 <View style={GlobalStyles.trendingImageContainer}>
                   <Image
                     source={{ uri: item.cover_url || 'https://via.placeholder.com/150' }}
-                    style={GlobalStyles.trendingImage}
+                    style={userIsPremium ? styles.premiumTrendingImage : styles.standardTrendingImage}
                   />
                   {isCurrentSong && isPlaying && (
                     <View style={GlobalStyles.trendingPlayingIndicator}>
-                      <Ionicons name="volume-high" size={28} color="#FFF" />
+                      <Ionicons name="volume-high" size={userIsPremium ? 40 : 28} color="#FFF" />
+                    </View>
+                  )}
+                  {userIsPremium && (
+                    <View style={{ position: 'absolute', bottom: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 12, paddingHorizontal: 6, paddingVertical: 2 }}>
+                       <Text style={{ color: '#FFD700', fontSize: 10, fontWeight: '700' }}>#{originalIndex + 1}</Text>
                     </View>
                   )}
                 </View>
-                <Text style={GlobalStyles.trendingTitle} numberOfLines={1}>
+                <Text style={[GlobalStyles.trendingTitle, { fontSize: userIsPremium ? 16 : 14 }]} numberOfLines={1}>
                   {item.title}
                 </Text>
                 <Text style={GlobalStyles.trendingArtist} numberOfLines={1}>
                   {item.artist_name}
                 </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                    <Ionicons name="headset" size={12} color={userIsPremium ? "#FFD700" : COLORS.textSecondary} />
+                    <Text style={{ color: userIsPremium ? "#FFD700" : COLORS.textSecondary, fontSize: 11, marginLeft: 4 }}>
+                      {formatListenCount(item.listen_count)}
+                    </Text>
+                </View>
               </TouchableOpacity>
             );
           }}
         />
       </View>
 
-      {/* New Albums */}
       <View style={GlobalStyles.section}>
         <View style={GlobalStyles.sectionHeader}>
-          <Ionicons name="albums" size={24} color={COLORS.primary} />
-          <Text style={GlobalStyles.sectionTitle}>Album mới</Text>
+          <Ionicons name="albums" size={userIsPremium ? 20 : 18} color={userIsPremium ? '#FFD700' : COLORS.primary} />
+          <Text style={[
+            GlobalStyles.sectionTitle, 
+            userIsPremium && styles.premiumSectionTitle,
+            !userIsPremium && { fontSize: 16 }
+          ]}>
+            {userIsPremium ? '📀 Album Độc Quyền' : 'Album mới'}
+          </Text>
         </View>
         <FlatList
           ref={albumCarouselRef}
@@ -678,9 +656,11 @@ const HomeScreen = ({ navigation, route }) => {
           showsHorizontalScrollIndicator={false}
           data={infiniteAlbums}
           keyExtractor={(item, index) => `album-${item.album_id}-${index}`}
-          pagingEnabled
-          snapToInterval={112 + SIZES.padding}
+          snapToInterval={PREMIUM_CARD_WIDTH + (CARD_GAP + 5)}
+          snapToAlignment="start"
           decelerationRate="fast"
+          contentContainerStyle={{ paddingHorizontal: 5 }}
+          ItemSeparatorComponent={() => <View style={{ width: CARD_GAP + 5 }} />}
           initialNumToRender={3}
           maxToRenderPerBatch={5}
           windowSize={5}
@@ -693,7 +673,10 @@ const HomeScreen = ({ navigation, route }) => {
 
             return (
               <TouchableOpacity
-                style={GlobalStyles.trendingItem}
+                style={[
+                  userIsPremium ? styles.premiumAlbumItem : styles.standardAlbumItem,
+                  { marginLeft: 0 }
+                ]}
                 onPress={() => {
                    if (isReleased) {
                      navigation.navigate('AlbumDetail', { albumId: item.album_id });
@@ -713,7 +696,10 @@ const HomeScreen = ({ navigation, route }) => {
               <View style={GlobalStyles.trendingImageContainer}>
                 <Image
                   source={{ uri: item.cover_url || 'https://via.placeholder.com/150' }}
-                  style={[GlobalStyles.trendingImage, !isReleased && { opacity: 0.6 }]}
+                  style={[
+                    userIsPremium ? styles.premiumAlbumImage : styles.standardAlbumImage, 
+                    !isReleased && { opacity: 0.6 }
+                  ]}
                 />
                 {/* Upcoming Overlay */}
                 {!isReleased && (
@@ -728,7 +714,11 @@ const HomeScreen = ({ navigation, route }) => {
                   </View>
                 )}
               </View>
-              <Text style={[GlobalStyles.trendingTitle, !isReleased && { color: COLORS.textMuted }]} numberOfLines={1}>
+              <Text style={[
+                GlobalStyles.trendingTitle, 
+                { fontSize: userIsPremium ? 15 : 13, fontWeight: 'bold' },
+                !isReleased && { color: COLORS.textMuted }
+              ]} numberOfLines={1}>
                 {item.title}
               </Text>
               <Text style={GlobalStyles.trendingArtist} numberOfLines={1}>
@@ -741,9 +731,9 @@ const HomeScreen = ({ navigation, route }) => {
                   <Text style={styles.releaseTimeText}>{formattedReleaseTime}</Text>
                 </View>
               ) : item.song_count !== undefined && (
-                <View style={GlobalStyles.albumSongCount}>
-                  <Ionicons name="musical-notes" size={12} color={COLORS.textMuted} />
-                  <Text style={GlobalStyles.albumSongCountText}>
+                <View style={[GlobalStyles.albumSongCount, userIsPremium && { backgroundColor: 'rgba(255,215,0,0.1)', borderRadius: 4, paddingHorizontal: 4 }]}>
+                  <Ionicons name="musical-notes" size={12} color={userIsPremium ? '#FFD700' : COLORS.textMuted} />
+                  <Text style={[GlobalStyles.albumSongCountText, userIsPremium && { color: '#FFD700' }]}>
                     {item.song_count} bài hát
                   </Text>
                 </View>
@@ -769,10 +759,11 @@ const HomeScreen = ({ navigation, route }) => {
             </TouchableOpacity>
         ))}
       </View>
-
-      {/* Mix Card Header for Recommendations - Removed as requested */}
     </>
   );
+
+  // Memoize header to prevent re-renders, but define at top level to obey rules of hooks
+  const memoizedHeader = useMemo(() => renderHeader(), [userIsPremium, infiniteTrendingSongs, infiniteAlbums, currentSong, isPlaying, activeTab]);
 
   if (loading) {
     return (
@@ -802,7 +793,7 @@ const HomeScreen = ({ navigation, route }) => {
         nestedScrollEnabled={true}
         keyExtractor={(item) => `home-song-${item.song_id}`}
         renderItem={renderDraggableItem}
-        ListHeaderComponent={renderHeader()}
+        ListHeaderComponent={memoizedHeader}
         ListEmptyComponent={
             <View style={styles.emptyContainer}>
                 {activeTab === 0 && <Text style={styles.emptyText}>Chưa có bài hát mới nào.</Text>}
@@ -995,6 +986,61 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
   },
+  // Standard items using dynamic 3-card layout
+  standardTrendingItem: {
+    width: PREMIUM_CARD_WIDTH,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 16,
+    padding: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  standardTrendingImage: {
+    width: PREMIUM_CARD_WIDTH - 12,
+    height: PREMIUM_CARD_WIDTH - 12,
+    borderRadius: 12,
+  },
+  standardAlbumItem: {
+    width: PREMIUM_CARD_WIDTH,
+  },
+  standardAlbumImage: {
+    width: PREMIUM_CARD_WIDTH,
+    height: PREMIUM_CARD_WIDTH,
+    borderRadius: 14,
+  },
+  // Premium Specific Styles
+  premiumTrendingItem: {
+    width: PREMIUM_CARD_WIDTH,
+    backgroundColor: 'rgba(255, 215, 0, 0.05)', // Golden tint
+    borderRadius: 16,
+    padding: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 215, 0, 0.2)',
+  },
+  premiumTrendingImage: {
+    width: PREMIUM_CARD_WIDTH - 12,
+    height: PREMIUM_CARD_WIDTH - 12,
+    borderRadius: 12,
+  },
+  premiumText: {
+    color: '#FFD700', // Gold color for premium text
+    fontWeight: '800',
+  },
+  premiumAlbumItem: {
+    width: PREMIUM_CARD_WIDTH,
+  },
+  premiumAlbumImage: {
+    width: PREMIUM_CARD_WIDTH,
+    height: PREMIUM_CARD_WIDTH,
+    borderRadius: 14,
+  },
+  premiumSectionTitle: {
+    color: '#FFD700',
+    fontSize: 16, // Reduced by 20% from 20 (SIZES.xl)
+    textShadowColor: 'rgba(255, 215, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
+  }
 });
 
 export default HomeScreen;

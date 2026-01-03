@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Alert,
   ScrollView,
   Dimensions,
+  InteractionManager,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -88,7 +89,10 @@ const ProfileScreen = ({ navigation }) => {
 
   useFocusEffect(
     React.useCallback(() => {
-      loadStats();
+      const task = InteractionManager.runAfterInteractions(() => {
+        loadStats();
+      });
+      return () => task.cancel();
     }, [loadStats])
   );
 

@@ -6,6 +6,7 @@ import { songService } from '../services/songService';
 import { premiumService } from '../services/premiumService';
 import PremiumAccessModal from '../components/Common/PremiumAccessModal';
 import SongPurchaseModal from '../components/Common/SongPurchaseModal';
+import ContinueListeningModal from '../components/Common/ContinueListeningModal';
 
 const PlayerContext = createContext();
 const PlayerProgressContext = createContext();
@@ -40,11 +41,22 @@ export const PlayerProvider = ({ children }) => {
   const [premiumSong, setPremiumSong] = useState(null);
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [purchaseSong, setPurchaseSong] = useState(null);
+  const [showContinueModal, setShowContinueModal] = useState(false);
+
+  // Auto-Stop Tracking
+  const lastInteractionRef = useRef(Date.now());
+  const updateInteraction = () => {
+    lastInteractionRef.current = Date.now();
+  };
   
   // Sleep Timer State
   const [sleepTimerTarget, setSleepTimerTarget] = useState(null);
+  const [isInfinitePlay, setIsInfinitePlay] = useState(false);
   const sleepTimerRef = useRef(null);
   const playerRef = useRef(null);
+  
+  const activeSleepTimerTargetRef = useRef(null); // Ref for background access
+  const isInfinitePlayRef = useRef(false); // Ref for background access
   
   // Refs
   const isRepeatRef = useRef(false);
@@ -63,6 +75,8 @@ export const PlayerProvider = ({ children }) => {
   const isSeekingRef = useRef(false); // Prevent false finish detection during seek
   const lastSeekedPositionRef = useRef(null); // Track last seeked position to validate updates
   const lastUpdatedPositionRef = useRef(0); // Track last updated position to avoid unnecessary updates
+  
+
 
   useEffect(() => {
     playlistRef.current = playlist;
@@ -135,6 +149,8 @@ export const PlayerProvider = ({ children }) => {
       console.error('❌ Error recording listening data:', error);
     }
   };
+
+
 
   const handlePlaybackFinished = useCallback(async () => {
     const finishedSong = currentSongRef.current;
@@ -212,7 +228,7 @@ export const PlayerProvider = ({ children }) => {
       
       // Now play next song
       console.log('🎵 [AUTO-FINISH] Calling playNext()');
-      playNext();
+      playNext(true);
     }
   }, [duration]);
 
@@ -223,6 +239,37 @@ export const PlayerProvider = ({ children }) => {
         return;
       }
       
+      // --- BACKGROUND CHECKS (Run on every status update) ---
+      const now = Date.now();
+
+      // 1. Sleep Timer Check
+      if (activeSleepTimerTargetRef.current && now >= activeSleepTimerTargetRef.current) {
+        if (status.isPlaying) {
+          console.log('⏰ [Background] Sleep Timer Reached. Pausing...');
+          activeSleepTimerTargetRef.current = null; // Clear timer
+          setSleepTimerTarget(null); // Clear state
+          sound.pauseAsync(); // Pause immediately
+          setIsPlaying(false);
+        }
+      }
+
+      // 2. Auto-Stop Inactivity Check
+      // Only if: Playing AND Not Infinite Play AND No Active Sleep Timer
+      if (status.isPlaying && !isInfinitePlayRef.current && !activeSleepTimerTargetRef.current) {
+         const diff = now - lastInteractionRef.current;
+         // DEMO: 1 minute = 1 * 60 * 1000
+         // REAL: 30 minutes = 30 * 60 * 1000
+         if (diff > 1 * 60 * 1000) {
+           console.log('💤 [Background] AutoStop: User inactive for 1 min. Pausing...');
+           sound.pauseAsync();
+           setIsPlaying(false);
+           setShowContinueModal(true);
+           // Reset interaction to prevent loop (wait for user action)
+           lastInteractionRef.current = Date.now(); 
+         }
+      }
+      // -----------------------------------------------------
+
       // Skip processing if currently seeking to avoid false finish detection
       if (isSeekingRef.current) {
         return;
@@ -275,54 +322,37 @@ export const PlayerProvider = ({ children }) => {
         // Normal position update when not seeking
         setPosition(newPosition);
         lastUpdatedPositionRef.current = newPosition;
+
+
       }
       
-      // Get duration from song model (stored in seconds in database)
-      const song = currentSongRef.current;
-      if (song?.duration) {
-        // Duration from database is in seconds, convert to milliseconds
-        const songDurationMs = song.duration * 1000;
+      // Get duration from song model... (unchanged)
+      if (currentSongRef.current?.duration) {
+        const songDurationMs = currentSongRef.current.duration * 1000;
         setDuration(songDurationMs);
       }
       
-      // Update playing state
       setIsPlaying(status.isPlaying || false);
       
-      // Get song duration for finish detection
-      // Prefer actual duration from audio status if available, otherwise fallback to DB
       const audioDurationMs = status.durationMillis || 0;
-      const dbDurationMs = (song?.duration || 0) * 1000;
+      const dbDurationMs = (currentSongRef.current?.duration || 0) * 1000;
       const targetDurationMs = audioDurationMs > 0 ? audioDurationMs : dbDurationMs;
       
-      // Handle playback finished - use didJustFinish or check if at end
-      
-      // Determine if we are effectively at the end (within 1s)
-      // Use 1500ms threshold to be safe with 1000ms update interval
       const isAtEnd = targetDurationMs > 0 && 
-                     status.positionMillis >= targetDurationMs - 1500;
+                     status.positionMillis >= targetDurationMs - 500; // Smaller threshold for crossfade
 
       if (status.didJustFinish && !lastDidFinishRef.current) {
         console.log('🎵 [Player] didJustFinish fired');
         lastDidFinishRef.current = true;
         handlePlaybackFinished();
       } else if (isAtEnd && !lastDidFinishRef.current) {
-          // Manual finish detection
-          // This catches cases where didJustFinish doesn't fire but we are at the end
-          // EVEN IF isPlaying is true (stuck at end)
-          console.log('🎵 [Player] Manual finish detection triggered', {
-            position: status.positionMillis,
-            duration: targetDurationMs,
-            isPlaying: status.isPlaying
-          });
           lastDidFinishRef.current = true;
           handlePlaybackFinished();
       } else if (!isAtEnd && status.isPlaying) {
-        // Reset flag ONLY if we are playing and NOT at the end
-        // This prevents re-firing while validly playing comfortably in the middle
         lastDidFinishRef.current = false;
       }
     });
-  }, [handlePlaybackFinished]);
+  }, [handlePlaybackFinished, playNext]);
 
   const checkSongAccess = async (song) => {
     // 1. Check for unreleased album (local check for speed)
@@ -353,10 +383,12 @@ export const PlayerProvider = ({ children }) => {
   };
 
   const playSong = async (song, songList = null, index = 0, playlistData = null) => {
+    updateInteraction();
     await playSongInternal(song, songList, index, playlistData, false);
   };
 
   const togglePlayPause = async () => {
+    updateInteraction();
     if (!playerRef.current) return;
 
     try {
@@ -462,32 +494,31 @@ export const PlayerProvider = ({ children }) => {
 
   // Internal playSong function that can skip access check
   const playSongInternal = async (song, songList = null, index = 0, playlistData = null, skipAccessCheck = false) => {
-    // Increment request ID to invalidate any previous pending requests
     const requestId = ++playbackRequestIdRef.current;
     
     try {
-      // 1. Calculate duration for the current (old) song BEFORE resetting refs
+      // 1. Calculate duration for the old song
       let finalDuration = accumulatedDurationRef.current;
       if (playStartTimeRef.current) {
         finalDuration += (Date.now() - playStartTimeRef.current);
       }
       const finalDurationSeconds = Math.floor(finalDuration / 1000);
       
-      // 2. Capture old song from REF to ensure we have the latest data even if state is stale
-      const oldSong = currentSongRef.current; // CHANGED FROM currentSong TO currentSongRef.current
+      const oldSong = currentSongRef.current;
       const oldPlayer = playerRef.current;
       
-      console.log('🎵 [playSongInternal] Calculating duration for old song', {
-        oldSongId: oldSong?.song_id,
-        oldSongTitle: oldSong?.title,
-        newSongId: song.song_id,
-        newSongTitle: song.title,
-        finalDuration: finalDuration,
-        finalDurationSeconds: finalDurationSeconds,
-      });
+      // 2. Stop old player immediately
+      if (oldPlayer) {
+        try {
+          await oldPlayer.unloadAsync();
+        } catch (e) {
+          console.error('Error unloading old player:', e);
+        }
+      }
 
-      // 3. Reset UI and Refs IMMEDIATELY
+      // 3. Reset UI for new song
       setPosition(0);
+      setDuration(0);
       setIsPlaying(false);
       
       playStartTimeRef.current = null;
@@ -495,47 +526,20 @@ export const PlayerProvider = ({ children }) => {
       lastDidFinishRef.current = false;
       lastUpdatedPositionRef.current = 0;
 
-      // 4. Process old song cleanup and recording in BACKGROUND
-      (async () => {
-        try {
-          // Release old player
-          if (oldPlayer) {
-            try {
-              await oldPlayer.unloadAsync();
-            } catch (e) {
-              console.error('Error unloading old player:', e);
-            }
-          }
-          
-          // Record history if we had a song and it's different
-          if (oldSong && oldSong.song_id !== song.song_id) {
-             const songDurationSeconds = Math.floor((oldSong.duration || 0) / 1000);
-             const listenPercentage = songDurationSeconds > 0 ? finalDurationSeconds / songDurationSeconds : 0;
-             const isCompleted = listenPercentage >= 0.9;
-             
-             console.log('🎵 [playSongInternal] Recording history for old song', {
-               oldSongId: oldSong.song_id,
-               finalDurationSeconds: finalDurationSeconds,
-               isCompleted: isCompleted,
-             });
-             
-             await songService.playSong(oldSong.song_id, finalDurationSeconds, isCompleted);
-          } else {
-            console.log('🎵 [playSongInternal] Skipping history record', {
-              hasOldSong: !!oldSong,
-              oldSongId: oldSong?.song_id,
-              isSameSong: oldSong?.song_id === song.song_id,
-            });
-          }
-        } catch (err) {
-          console.error('❌ [playSongInternal] Background cleanup error:', err);
-        }
-      })();
-      
-      // 5. Check access before playing (unless skipped)
+      // BACKGROUND: Record history for old song
+      if (oldSong && oldSong.song_id !== song.song_id) {
+        (async () => {
+          const songDurSec = Math.floor((oldSong.duration || 0) / 1000);
+          const listenPct = songDurSec > 0 ? finalDurationSeconds / songDurSec : 0;
+          await songService.playSong(oldSong.song_id, finalDurationSeconds, listenPct >= 0.9);
+        })();
+      }
+
+      // 4. Check access
       if (!skipAccessCheck) {
         const accessInfo = await checkSongAccess(song);
         if (!accessInfo.hasAccess) {
+
           if (accessInfo.reason === 'Album not yet released') {
              const releaseDate = song.album_release_date ? new Date(song.album_release_date) : null;
              const formattedDate = releaseDate ? releaseDate.toLocaleString('vi-VN', {
@@ -548,7 +552,6 @@ export const PlayerProvider = ({ children }) => {
                [{ text: 'Đã hiểu' }]
              );
           } else {
-            // Show premium access modal
             setPremiumSong(song);
             setShowPremiumModal(true);
           }
@@ -556,117 +559,38 @@ export const PlayerProvider = ({ children }) => {
         }
       }
 
-      // Reset playback tracking for new song
-      playStartTimeRef.current = Date.now();
-      accumulatedDurationRef.current = 0;
-
-
-      // Check if playing from album and if new song is from different album
-      const isPlayingAlbum = await AsyncStorage.getItem('isPlayingAlbum');
-      const currentAlbumId = await AsyncStorage.getItem('currentAlbumId');
-      
-      if (isPlayingAlbum === '1' && currentAlbumId) {
-        // If new song is not from the same album, reset flag
-        if (song.album_id?.toString() !== currentAlbumId) {
-          await AsyncStorage.setItem('isPlayingAlbum', '0');
-          await AsyncStorage.removeItem('currentAlbumId');
-        }
-      }
-
-      // Check if playing from playlist and if new song is from different playlist
-      const isPlayingPlaylist = await AsyncStorage.getItem('isPlayingPlaylist');
-      const currentPlaylistId = await AsyncStorage.getItem('currentPlaylistId');
-      
-      if (isPlayingPlaylist === '1' && currentPlaylistId) {
-        // Check if the song is from the same playlist
-        let isFromSamePlaylist = false;
-        
-        // If playlistData is provided, check playlist_id
-        if (playlistData?.playlist_id) {
-          isFromSamePlaylist = playlistData.playlist_id.toString() === currentPlaylistId;
-        }
-        
-        // If not from same playlist and songList is provided, check if song is in the list
-        if (!isFromSamePlaylist && songList) {
-          const songInList = songList.some(s => s.song_id === song.song_id);
-          if (songInList) {
-            // Song is in the provided list, assume it's from the same playlist
-            isFromSamePlaylist = true;
-          }
-        }
-        
-        // If not from same playlist, reset flag
-        if (!isFromSamePlaylist) {
-          await AsyncStorage.setItem('isPlayingPlaylist', '0');
-          await AsyncStorage.removeItem('currentPlaylistId');
-        }
-      }
-
-      // Update currentSong immediately with full song data
-      setCurrentSong(song);
-      setIsPlaying(false); // Set to false first, will be set to true after sound loads
-      
-      // Set duration from song model (stored in seconds in database)
-      if (song.duration) {
-        const songDurationMs = song.duration * 1000; // Convert seconds to milliseconds
-        setDuration(songDurationMs);
-      }
-      
-      // Create history record immediately (with 0 duration)
-      // This ensures the song appears in history even if user listens for a short time
-      songService.playSong(song.song_id, 0, false).catch(err => console.error('Error creating history record:', err));
-
-      // Check if a new request has started while we were processing
-      if (requestId !== playbackRequestIdRef.current) {
-        return;
-      }
-
-      // Create new player with the song source
-      console.log('🎵 [playSongInternal] Creating new player for:', song.title);
-      
-      // 6. Load Sound (expo-av)
-      console.log('🎵 [expo-av] Loading:', song.title);
-      
+      // 5. Cloudinary & AAC Fix
       let uri = song.file_url;
-      // AUTO-FIX: Convert AAC to MP3 via Cloudinary for better seeking on Android
-      // Android MediaPlayer struggles with seeking streamed AAC files.
-      // Cloudinary can transcode on-the-fly by simply changing the extension.
       if (typeof uri === 'string' && uri.includes('cloudinary.com') && uri.toLowerCase().endsWith('.aac')) {
-         console.log('🎵 [fix-aac] Detected AAC on Cloudinary. Requesting MP3 version for seek stability.');
          uri = uri.replace(/\.aac$/i, '.mp3');
       }
 
-      // Create sound with progress update interval
+      // 6. Create new sound object
       const { sound: newSound } = await Audio.Sound.createAsync(
         { uri: uri },
         { 
-          shouldPlay: false,
-          progressUpdateIntervalMillis: 1000, // Update every second
+          shouldPlay: true, 
+          volume: 1.0, 
+          progressUpdateIntervalMillis: 1000
         }
       );
-      
-      playerRef.current = newSound;
-      console.log('🎵 [playSongInternal] playerRef.current SET:', !!playerRef.current);
-      
-      // Setup status listener AFTER creating the sound
-      setupPlayerStatusListener(newSound);
-      
-      // Check if a new request has started while we were loading
+
       if (requestId !== playbackRequestIdRef.current) {
         await newSound.unloadAsync();
         return;
       }
-      
-      // Play the sound
-      await newSound.playAsync();
-      setIsPlaying(true);
 
+      playerRef.current = newSound;
+      setupPlayerStatusListener(newSound);
+      setCurrentSong(song);
+      
+      if (song.duration) {
+        setDuration(song.duration * 1000);
+      }
+
+      // Playlist tracking
       if (songList) {
-        // Filter out premium songs user doesn't have access to (async, but we'll do it in background)
-        // For now, save all songs but check access when playing
         originalPlaylistRef.current = [...songList];
-        
-        // If shuffle is enabled, create a shuffled copy
         if (isShuffleRef.current) {
           const shuffled = [...songList].sort(() => Math.random() - 0.5);
           const shuffledIndex = shuffled.findIndex(s => s.song_id === song.song_id);
@@ -677,24 +601,22 @@ export const PlayerProvider = ({ children }) => {
           setCurrentIndex(index);
         }
       }
+      setCurrentPlaylist(playlistData || null);
 
-      if (playlistData) {
-        setCurrentPlaylist(playlistData);
-      } else {
-        setCurrentPlaylist(null);
-      }
+      playStartTimeRef.current = Date.now();
+      setIsPlaying(true);
 
-      // Refresh song data after a delay to get updated listen_count and rating from backend
-      // (Only updates after user has listened >50% of the song)
-      setTimeout(() => {
-        refreshCurrentSong(song.song_id);
-      }, 1500);
+      songService.playSong(song.song_id, 0, false).catch(() => {});
+      setTimeout(() => refreshCurrentSong(song.song_id), 1500);
     } catch (error) {
       console.error('Error playing song:', error);
     }
   };
 
-  const playNext = async () => {
+  const playNext = async (isAuto = false) => {
+    // Check strict true because UI calls pass event object which is truthy
+    const isAutomatic = isAuto === true;
+    if (!isAutomatic) updateInteraction();
     // Use playlist from ref to avoid stale state in callbacks
     const currentPlaylist = playlistRef.current.length > 0 ? playlistRef.current : originalPlaylistRef.current;
     if (currentPlaylist.length === 0) {
@@ -708,6 +630,7 @@ export const PlayerProvider = ({ children }) => {
   };
 
   const toggleRepeat = () => {
+    updateInteraction();
     setIsRepeat(prev => {
       const newValue = !prev;
       isRepeatRef.current = newValue;
@@ -730,6 +653,7 @@ export const PlayerProvider = ({ children }) => {
   };
 
   const toggleShuffle = () => {
+    updateInteraction();
     setIsShuffle(prev => {
       const newValue = !prev;
       isShuffleRef.current = newValue;
@@ -775,6 +699,7 @@ export const PlayerProvider = ({ children }) => {
   };
 
   const playPrevious = async () => {
+    updateInteraction();
     const currentPlaylist = playlistRef.current.length > 0 ? playlistRef.current : originalPlaylistRef.current;
     if (currentPlaylist.length === 0) return;
     
@@ -818,6 +743,7 @@ export const PlayerProvider = ({ children }) => {
   };
 
   const seekTo = async (value) => {
+    updateInteraction();
     console.log('🎯 [seekTo] ===== START SEEK =====');
     console.log('🎯 [seekTo] Input value:', value, 'ms');
     console.log('🎯 [seekTo] Current position state:', position, 'ms');
@@ -1044,10 +970,12 @@ export const PlayerProvider = ({ children }) => {
 
   // Sleep Timer Logic
   const startSleepTimer = (minutes) => {
-    // Clear existing timer if any
-    if (sleepTimerRef.current) {
-      clearTimeout(sleepTimerRef.current);
-    }
+    updateInteraction();
+    setIsInfinitePlay(false);
+    isInfinitePlayRef.current = false;
+    
+    // Clear existing timer if any (ref-based now)
+    activeSleepTimerTargetRef.current = null;
 
     if (minutes <= 0) {
       setSleepTimerTarget(null);
@@ -1058,52 +986,38 @@ export const PlayerProvider = ({ children }) => {
     const targetTime = Date.now() + durationMs;
     
     setSleepTimerTarget(targetTime);
+    activeSleepTimerTargetRef.current = targetTime;
     
     console.log(`⏰ [SleepTimer] Set for ${minutes} minutes. Ends at: ${new Date(targetTime).toLocaleTimeString()}`);
-
-    sleepTimerRef.current = setTimeout(async () => {
-      console.log('⏰ [SleepTimer] Time up! Pausing player.');
-      // Stop timer first
-      setSleepTimerTarget(null);
-      
-      // PAUSE instead of STOP
-      if (playerRef.current) {
-         try {
-           const status = await playerRef.current.getStatusAsync();
-           if (status.isPlaying) {
-             // Use togglePlayPause logic but force pause
-             if (playStartTimeRef.current) {
-                const playDuration = Date.now() - playStartTimeRef.current;
-                accumulatedDurationRef.current += playDuration;
-                playStartTimeRef.current = null;
-             }
-             await playerRef.current.pauseAsync();
-             setIsPlaying(false);
-           }
-         } catch (e) {
-           console.error('Error pausing in Sleep Timer:', e);
-         }
-      }
-      // Do NOT call stopPlayer() to keep UI state
-      // stopPlayer(); 
-    }, durationMs);
+    // No setTimeout needed anymore, handled in onPlaybackStatusUpdate
   };
 
   const cancelSleepTimer = () => {
-    if (sleepTimerRef.current) {
-      clearTimeout(sleepTimerRef.current);
-      sleepTimerRef.current = null;
-    }
+    updateInteraction();
+    setIsInfinitePlay(false); 
+    isInfinitePlayRef.current = false;
+    
+    activeSleepTimerTargetRef.current = null;
     setSleepTimerTarget(null);
     console.log('⏰ [SleepTimer] Cancelled');
+  };
+
+  const enableInfinitePlay = () => {
+    updateInteraction();
+    activeSleepTimerTargetRef.current = null;
+    setSleepTimerTarget(null);
+    
+    // Enable infinite mode
+    setIsInfinitePlay(true);
+    isInfinitePlayRef.current = true;
+    console.log('⏰ [SleepTimer] Infinite Play Enabled (No auto-stop)');
   };
 
   // Cleanup timer on unmount
   useEffect(() => {
     return () => {
-      if (sleepTimerRef.current) {
-        clearTimeout(sleepTimerRef.current);
-      }
+      // Clean up handled by normal unmount
+      console.log('⚠️ [PlayerProvider] cleanup');
     };
   }, []);
 
@@ -1122,6 +1036,7 @@ export const PlayerProvider = ({ children }) => {
     showPurchaseModal,
     purchaseSong,
     sleepTimerTarget,
+    isInfinitePlay,
   }), [
     currentSong,
     isPlaying,
@@ -1135,6 +1050,7 @@ export const PlayerProvider = ({ children }) => {
     showPurchaseModal,
     purchaseSong,
     sleepTimerTarget,
+    isInfinitePlay,
   ]);
 
   // Progress state (updates every second)
@@ -1162,6 +1078,21 @@ export const PlayerProvider = ({ children }) => {
     }
   };
 
+  const handleContinueListening = async () => {
+    updateInteraction();
+    setShowContinueModal(false);
+    if (playerRef.current) {
+       try {
+         await playerRef.current.playAsync();
+         setIsPlaying(true);
+       } catch (e) {
+         console.error('Error resuming in handleContinueListening:', e);
+       }
+    }
+  };
+
+  // Removed useEffect interval for auto-stop - now handled in onPlaybackStatusUpdate
+
   const playerActions = React.useMemo(() => ({
     playSong,
     togglePlayPause,
@@ -1178,6 +1109,8 @@ export const PlayerProvider = ({ children }) => {
     setShowPurchaseModal,
     startSleepTimer,
     cancelSleepTimer,
+    enableInfinitePlay,
+    handleContinueListening,
   }), []); // Actions should be stable
 
   const contextValue = React.useMemo(() => ({
@@ -1189,6 +1122,10 @@ export const PlayerProvider = ({ children }) => {
     <PlayerContext.Provider value={contextValue}>
       <PlayerProgressContext.Provider value={playerProgress}>
         {children}
+        <ContinueListeningModal
+          visible={showContinueModal}
+          onContinue={handleContinueListening}
+        />
         <PremiumAccessModal
           visible={showPremiumModal}
           song={premiumSong}

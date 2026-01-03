@@ -40,7 +40,8 @@ const FullPlayerScreen = ({ navigation, route }) => {
     currentSong, isPlaying, togglePlayPause, playNext, playPrevious, seekTo, 
     currentPlaylist, playlist, currentIndex, playSong, refreshCurrentSong, 
     isRepeat, toggleRepeat, isShuffle, toggleShuffle,
-    startSleepTimer, cancelSleepTimer, sleepTimerTarget 
+    startSleepTimer, cancelSleepTimer, sleepTimerTarget,
+    isInfinitePlay, enableInfinitePlay
   } = usePlayer();
   const { position, duration } = usePlayerProgress();
   
@@ -83,9 +84,12 @@ const FullPlayerScreen = ({ navigation, route }) => {
   const [loadingRelatedSongs, setLoadingRelatedSongs] = useState(false);
   const [loadingFavorite, setLoadingFavorite] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [isSeeking, setIsSeeking] = useState(false);
+  const [seekingValue, setSeekingValue] = useState(0);
   const [successMessage, setSuccessMessage] = useState('');
   const [isPlayingAlbum, setIsPlayingAlbum] = useState(false);
   const [isPlayingPlaylist, setIsPlayingPlaylist] = useState(false);
+  const [sleepSliderValue, setSleepSliderValue] = useState(30); // Default 30 mins
   const nextSongsRequestIdRef = React.useRef(0);
 
   const coverScale = new Animated.Value(1);
@@ -523,28 +527,43 @@ WHERE song_id = ${currentSong.song_id};`;
 
           {/* Progress Bar */}
           <View style={styles.progressContainer}>
+            {isSeeking && (
+              <View 
+                style={[
+                  styles.seekingTooltip, 
+                  { 
+                    left: `${(seekingValue / (duration || 1)) * 100}%`,
+                  }
+                ]}
+              >
+                <Text style={styles.seekingTooltipText}>{formatTime(seekingValue)}</Text>
+                <View style={[styles.tooltipArrow, { borderTopColor: isPremiumContent ? COLORS.warning : COLORS.primary }]} />
+              </View>
+            )}
             <Slider
               style={styles.slider}
               minimumValue={0}
               maximumValue={(duration > 0 ? duration : (currentSong?.duration > 10000 ? currentSong.duration : (currentSong?.duration * 1000 || 0))) || 100}
-              // Use position if not being dragged, otherwise rely on internal slider logic or update via local state if strictly controlled
-              // But standard Slider handles internal thumb well if value updates are paused.
-              // Better approach:
               value={position}
-              onValueChange={(val) => {
-                 // Optional: Set a flag to stop position updates? 
-                 // For now, simpler usage:
-                 // The Context 'position' updates every second.
-                 // While dragging, the user might fight play updates. 
-                 // But since 'seekTo' effectively commits, we just need onSlidingComplete.
+              onSlidingStart={() => {
+                setIsSeeking(true);
+                setSeekingValue(position);
               }}
-              onSlidingComplete={seekTo}
+              onValueChange={(val) => {
+                setSeekingValue(val);
+              }}
+              onSlidingComplete={(val) => {
+                setIsSeeking(false);
+                seekTo(val);
+              }}
               minimumTrackTintColor={isPremiumContent ? COLORS.warning : COLORS.primary}
               maximumTrackTintColor={COLORS.player.progressBackground}
               thumbTintColor={isPremiumContent ? COLORS.warning : COLORS.primary}
             />
             <View style={styles.timeContainer}>
-              <Text style={styles.timeText}>{formatTime(position)}</Text>
+              <Text style={[styles.timeText, isSeeking && { color: isPremiumContent ? COLORS.warning : COLORS.primary, fontWeight: '700' }]}>
+                {formatTime(isSeeking ? seekingValue : position)}
+              </Text>
               <Text style={styles.timeText}>
                 {formatTime(duration > 0 ? duration : (currentSong?.duration > 10000 ? currentSong.duration : (currentSong?.duration * 1000 || 0)))}
               </Text>
@@ -887,45 +906,137 @@ WHERE song_id = ${currentSong.song_id};`;
           <View style={styles.centerModalOverlay}>
             <TouchableWithoutFeedback>
               <View style={styles.centerModalContainer}>
-                <Text style={styles.modalTitle}>Hẹn giờ tắt nhạc</Text>
+                <Text style={styles.modalTitle}>
+                  {sleepTimerTarget ? 'Đang hẹn giờ tắt nhạc' : (isInfinitePlay ? 'Đang phát mãi mãi' : 'Hẹn giờ tắt nhạc')}
+                </Text>
                 
-                {sleepTimerTarget && (
-                  <View style={styles.activeTimerContainer}>
-                    <Ionicons name="time" size={20} color={COLORS.warning} />
-                    <Text style={styles.activeTimerText}>
-                      Tắt lúc {new Date(sleepTimerTarget).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </Text>
+                {sleepTimerTarget ? (
+                  <View style={styles.activeTimerStatusContainer}>
+                    <View style={styles.activeTimerStatusIcon}>
+                      <Ionicons name="moon" size={32} color={COLORS.warning} />
+                      <View style={styles.activeTimerPulse} />
+                    </View>
+                    <View>
+                        <Text style={styles.activeTimerStatusText}>
+                          Nhạc sẽ tắt lúc
+                        </Text>
+                        <Text style={styles.activeTimerTimeText}>
+                           {new Date(sleepTimerTarget).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </Text>
+                        <Text style={styles.activeTimerRemainingText}>
+                          (Còn khoảng {Math.ceil((sleepTimerTarget - Date.now()) / 60000)} phút)
+                        </Text>
+                    </View>
                   </View>
+                ) : isInfinitePlay ? (
+                  <View style={[styles.activeTimerStatusContainer, {borderColor: COLORS.secondary, backgroundColor: 'rgba(139, 92, 246, 0.1)'}]}>
+                    <View style={[styles.activeTimerStatusIcon, {backgroundColor: 'rgba(139, 92, 246, 0.2)'}]}>
+                      <Ionicons name="infinite" size={32} color={COLORS.secondary} />
+                    </View>
+                    <View style={{flex: 1}}>
+                        <Text style={[styles.activeTimerStatusText, {color: '#C4B5FD'}]}>
+                          Chế độ phát mãi mãi
+                        </Text>
+                        <Text style={styles.activeTimerRemainingText}>
+                          Nhạc sẽ không tự dừng sau 30 phút.
+                        </Text>
+                    </View>
+                  </View>
+                ) : (
+                  <Text style={styles.noTimerText}>Chưa hẹn giờ</Text>
                 )}
 
-                <View style={styles.timerOptionsGrid}>
-                  {[1, 15, 30, 45, 60].map((min) => (
-                    <TouchableOpacity
-                      key={min}
-                      style={styles.timerOptionButton}
-                      onPress={() => {
-                        startSleepTimer(min);
-                        setShowSleepTimer(false);
-                        setSuccessMessage(`Đã hẹn giờ tắt sau ${min} phút`);
-                        setShowSuccessModal(true);
-                      }}
-                    >
-                      <Text style={styles.timerOptionText}>{min} phút</Text>
-                    </TouchableOpacity>
-                  ))}
+                <View style={styles.sliderContainer}>
+                  <Text style={styles.sliderValueText}>
+                    {sleepSliderValue < 60 
+                      ? `${Math.floor(sleepSliderValue)} phút` 
+                      : `${Math.floor(sleepSliderValue / 60)} giờ ${Math.floor(sleepSliderValue % 60)} phút`}
+                  </Text>
+                  
+                  <Slider
+                    style={styles.sleepSlider}
+                    minimumValue={1}
+                    maximumValue={300}
+                    step={1}
+                    value={sleepSliderValue}
+                    onValueChange={setSleepSliderValue}
+                    minimumTrackTintColor={COLORS.warning}
+                    maximumTrackTintColor="rgba(255,255,255,0.2)"
+                    thumbTintColor={COLORS.warning}
+                  />
+                  
+                  <View style={styles.rulerContainer}>
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <View key={i} style={styles.rulerTickGroup}>
+                         <View style={styles.rulerLineMajor} />
+                         <Text style={styles.rulerText}>{i}h</Text>
+                      </View>
+                    ))}
+                    {/* Absolute positioned track for minor ticks could be complex, simplifying to just major hour marks nicely spaced or using space-between with intermediate ticks */}
+                  </View>
+                  
+                  {/* Detailed ruler with minor ticks */}
+                  <View style={styles.detailedRuler}>
+                     {Array.from({ length: 21 }).map((_, i) => { // 0 to 20 (every 15 mins? 5h * 4 = 20 segments)
+                        const isHour = i % 4 === 0;
+                        if (isHour) return null; // handled by major above, or just overlay
+                        return <View key={i} style={styles.rulerLineMinor} />;
+                     })}
+                  </View>
                 </View>
 
-                {sleepTimerTarget && (
-                  <TouchableOpacity
-                    style={styles.cancelTimerButton}
-                    onPress={() => {
-                      cancelSleepTimer();
-                      setShowSleepTimer(false);
-                    }}
+                <TouchableOpacity
+                  style={styles.setTimerButton}
+                  onPress={() => {
+                    startSleepTimer(Math.floor(sleepSliderValue));
+                    setShowSleepTimer(false);
+                    setSuccessMessage(`Đã hẹn giờ tắt sau ${Math.floor(sleepSliderValue)} phút`);
+                    setShowSuccessModal(true);
+                  }}
+                >
+                  <LinearGradient
+                    colors={[COLORS.warning, '#F97316']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={styles.runTimerGradient}
                   >
-                    <Text style={styles.cancelTimerText}>Hủy hẹn giờ</Text>
-                  </TouchableOpacity>
-                )}
+                    <Text style={styles.setTimerText}>Bắt đầu hẹn giờ</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.playForeverButton,
+                    isInfinitePlay && styles.playForeverButtonActive
+                  ]}
+                  onPress={() => {
+                    if (isInfinitePlay) {
+                       // If already infinite, maybe cancel it (toggle back to normal)?
+                       cancelSleepTimer(); // This resets everything to default
+                       setShowSleepTimer(false);
+                       setSuccessMessage('Đã tắt chế độ phát mãi mãi');
+                       setShowSuccessModal(true);
+                    } else {
+                       enableInfinitePlay();
+                       setShowSleepTimer(false);
+                       setSuccessMessage('Đã bật chế độ phát mãi mãi');
+                       setShowSuccessModal(true);
+                    }
+                  }}
+                >
+                  <Ionicons 
+                    name="infinite" 
+                    size={24} 
+                    color={isInfinitePlay ? COLORS.white : COLORS.textSecondary} 
+                    style={{marginRight: 8}} 
+                  />
+                  <Text style={[
+                     styles.playForeverText,
+                     isInfinitePlay && { color: COLORS.white }
+                  ]}>
+                    {isInfinitePlay ? 'Đang phát mãi mãi' : 'Phát mãi mãi'}
+                  </Text>
+                </TouchableOpacity>
                 
                 <TouchableOpacity
                   style={styles.closeModalButton}
@@ -1393,27 +1504,61 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 22,
     fontWeight: '800',
-    marginBottom: 24,
+    marginBottom: 20,
     textAlign: 'center',
     letterSpacing: 0.5,
   },
-  activeTimerContainer: {
+  noTimerText: {
+    color: COLORS.textSecondary,
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 24,
+    fontStyle: 'italic',
+  },
+  activeTimerStatusContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(245, 158, 11, 0.15)', // Richer orange
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
     borderRadius: 20,
+    padding: 20,
     marginBottom: 24,
-    gap: 10,
     borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.4)',
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    gap: 16,
   },
-  activeTimerText: {
-    color: '#F59E0B',
-    fontSize: 16,
-    fontWeight: '700',
+  activeTimerStatusIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(245, 158, 11, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  activeTimerPulse: {
+     position: 'absolute',
+     width: '100%',
+     height: '100%',
+     borderRadius: 30,
+     borderWidth: 2,
+     borderColor: COLORS.warning,
+     opacity: 0.5,
+  },
+  activeTimerStatusText: {
+    color: '#FDE68A',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  activeTimerTimeText: {
+    color: '#FFF',
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  activeTimerRemainingText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
   },
   timerOptionsGrid: {
     flexDirection: 'row',
@@ -1451,6 +1596,106 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
+  sliderContainer: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 24,
+    paddingHorizontal: 10,
+  },
+  sliderValueText: {
+    color: COLORS.white,
+    fontSize: 28,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  sleepSlider: {
+    width: '100%',
+    height: 40,
+  },
+  sliderLabels: {
+    display: 'none',
+  },
+  detailedRuler: {
+    position: 'absolute',
+    bottom: 22, // adjust based on slider height
+    left: 10,
+    right: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    height: 10,
+    zIndex: -1,
+    opacity: 0.5,
+  },
+  rulerContainer: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
+    marginTop: -10, // Pull up closer to slider
+  },
+  rulerTickGroup: {
+    alignItems: 'center',
+    width: 20,
+  },
+  rulerLineMajor: {
+    width: 2,
+    height: 8,
+    backgroundColor: 'rgba(255,255,255,0.4)',
+    marginBottom: 4,
+  },
+  rulerLineMinor: {
+    width: 1,
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  rulerText: {
+    color: COLORS.textSecondary,
+    fontSize: 10,
+  },
+  setTimerButton: {
+    width: '100%',
+    borderRadius: 24,
+    overflow: 'hidden',
+    marginBottom: 16,
+    shadowColor: COLORS.warning,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  runTimerGradient: {
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  setTimerText: {
+    color: '#000',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  playForeverButton: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    paddingVertical: 14,
+    borderRadius: 24,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  playForeverButtonActive: {
+    backgroundColor: COLORS.secondary, // Or primary
+    borderColor: COLORS.secondary,
+  },
+  playForeverText: {
+     color: COLORS.textSecondary,
+     fontSize: 16,
+     fontWeight: '600',
+  },
   closeModalButton: {
     width: '100%',
     paddingVertical: 12,
@@ -1462,8 +1707,33 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-
+  // Seeking styles
+  seekingTooltip: {
+    position: 'absolute',
+    top: -45,
+    width: 60,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    borderRadius: 8,
+    paddingVertical: 4,
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  seekingTooltipText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  tooltipArrow: {
+    position: 'absolute',
+    bottom: -6,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderTopWidth: 6,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+  },
 });
 
 export default FullPlayerScreen;
-

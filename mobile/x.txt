@@ -1,0 +1,13 @@
+2. Quản lý hàng chờ (Queue Management)
+Lý do: Hiện tại trang FullPlayer có phần "Tiếp theo", nhưng có vẻ người dùng chưa thể thay đổi thứ tự (Sắp xếp lại) hoặc xóa bài khỏi danh sách đang chờ một cách chủ động (Drag & Drop).
+3. Cá nhân hóa mạnh mẽ hơn (Personalization)
+Daily Mix / Flow: Tạo các danh sách phát tự động dựa trên gu âm nhạc của từng người dùng (ví dụ: "Nhạc bạn nghe nhiều nhất tuần qua").
+Khám phá (Discovery): Tính năng "Radio bài hát" - tự động phát các bài tương tự sau khi danh sách hiện tại kết thúc.
+4. Tính năng Xã hội (Social Features)
+Follow: Bạn đã có followService, có thể phát triển thêm màn hình xem danh sách Nghệ sĩ đang theo dõi hoặc hoạt động của bạn bè.
+Chia sẻ: Tạo ảnh đẹp (card) chứa QR bài hát để chia sẻ lên Story Facebook/Instagram.
+5. Tối ưu UX/UI (Polishing)
+Crossfade: Hiệu ứng chuyển bài mượt mà (bài cũ nhỏ dần, bài mới to dần lên).
+Search thông minh: Gợi ý ngay khi đang gõ (Instant Search) và lưu lịch sử tìm kiếm gần đây.
+6. Trải nghiệm đa thiết bị
+Metadata trên khóa màn hình: Đảm bảo điều khiển được nhạc, hiện ảnh bìa ngay cả khi khóa màn hình (thông qua react-native-track-player nếu bạn chưa dùng).

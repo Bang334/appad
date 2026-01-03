@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useState, useRef, memo } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,8 @@ import { useAuth } from '../../context/AuthContext';
 import { usePlayer, usePlayerProgress } from '../../context/PlayerContext';
 import { COLORS, SIZES } from '../../config/theme';
 import Slider from '@react-native-community/slider';
+
+const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
 
 const MiniPlayer = ({ bottomOffset, currentRouteName }) => {
   const insets = useSafeAreaInsets();
@@ -96,14 +98,34 @@ const MiniPlayer = ({ bottomOffset, currentRouteName }) => {
     return 0;
   }, [duration, currentSong?.duration]);
 
-  const [isCollapsed, setIsCollapsed] = React.useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isSeeking, setIsSeeking] = useState(false);
+  const [seekingValue, setSeekingValue] = useState(0);
 
   // Animation values
-  const playButtonScale = React.useRef(new Animated.Value(1)).current;
-  const haloScale = React.useRef(new Animated.Value(1)).current;
-  const haloOpacity = React.useRef(new Animated.Value(0)).current;
-  const pulseAnimation = React.useRef(null);
-  const haloAnimation = React.useRef(null);
+  const playButtonScale = useRef(new Animated.Value(1)).current;
+  const haloScale = useRef(new Animated.Value(1)).current;
+  const haloOpacity = useRef(new Animated.Value(0)).current;
+  const pulseAnimation = useRef(null);
+  const haloAnimation = useRef(null);
+  const bottomAnim = useRef(new Animated.Value(calculatedBottom)).current;
+
+  const tabOffsetAnim = useRef(new Animated.Value(isOnMainTabScreen ? -baseTabBarHeight : 0)).current;
+
+  // Animate TabBar offset using translateY for better performance (Native Driver)
+  useEffect(() => {
+    Animated.spring(tabOffsetAnim, {
+      toValue: isOnMainTabScreen ? -baseTabBarHeight : 0,
+      friction: 9,
+      tension: 50,
+      useNativeDriver: true,
+    }).start();
+  }, [isOnMainTabScreen]);
+
+  // For collapsed state, we still need a slight layout adjustment for safe area
+  const baseBottom = bottomOffset !== undefined 
+    ? bottomOffset + safeAreaBottom + 8
+    : safeAreaBottom + 8;
 
   useEffect(() => {
     if (isPlaying && !isCollapsed) {
@@ -202,10 +224,13 @@ const MiniPlayer = ({ bottomOffset, currentRouteName }) => {
 
   if (isCollapsed) {
     return (
-      <TouchableOpacity
+      <AnimatedTouchableOpacity
         style={[
           styles.collapsedContainer, 
-          { bottom: calculatedBottom + 20 },
+          { 
+            bottom: baseBottom + 12,
+            transform: [{ translateY: tabOffsetAnim }]
+          },
           isPremiumContent && {
             borderColor: COLORS.warning,
             backgroundColor: '#2d2201',
@@ -223,15 +248,18 @@ const MiniPlayer = ({ bottomOffset, currentRouteName }) => {
             end={{ x: 1, y: 0 }}
             pointerEvents="none"
         />
-      </TouchableOpacity>
+      </AnimatedTouchableOpacity>
     );
   }
 
   return (
-    <View
+    <Animated.View
       style={[
         styles.container, 
-        { bottom: calculatedBottom },
+        { 
+          bottom: baseBottom,
+          transform: [{ translateY: tabOffsetAnim }]
+        },
         isPremiumContent && styles.premiumContainer
       ]}
     >
@@ -352,6 +380,20 @@ const MiniPlayer = ({ bottomOffset, currentRouteName }) => {
       </View>
 
       <View style={styles.progressWrapper}>
+        {isSeeking && (
+          <View 
+            style={[
+              styles.seekingTooltip, 
+              { 
+                left: `${(seekingValue / (displayDuration || 1)) * 100}%`,
+                transform: [{ translateX: -20 }] // Center the 40px width tooltip
+              }
+            ]}
+          >
+            <Text style={styles.seekingTooltipText}>{formatTime(seekingValue)}</Text>
+            <View style={[styles.tooltipArrow, { borderTopColor: isPremiumContent ? COLORS.warning : COLORS.primary }]} />
+          </View>
+        )}
         <Slider
           style={styles.slider}
           minimumValue={0}
@@ -359,15 +401,29 @@ const MiniPlayer = ({ bottomOffset, currentRouteName }) => {
           value={position}
           minimumTrackTintColor={isPremiumContent ? COLORS.warning : COLORS.primary}
           maximumTrackTintColor={COLORS.border}
+
+          
           thumbTintColor={isPremiumContent ? COLORS.warning : COLORS.primary}
-          onSlidingComplete={seekTo}
+          onSlidingStart={() => {
+            setIsSeeking(true);
+            setSeekingValue(position);
+          }}
+          onValueChange={(val) => {
+            setSeekingValue(val);
+          }}
+          onSlidingComplete={(val) => {
+            setIsSeeking(false);
+            seekTo(val);
+          }}
         />
         <View style={styles.progressTimes}>
-          <Text style={styles.progressTime}>{formatTime(position)}</Text>
+          <Text style={[styles.progressTime, isSeeking && { color: isPremiumContent ? COLORS.warning : COLORS.primary, fontWeight: '700' }]}>
+            {formatTime(isSeeking ? seekingValue : position)}
+          </Text>
           <Text style={styles.progressTime}>{formatTime(displayDuration)}</Text>
         </View>
       </View>
-    </View>
+    </Animated.View>
   );
 };
 
@@ -566,6 +622,33 @@ const styles = StyleSheet.create({
     height: '50%', // Upper half shine
     opacity: 0.5,
   },
+  // Seeking styles
+  seekingTooltip: {
+    position: 'absolute',
+    top: -35,
+    width: 45,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    borderRadius: 6,
+    paddingVertical: 2,
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  seekingTooltipText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  tooltipArrow: {
+    position: 'absolute',
+    bottom: -4,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 4,
+    borderRightWidth: 4,
+    borderTopWidth: 4,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+  },
 });
 
-export default React.memo(MiniPlayer);
+export default memo(MiniPlayer);
