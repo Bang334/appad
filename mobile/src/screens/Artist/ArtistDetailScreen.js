@@ -15,6 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../../config/theme';
 import { artistService } from '../../services/artistService';
+import { albumService } from '../../services/albumService';
 import { songService } from '../../services/songService';
 import { followService } from '../../services/followService';
 import { usePlayer } from '../../context/PlayerContext';

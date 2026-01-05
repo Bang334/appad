@@ -259,7 +259,7 @@ export const PlayerProvider = ({ children }) => {
          const diff = now - lastInteractionRef.current;
          // DEMO: 1 minute = 1 * 60 * 1000
          // REAL: 30 minutes = 30 * 60 * 1000
-         if (diff > 1 * 60 * 1000) {
+         if (diff > 30 * 60 * 1000) {
            console.log('💤 [Background] AutoStop: User inactive for 1 min. Pausing...');
            sound.pauseAsync();
            setIsPlaying(false);
@@ -516,15 +516,36 @@ export const PlayerProvider = ({ children }) => {
         }
       }
 
-      // 3. Reset UI for new song
+      // 3. Reset UI for new song (MOVED UP - OPTIMISTIC UPDATE)
       setPosition(0);
-      setDuration(0);
       setIsPlaying(false);
-      
-      playStartTimeRef.current = null;
-      accumulatedDurationRef.current = 0;
       lastDidFinishRef.current = false;
       lastUpdatedPositionRef.current = 0;
+      playStartTimeRef.current = null;
+      accumulatedDurationRef.current = 0;
+
+      // Update Current Song & Duration immediately
+      setCurrentSong(song);
+      if (song.duration) {
+        setDuration(song.duration * 1000);
+      } else {
+        setDuration(0);
+      }
+
+      // Update Playlist immediately
+      if (songList) {
+        originalPlaylistRef.current = [...songList];
+        if (isShuffleRef.current) {
+          const shuffled = [...songList].sort(() => Math.random() - 0.5);
+          const shuffledIndex = shuffled.findIndex(s => s.song_id === song.song_id);
+          setPlaylist(shuffled);
+          setCurrentIndex(shuffledIndex >= 0 ? shuffledIndex : 0);
+        } else {
+          setPlaylist(songList);
+          setCurrentIndex(index);
+        }
+      }
+      setCurrentPlaylist(playlistData || null);
 
       // BACKGROUND: Record history for old song
       if (oldSong && oldSong.song_id !== song.song_id) {
@@ -539,7 +560,6 @@ export const PlayerProvider = ({ children }) => {
       if (!skipAccessCheck) {
         const accessInfo = await checkSongAccess(song);
         if (!accessInfo.hasAccess) {
-
           if (accessInfo.reason === 'Album not yet released') {
              const releaseDate = song.album_release_date ? new Date(song.album_release_date) : null;
              const formattedDate = releaseDate ? releaseDate.toLocaleString('vi-VN', {
@@ -582,27 +602,8 @@ export const PlayerProvider = ({ children }) => {
 
       playerRef.current = newSound;
       setupPlayerStatusListener(newSound);
-      setCurrentSong(song);
+      // Removed redundant state updates here (MOVED UP)
       
-      if (song.duration) {
-        setDuration(song.duration * 1000);
-      }
-
-      // Playlist tracking
-      if (songList) {
-        originalPlaylistRef.current = [...songList];
-        if (isShuffleRef.current) {
-          const shuffled = [...songList].sort(() => Math.random() - 0.5);
-          const shuffledIndex = shuffled.findIndex(s => s.song_id === song.song_id);
-          setPlaylist(shuffled);
-          setCurrentIndex(shuffledIndex >= 0 ? shuffledIndex : 0);
-        } else {
-          setPlaylist(songList);
-          setCurrentIndex(index);
-        }
-      }
-      setCurrentPlaylist(playlistData || null);
-
       playStartTimeRef.current = Date.now();
       setIsPlaying(true);
 

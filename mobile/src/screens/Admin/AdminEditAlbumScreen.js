@@ -23,6 +23,7 @@ import { artistService } from '../../services/artistService';
 import { songService } from '../../services/songService';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const AdminEditAlbumScreen = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();

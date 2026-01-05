@@ -189,25 +189,18 @@ class SongController {
 
       // Get song info for history
       const song = accessInfo.song;
-      // A stream counts as premium for payout if:
-      // 1. User has premium subscription and song/album is premium
-      // 2. User purchased the song/album
-      // 3. User has artist membership for this artist
+      // A stream counts as premium for payout ONLY if:
+      // User has premium subscription and accesses premium content via that subscription.
       const isPremium = (
-        (accessInfo.accessType === 'premium' && (song.is_premium || song.album_is_premium)) ||
-        accessInfo.accessType === 'album_purchased' ||
-        accessInfo.accessType === 'artist_membership'
+        accessInfo.accessType === 'premium' && (song.is_premium || song.album_is_premium)
       );
 
-      // Calculate duration_listened and is_completed
-      // Only use data from frontend, don't assume completed
       let calculatedDuration = 0;
       let calculatedCompleted = false;
       
       if (duration_listened > 0) {
-        // Frontend sent duration data - use it
         calculatedDuration = duration_listened;
-        calculatedCompleted = is_completed; // Only true if frontend says so
+        calculatedCompleted = is_completed;
       }
 
       // Calculate listen percentage to determine if we should increment count

@@ -19,7 +19,7 @@ import { adminService } from '../../services/adminService';
 import { songService } from '../../services/songService';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
+
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 

@@ -345,21 +345,7 @@ class SongModel {
       }
     }
 
-    // If premium song, check if user has premium or purchased it
-    const [userRows] = await db.execute(
-      'SELECT is_premium, premium_expiry FROM users WHERE user_id = ?',
-      [userId]
-    );
-    
-    const user = userRows[0];
-    if (!user) return { hasAccess: false, reason: 'User not found' };
-
-    // Check if user has active premium subscription
-    if (user.is_premium && user.premium_expiry && new Date(user.premium_expiry) > new Date()) {
-      return { hasAccess: true, song, accessType: 'premium' };
-    }
-
-    // Check if user purchased this song
+    // 1. Check if user purchased this song
     const [purchaseRows] = await db.execute(
       'SELECT purchase_id FROM purchased_songs WHERE user_id = ? AND song_id = ?',
       [userId, songId]
@@ -369,7 +355,7 @@ class SongModel {
       return { hasAccess: true, song, accessType: 'purchased' };
     }
 
-    // Check if user purchased the album containing this song
+    // 2. Check if user purchased the album containing this song
     if (song.album_id) {
       const [albumPurchaseRows] = await db.execute(
         'SELECT purchase_id FROM purchased_albums WHERE user_id = ? AND album_id = ?',
@@ -381,13 +367,27 @@ class SongModel {
       }
     }
 
-    // Check if user has active artist membership for this song's artist
+    // 3. Check if user has active artist membership for this song's artist
     if (song.artist_id) {
       const ArtistMembershipModel = require('./artist-membership.model');
       const hasMembership = await ArtistMembershipModel.hasActiveMembership(userId, song.artist_id);
       if (hasMembership) {
         return { hasAccess: true, song, accessType: 'artist_membership' };
       }
+    }
+
+    // 4. Finally, check if user has active premium subscription
+    // Only check this LAST, so specific ownership (purchases) takes precedence
+    const [userRows] = await db.execute(
+      'SELECT is_premium, premium_expiry FROM users WHERE user_id = ?',
+      [userId]
+    );
+    
+    const user = userRows[0];
+    if (!user) return { hasAccess: false, reason: 'User not found' };
+
+    if (user.is_premium && user.premium_expiry && new Date(user.premium_expiry) > new Date()) {
+      return { hasAccess: true, song, accessType: 'premium' };
     }
 
     return { hasAccess: false, reason: 'Premium subscription, purchase, or artist membership required', song };

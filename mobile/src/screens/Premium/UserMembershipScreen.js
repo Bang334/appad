@@ -149,12 +149,17 @@ const UserMembershipScreen = ({ navigation }) => {
   }
 
   return (
-    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+    <View style={styles.container}>
+      <LinearGradient
+        colors={['#1A1A1A', '#000000']}
+        style={styles.background}
+      />
+      
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 }]}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
         }
       >
         {/* Header */}
@@ -163,27 +168,33 @@ const UserMembershipScreen = ({ navigation }) => {
             style={styles.backButton}
             onPress={() => navigation.goBack()}
           >
-            <Ionicons name="arrow-back" size={24} color={COLORS.text} />
+            <View style={styles.backButtonBlur}>
+               <Ionicons name="arrow-back" size={24} color="#FFF" />
+            </View>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Hội viên của tôi</Text>
+          <Text style={styles.headerTitle}>Hội viên Nghệ sĩ</Text>
           <View style={styles.placeholder} />
         </View>
 
         {/* Active Memberships Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
+            <Ionicons name="star" size={20} color="#FFD700" style={{marginRight: 8}} />
             <Text style={styles.sectionTitle}>Đang hoạt động ({activeCount})</Text>
           </View>
           
           {activeMemberships.length === 0 ? (
             <View style={styles.emptyCard}>
-              <Ionicons name="people-outline" size={48} color={COLORS.textSecondary} />
-              <Text style={styles.emptyText}>Bạn chưa có hội viên nào đang hoạt động</Text>
+              <View style={styles.emptyIconContainer}>
+                <Ionicons name="people" size={40} color="rgba(255,255,255,0.3)" />
+              </View>
+              <Text style={styles.emptyText}>Bạn chưa tham gia hội viên nào</Text>
+              <Text style={styles.emptySubText}>Ủng hộ nghệ sĩ yêu thích để nhận đặc quyền riêng</Text>
               <TouchableOpacity
                 style={styles.browseButton}
                 onPress={() => navigation.navigate('Search')}
               >
-                <Text style={styles.browseButtonText}>Khám phá nghệ sĩ</Text>
+                <Text style={styles.browseButtonText}>Khám phá ngay</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -193,71 +204,84 @@ const UserMembershipScreen = ({ navigation }) => {
               
               return (
                 <View key={membership.membership_id} style={styles.membershipCard}>
+                  {/* Subtle dark gradient for card background */}
                   <LinearGradient
-                    colors={isExpiringSoon ? ['#FFA726', '#FF9800'] : [COLORS.primary, COLORS.accent]}
-                    style={styles.membershipGradient}
+                    colors={['#2A2A2A', '#1F1F1F']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.cardContent}
                   >
-                    <View style={styles.membershipHeader}>
-                      <View style={styles.artistInfo}>
-                        {membership.artist_image ? (
-                          <Image
-                            source={{ uri: membership.artist_image }}
-                            style={styles.artistImage}
-                          />
-                        ) : (
-                          <View style={styles.artistImagePlaceholder}>
-                            <Ionicons name="person" size={24} color="#FFF" />
+                    {/* Top Stripe for aesthetic (Gold) */}
+                    <View style={styles.cardAccentStripe} />
+
+                    <View style={styles.cardMain}>
+                      <View style={styles.cardHeader}>
+                        <View style={styles.imageContainer}>
+                          {membership.artist_image ? (
+                            <Image
+                              source={{ uri: membership.artist_image }}
+                              style={styles.artistImage}
+                            />
+                          ) : (
+                            <View style={styles.artistImagePlaceholder}>
+                              <Ionicons name="person" size={24} color="rgba(255,255,255,0.5)" />
+                            </View>
+                          )}
+                          <View style={styles.verifiedBadge}>
+                            <Ionicons name="checkmark-circle" size={14} color="#4CAF50" />
                           </View>
-                        )}
-                        <View style={styles.artistDetails}>
-                          <Text style={styles.artistName}>{membership.artist_name}</Text>
-                          <Text style={styles.membershipType}>Hội viên</Text>
                         </View>
-                      </View>
-                      <View style={styles.statusBadge}>
-                        <Text style={styles.statusText}>
-                          {getStatusText(membership.status, membership.expiry_date)}
-                        </Text>
+                        
+                        <View style={styles.headerInfo}>
+                          <View style={styles.nameRow}>
+                            <Text style={styles.artistName} numberOfLines={1}>{membership.artist_name}</Text> 
+                          </View>
+                          
+                          <View style={styles.subInfoRow}>
+                             <View style={styles.tierContainer}>
+                                <Ionicons name="ribbon" size={12} color="#FFD700" />
+                                <Text style={styles.membershipTier}>Hội viên chính thức</Text>
+                             </View>
+                             <View style={styles.statusBadge}>
+                                <Text style={[
+                                  styles.statusText,
+                                  { color: isExpiringSoon ? '#FFA726' : '#4CAF50' }
+                                ]}>
+                                   {isExpiringSoon ? `Còn ${daysRemaining} ngày` : 'Đang hoạt động'}
+                                </Text>
+                             </View>
+                          </View>
+                        </View>
                       </View>
                     </View>
 
-                    <View style={styles.membershipBody}>
-                      <View style={styles.infoRow}>
-                        <Ionicons name="calendar" size={16} color="rgba(255,255,255,0.9)" />
-                        <Text style={styles.infoText}>
-                          Hết hạn: {formatDate(membership.expiry_date)}
-                        </Text>
-                      </View>
-                      <View style={styles.infoRow}>
-                        <Ionicons name="cash" size={16} color="rgba(255,255,255,0.9)" />
-                        <Text style={styles.infoText}>
-                          Đã thanh toán: {membership.price_paid?.toLocaleString('vi-VN')}đ
-                        </Text>
-                      </View>
-                      {isExpiringSoon && (
-                        <View style={styles.warningBox}>
-                          <Ionicons name="warning" size={16} color="#FFF" />
-                          <Text style={styles.warningText}>
-                            Hội viên sắp hết hạn! Còn {daysRemaining} ngày
-                          </Text>
-                        </View>
-                      )}
+                    <View style={styles.divider} />
+
+                    <View style={styles.cardStats}>
+                       <View style={styles.statItem}>
+                          <Text style={styles.statLabel}>Ngày hết hạn</Text>
+                          <Text style={styles.statValue}>{formatDate(membership.expiry_date)}</Text>
+                       </View>
+                       <View style={styles.statItem}>
+                          <Text style={styles.statLabel}>Giá gói</Text>
+                          <Text style={styles.statValue}>{Number(membership.price_paid || 0).toLocaleString('vi-VN')} đ</Text>
+                       </View>
                     </View>
 
-                    <View style={styles.membershipActions}>
+                    <View style={styles.cardActions}>
                       <TouchableOpacity
                         style={styles.viewArtistButton}
                         onPress={() => navigation.navigate('ArtistDetail', { artistId: membership.artist_id })}
                       >
-                        <Ionicons name="person" size={16} color="#FFF" />
-                        <Text style={styles.viewArtistText}>Xem nghệ sĩ</Text>
+                        <Text style={styles.viewArtistText}>Truy cập trang nghệ sĩ</Text>
+                        <Ionicons name="arrow-forward" size={16} color="#FFF" />
                       </TouchableOpacity>
+                      
                       <TouchableOpacity
                         style={styles.cancelButton}
                         onPress={() => handleCancelMembership(membership.artist_id, membership.artist_name)}
                       >
-                        <Ionicons name="close-circle" size={16} color="#FFF" />
-                        <Text style={styles.cancelButtonText}>Hủy</Text>
+                        <Ionicons name="trash-outline" size={20} color="rgba(255,255,255,0.5)" />
                       </TouchableOpacity>
                     </View>
                   </LinearGradient>
@@ -271,61 +295,53 @@ const UserMembershipScreen = ({ navigation }) => {
         {historyMemberships.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Lịch sử ({historyMemberships.length})</Text>
+              <Ionicons name="time-outline" size={20} color="rgba(255,255,255,0.5)" style={{marginRight: 8}} />
+              <Text style={[styles.sectionTitle, {color: 'rgba(255,255,255,0.7)'}]}>Lịch sử tham gia</Text>
             </View>
             
             {historyMemberships.map((membership) => (
               <TouchableOpacity
                 key={membership.membership_id}
-                style={styles.historyCard}
+                style={styles.historyItem}
                 onPress={() => navigation.navigate('ArtistDetail', { artistId: membership.artist_id })}
               >
-                <View style={styles.historyHeader}>
-                  <View style={styles.historyArtistInfo}>
+                  <View style={styles.historyLeft}>
                     {membership.artist_image ? (
-                      <Image
-                        source={{ uri: membership.artist_image }}
-                        style={styles.historyArtistImage}
-                      />
-                    ) : (
-                      <View style={styles.historyArtistImagePlaceholder}>
-                        <Ionicons name="person" size={20} color={COLORS.textSecondary} />
+                        <Image
+                          source={{ uri: membership.artist_image }}
+                          style={styles.historyImage}
+                        />
+                      ) : (
+                        <View style={styles.historyPlaceholderImg}>
+                           <Ionicons name="person" size={16} color="rgba(255,255,255,0.3)" />
+                        </View>
+                      )}
+                      
+                      <View>
+                        <Text style={styles.historyName}>{membership.artist_name}</Text>
+                        <Text style={styles.historyDateRange}>
+                          {formatDate(membership.start_date)} - {formatDate(membership.expiry_date)}
+                        </Text>
                       </View>
-                    )}
-                    <View style={styles.historyArtistDetails}>
-                      <Text style={styles.historyArtistName}>{membership.artist_name}</Text>
-                      <Text style={styles.historyDate}>
-                        {formatDate(membership.start_date)} - {formatDate(membership.expiry_date)}
-                      </Text>
-                    </View>
                   </View>
-                  <View
-                    style={[
-                      styles.historyStatusBadge,
-                      { backgroundColor: getStatusColor(membership.status, membership.expiry_date) + '20' },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.historyStatusText,
-                        { color: getStatusColor(membership.status, membership.expiry_date) },
-                      ]}
-                    >
-                      {getStatusText(membership.status, membership.expiry_date)}
-                    </Text>
+
+                  <View style={styles.historyRight}>
+                     <View style={[styles.historyBadge, 
+                        membership.status === 'expired' ? styles.badgeExpired : styles.badgeCancelled
+                     ]}>
+                        <Text style={styles.historyStatus}>
+                          {membership.status === 'expired' ? 'Hết hạn' : 'Đã hủy'}
+                        </Text>
+                     </View>
+                     <Text style={styles.historyPrice}>
+                        {membership.price_paid?.toLocaleString('vi-VN')} đ
+                     </Text>
                   </View>
-                </View>
-                <View style={styles.historyFooter}>
-                  <Text style={styles.historyPrice}>
-                    {membership.price_paid?.toLocaleString('vi-VN')}đ
-                  </Text>
-                </View>
               </TouchableOpacity>
             ))}
           </View>
         )}
       </ScrollView>
-      
     </View>
   );
 };
@@ -333,7 +349,10 @@ const UserMembershipScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: '#000',
+  },
+  background: {
+    ...StyleSheet.absoluteFillObject,
   },
   scrollView: {
     flex: 1,
@@ -345,10 +364,10 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.background,
+    backgroundColor: '#000',
   },
   loadingText: {
-    color: COLORS.textSecondary,
+    color: 'rgba(255,255,255,0.5)',
     fontSize: SIZES.md,
     marginTop: 12,
   },
@@ -365,148 +384,210 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  backButtonBlur: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   headerTitle: {
-    fontSize: SIZES.xl,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    flex: 1,
-    textAlign: 'center',
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFF',
+    letterSpacing: 0.5,
   },
   placeholder: {
     width: 40,
   },
   section: {
-    marginBottom: 24,
+    marginBottom: 32,
+    paddingHorizontal: 20,
   },
   sectionHeader: {
-    paddingHorizontal: SIZES.padding,
-    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: SIZES.lg,
-    fontWeight: 'bold',
-    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFF',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
   emptyCard: {
-    backgroundColor: COLORS.card,
-    marginHorizontal: SIZES.padding,
-    padding: 40,
-    borderRadius: SIZES.borderRadius,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 24,
+    padding: 32,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    borderStyle: 'dashed',
   },
-  emptyText: {
-    color: COLORS.textSecondary,
-    fontSize: SIZES.md,
-    textAlign: 'center',
-    marginTop: 16,
-    marginBottom: 20,
-  },
-  browseButton: {
-    backgroundColor: COLORS.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: SIZES.borderRadius,
-  },
-  browseButtonText: {
-    color: '#FFF',
-    fontSize: SIZES.md,
-    fontWeight: '600',
-  },
-  membershipCard: {
-    marginHorizontal: SIZES.padding,
-    marginBottom: 16,
-    borderRadius: SIZES.borderRadius,
-    overflow: 'hidden',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-  },
-  membershipGradient: {
-    padding: 20,
-  },
-  membershipHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 16,
-  },
-  artistInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  artistImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    marginRight: 12,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  artistImagePlaceholder: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+  emptyIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255,255,255,0.03)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginBottom: 16,
   },
-  artistDetails: {
-    flex: 1,
-  },
-  artistName: {
-    fontSize: SIZES.lg,
-    fontWeight: 'bold',
+  emptyText: {
     color: '#FFF',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptySubText: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 24,
+    maxWidth: '80%',
+  },
+  browseButton: {
+    backgroundColor: '#FFF',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 20,
+  },
+  browseButtonText: {
+    color: '#000',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  // MEMBERSHIP CARD
+  membershipCard: {
+    marginBottom: 20,
+    borderRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  cardContent: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    position: 'relative',
+  },
+  cardAccentStripe: {
+    height: 4,
+    width: '100%',
+    backgroundColor: '#FFD700',
+    opacity: 0.8,
+  },
+  cardMain: {
+    padding: 20,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 4,
   },
-  membershipType: {
-    fontSize: SIZES.sm,
-    color: 'rgba(255,255,255,0.8)',
+  headerInfo: {
+    flex: 1,
+    justifyContent: 'center',
   },
-  statusBadge: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
+  imageContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 2,
+    borderColor: '#FFD700',
+    marginRight: 16,
+    position: 'relative',
   },
-  statusText: {
-    fontSize: SIZES.sm,
-    fontWeight: '600',
+  artistImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 30,
+  },
+  artistImagePlaceholder: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 30,
+    backgroundColor: '#333',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  verifiedBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#000',
+    borderRadius: 8,
+  },
+  nameRow: {
+    marginBottom: 4,
+    marginRight: 8,
+  },
+  subInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  artistName: {
+    fontSize: 20,
+    fontWeight: '700',
     color: '#FFF',
   },
-  membershipBody: {
-    marginBottom: 16,
-    gap: 8,
-  },
-  infoRow: {
+  tierContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
-  infoText: {
-    fontSize: SIZES.sm,
-    color: 'rgba(255,255,255,0.9)',
-  },
-  warningBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    padding: 8,
-    borderRadius: 8,
-    marginTop: 8,
     gap: 6,
   },
-  warningText: {
-    fontSize: SIZES.sm,
-    color: '#FFF',
+  membershipTier: {
+    fontSize: 13,
+    color: '#FFD700',
     fontWeight: '600',
   },
-  membershipActions: {
+  statusBadge: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    marginHorizontal: 20,
+  },
+  cardStats: {
     flexDirection: 'row',
+    padding: 20,
+    gap: 32,
+  },
+  statItem: {
+    gap: 4,
+  },
+  statLabel: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  statValue: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  cardActions: {
+    flexDirection: 'row',
+    padding: 16,
+    paddingTop: 0,
     gap: 12,
   },
   viewArtistButton: {
@@ -514,94 +595,89 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingVertical: 10,
-    borderRadius: SIZES.borderRadius,
-    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingVertical: 12,
+    borderRadius: 16,
+    gap: 8,
   },
   viewArtistText: {
     color: '#FFF',
-    fontSize: SIZES.sm,
+    fontSize: 14,
     fontWeight: '600',
   },
   cancelButton: {
-    flexDirection: 'row',
+    width: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: SIZES.borderRadius,
-    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 16,
   },
-  cancelButtonText: {
-    color: '#FFF',
-    fontSize: SIZES.sm,
-    fontWeight: '600',
-  },
-  historyCard: {
-    backgroundColor: COLORS.card,
-    marginHorizontal: SIZES.padding,
-    marginBottom: 12,
-    padding: 16,
-    borderRadius: SIZES.borderRadius,
-  },
-  historyHeader: {
+  // HISTORY LIST
+  historyItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 16,
+    padding: 16,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.03)',
   },
-  historyArtistInfo: {
+  historyLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
   },
-  historyArtistImage: {
+  historyImage: {
     width: 40,
     height: 40,
     borderRadius: 20,
     marginRight: 12,
   },
-  historyArtistImagePlaceholder: {
+  historyPlaceholderImg: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: COLORS.surface,
+    backgroundColor: 'rgba(255,255,255,0.05)',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
-  historyArtistDetails: {
-    flex: 1,
-  },
-  historyArtistName: {
-    fontSize: SIZES.md,
+  historyName: {
+    color: '#FFF',
+    fontSize: 15,
     fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: 4,
+    marginBottom: 2,
   },
-  historyDate: {
-    fontSize: SIZES.sm,
-    color: COLORS.textSecondary,
+  historyDateRange: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 12,
   },
-  historyStatusBadge: {
+  historyRight: {
+     alignItems: 'flex-end',
+     gap: 4,
+  },
+  historyBadge: {
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingVertical: 2,
+    borderRadius: 6,
   },
-  historyStatusText: {
-    fontSize: SIZES.xs,
+  badgeExpired: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  badgeCancelled: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+  },
+  historyStatus: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.6)',
     fontWeight: '600',
-  },
-  historyFooter: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
   },
   historyPrice: {
-    fontSize: SIZES.md,
-    fontWeight: 'bold',
-    color: COLORS.primary,
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 13,
+    fontWeight: '500',
   },
 });
 

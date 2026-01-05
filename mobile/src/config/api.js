@@ -32,10 +32,6 @@ api.interceptors.request.use(
       config.headers['Content-Type'] = 'application/json';
     }
     
-    // DEBUG: Log request details
-    console.log(`\n🚀 [AXIOS] ${config.method?.toUpperCase()} ${config.url}`);
-    console.log(`   isFormData: ${config.data instanceof FormData}`);
-    console.log(`   Content-Type: ${config.headers['Content-Type'] || 'NOT SET (good for FormData)'}`);
     
     return config;
   },
@@ -48,6 +44,24 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
+    const originalRequest = error.config;
+
+    // Retry logic for Network Error (Cold Start fix)
+    // Checks for 'Network Error' message which is typical for connection refused/timeout in RN
+    if (error.message === 'Network Error' && originalRequest) {
+      originalRequest._retryCount = (originalRequest._retryCount || 0) + 1;
+
+      if (originalRequest._retryCount <= 3) {
+        console.log(`⚠️ Network Error - Auto-retrying request (${originalRequest._retryCount}/3)...`);
+        
+        // Exponential backoff or simple delay
+        const delay = 1000 * originalRequest._retryCount; 
+        await new Promise(resolve => setTimeout(resolve, delay));
+        
+        return api(originalRequest);
+      }
+    }
+
     if (error.response?.status === 401) {
       // Token expired or invalid
       await AsyncStorage.removeItem('token');

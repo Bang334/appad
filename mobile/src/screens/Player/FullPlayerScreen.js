@@ -990,7 +990,7 @@ WHERE song_id = ${currentSong.song_id};`;
                   onPress={() => {
                     startSleepTimer(Math.floor(sleepSliderValue));
                     setShowSleepTimer(false);
-                    setSuccessMessage(`Đã hẹn giờ tắt sau ${Math.floor(sleepSliderValue)} phút`);
+                    setSuccessMessage(sleepTimerTarget ? `Đã cập nhật hẹn giờ tắt sau ${Math.floor(sleepSliderValue)} phút` : `Đã hẹn giờ tắt sau ${Math.floor(sleepSliderValue)} phút`);
                     setShowSuccessModal(true);
                   }}
                 >
@@ -1000,9 +1000,23 @@ WHERE song_id = ${currentSong.song_id};`;
                     end={{ x: 1, y: 0 }}
                     style={styles.runTimerGradient}
                   >
-                    <Text style={styles.setTimerText}>Bắt đầu hẹn giờ</Text>
+                    <Text style={styles.setTimerText}>{sleepTimerTarget ? 'Cập nhật hẹn giờ' : 'Bắt đầu hẹn giờ'}</Text>
                   </LinearGradient>
                 </TouchableOpacity>
+
+                {sleepTimerTarget && (
+                  <TouchableOpacity
+                    style={styles.cancelTimerButton}
+                    onPress={() => {
+                      cancelSleepTimer();
+                      setShowSleepTimer(false);
+                      setSuccessMessage('Đã hủy hẹn giờ tắt nhạc');
+                      setShowSuccessModal(true);
+                    }}
+                  >
+                    <Text style={styles.cancelTimerText}>Hủy hẹn giờ</Text>
+                  </TouchableOpacity>
+                )}
 
                 <TouchableOpacity
                   style={[
@@ -1034,7 +1048,7 @@ WHERE song_id = ${currentSong.song_id};`;
                      styles.playForeverText,
                      isInfinitePlay && { color: COLORS.white }
                   ]}>
-                    {isInfinitePlay ? 'Đang phát mãi mãi' : 'Phát mãi mãi'}
+                    {isInfinitePlay ? 'Tắt hẹn giờ' : 'Phát mãi mãi'}
                   </Text>
                 </TouchableOpacity>
                 
@@ -1706,6 +1720,22 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: 16,
     fontWeight: '600',
+  },
+  cancelTimerButton: {
+    width: '100%',
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderRadius: 24,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+  },
+  cancelTimerText: {
+    color: '#EF4444',
+    fontSize: 16,
+    fontWeight: '700',
   },
   // Seeking styles
   seekingTooltip: {

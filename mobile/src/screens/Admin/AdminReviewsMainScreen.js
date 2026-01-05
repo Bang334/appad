@@ -120,7 +120,7 @@ const AdminReviewsMainScreen = ({ navigation }) => {
             <Ionicons name="chevron-back" size={28} color="#FFF" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>QUẢN LÝ ĐÁNH GIÁ</Text>
-          <div style={{ width: 44 }} />
+          <View style={{ width: 44 }} />
         </View>
 
         <TouchableOpacity 

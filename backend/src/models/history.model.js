@@ -2,15 +2,8 @@ const db = require('../config/database');
 
 class HistoryModel {
   // Add to listening history (one record per user per song per day)
-  // If user listens to same song multiple times in a day, increment count and add duration
-  // Optional params: artist_id, duration_listened, is_completed, is_premium_stream
-  // Add to listening history (one record per user per song per day)
-  // If user listens to same song multiple times in a day, increment count and add duration
-  // UPDATED: Now saves full datetime and moves record to top (by deleting old and inserting new)
-  // Add to listening history (one record per user per song per day)
-  // If user listens to same song multiple times in a day, increment count and add duration
-  // UPDATED: Now saves full datetime and moves record to top (by deleting old and inserting new)
-  // FIXED: Use transaction and proper error handling to prevent race conditions
+  // If user listens to same song multiple times in a day, increment count and update duration
+  // The `day` field is updated to the latest listening time
   static async add(userId, songId, options = {}) {
     const {
       artist_id = null,
@@ -34,15 +27,13 @@ class HistoryModel {
     const fullDateTime = `${todayPrefix} ${hours}:${minutes}:${seconds}`;
     
     try {
-      // Only aggregate if a record for the same song was created in the last 30 minutes.
-      // This prevents aggregating listens from different sessions (e.g. morning and evening)
-      // which is crucial for accurate payout calculations.
+      // Find existing record for the same user + song on the SAME DATE (regardless of time)
       const [existing] = await db.execute(
         `SELECT * FROM listening_history 
          WHERE user_id = ? AND song_id = ? 
-         AND day >= DATE_SUB(?, INTERVAL 30 MINUTE)
+         AND DATE(day) = ?
          ORDER BY day DESC LIMIT 1`,
-        [userId, songId, fullDateTime]
+        [userId, songId, todayPrefix]
       );
       
       if (existing.length > 0) {
@@ -54,24 +45,20 @@ class HistoryModel {
         const newIsPremium = oldRecord.is_premium_stream || is_premium_stream ? 1 : 0;
         const newArtistId = artist_id || oldRecord.artist_id;
 
-        // Update the record but keep the original 'day' (timestamp of first listen in this session)
-        // to maintain temporal accuracy for payouts.
-        // We also delete and re-insert if we want to move it to the top of "Recently Played",
-        // but let's use UPDATE for simplicity and safer data integrity here.
-        // If we want it at the top, we should use an 'updated_at' column, but lacking it,
-        // we'll stick to the original 'day' for payout precision.
+        // Update the record AND update 'day' to the latest listening time
         await db.execute(
           `UPDATE listening_history 
            SET count = ?, 
                total_duration = ?, 
                completed_count = ?, 
                is_premium_stream = ?,
-               artist_id = ?
+               artist_id = ?,
+               day = ?
            WHERE history_id = ?`,
-          [newCount, newDuration, newCompleted, newIsPremium, newArtistId, oldRecord.history_id]
+          [newCount, newDuration, newCompleted, newIsPremium, newArtistId, fullDateTime, oldRecord.history_id]
         );
       } else {
-        // Insert new record (starts a new session)
+        // Insert new record for this day
         await db.execute(
           `INSERT INTO listening_history 
            (user_id, song_id, artist_id, day, count, total_duration, completed_count, is_premium_stream) 
@@ -81,12 +68,15 @@ class HistoryModel {
       }
     } catch (error) {
       if (error.code === 'ER_DUP_ENTRY') {
-        // Highly unlikely with 30-min window and second-precision 'day', but handled for safety
+        // Handle race condition - update existing record
         console.warn(`[HistoryModel] Duplicate entry detected... updating.`);
         await db.execute(
-          `UPDATE listening_history SET count = count + 1, total_duration = total_duration + ? 
-           WHERE user_id = ? AND song_id = ? AND day = ?`,
-          [duration_listened, userId, songId, fullDateTime]
+          `UPDATE listening_history 
+           SET count = count + 1, 
+               total_duration = total_duration + ?,
+               day = ?
+           WHERE user_id = ? AND song_id = ? AND DATE(day) = ?`,
+          [duration_listened, fullDateTime, userId, songId, todayPrefix]
         );
       } else {
         console.error('[HistoryModel] Error adding history:', error.message);
