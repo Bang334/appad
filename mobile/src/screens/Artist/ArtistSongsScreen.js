@@ -215,7 +215,7 @@ const ArtistSongsScreen = ({ route, navigation }) => {
 
   return (
     <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 20) }]}>
-      <View style={[styles.header, { paddingTop: Math.max(insets.top + 20, 60) }]}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 20) }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}

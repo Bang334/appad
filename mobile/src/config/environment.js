@@ -13,8 +13,8 @@ const ENV = 'development'; // Options: 'development', 'staging', 'production'
 const environments = {
   // Môi trường development (local network)
   development: {
-    API_BASE_URL: 'http://192.168.1.237:5000/api', // ⚠️ Thay IP này theo máy bạn
-    SOCKET_URL: 'http://192.168.1.237:5000',
+    API_BASE_URL: 'http://192.168.3.50:5000/api', // ⚠️ Thay IP này theo máy bạn
+    SOCKET_URL: 'http://192.168.3.50:5000',
     ENV_NAME: 'Development',
     DEBUG: true,
   },

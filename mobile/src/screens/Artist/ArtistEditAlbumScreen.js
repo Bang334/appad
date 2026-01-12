@@ -168,9 +168,9 @@ const ArtistEditAlbumScreen = ({ route, navigation }) => {
     <View style={styles.container}>
       <ScrollView 
         style={styles.scrollView}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 + insets.bottom }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 60 }]}
       >
-      <View style={[styles.header, { paddingTop: Math.max(insets.top + 20, 60) }]}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 20) }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
@@ -271,7 +271,10 @@ const ArtistEditAlbumScreen = ({ route, navigation }) => {
         </View>
 
         {/* Action Buttons */}
-        <View style={styles.actionsContainer}>
+        </View>
+      </ScrollView>
+      <View style={{ paddingBottom: Math.max(insets.bottom, 16), paddingHorizontal: SIZES.padding, backgroundColor: COLORS.background, borderTopWidth: 1, borderTopColor: COLORS.border }}>
+        <View style={[styles.actionsContainer, { marginBottom: 0, marginTop: 16 }]}>
           <TouchableOpacity
             style={[styles.actionButton, styles.saveButton]}
             onPress={handleSave}
@@ -299,8 +302,6 @@ const ArtistEditAlbumScreen = ({ route, navigation }) => {
           )}
         </View>
       </View>
-      </ScrollView>
-      
     </View>
   );
 };
@@ -320,7 +321,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 60,
+    paddingTop: 10,
     paddingHorizontal: SIZES.padding,
     paddingBottom: 16,
     borderBottomWidth: 1,

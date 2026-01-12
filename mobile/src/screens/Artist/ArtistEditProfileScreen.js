@@ -154,9 +154,10 @@ const ArtistEditProfileScreen = ({ route, navigation }) => {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior="height"
+      keyboardVerticalOffset={Platform.OS === 'android' ? 64 : 0}
     >
-      <View style={[styles.header, { paddingTop: Math.max(insets.top + 20, 60) }]}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 20) }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
@@ -169,7 +170,7 @@ const ArtistEditProfileScreen = ({ route, navigation }) => {
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 + insets.bottom }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 60 }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Profile Image */}
@@ -260,7 +261,7 @@ const ArtistEditProfileScreen = ({ route, navigation }) => {
       </ScrollView>
 
       {/* Save Button */}
-      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom + 16, 16) }]}>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
         <TouchableOpacity
           style={[styles.saveButton, (saving || uploading) && styles.saveButtonDisabled]}
           onPress={handleSave}
@@ -282,7 +283,6 @@ const ArtistEditProfileScreen = ({ route, navigation }) => {
 
 const styles = StyleSheet.create({
   container: {
-    paddingTop: 30,
     flex: 1,
     backgroundColor: COLORS.background,
   },
@@ -317,7 +317,8 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
-    paddingBottom: 100,
+    paddingBottom: 20,
+    flexGrow: 1,
   },
   imageSection: {
     alignItems: 'center',

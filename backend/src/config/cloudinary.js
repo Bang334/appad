@@ -3,9 +3,9 @@ const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
 // Configure Cloudinary
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dnd4apm6t',
-  api_key: process.env.CLOUDINARY_API_KEY || 'your_api_key',
-  api_secret: process.env.CLOUDINARY_API_SECRET || 'your_api_secret'
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
 // Storage for songs (audio files)
@@ -14,7 +14,7 @@ const songStorage = new CloudinaryStorage({
   params: async (req, file) => {
     return {
       folder: 'music-app/songs',
-      resource_type: 'video', // Use 'video' for audio files
+      resource_type: 'video', 
       allowed_formats: ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'mp4'],
       public_id: `song-${Date.now()}`,
     };

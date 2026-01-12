@@ -12,6 +12,7 @@ import {
   Alert,
   Image,
   Modal,
+  Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -76,6 +77,18 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
   // File objects to upload
   const [songFile, setSongFile] = useState(null);
   const [coverFile, setCoverFile] = useState(null);
+
+  const [isKeyboardVisible, setKeyboardVisible] = useState(false);
+  
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener("keyboardDidShow", () => setKeyboardVisible(true));
+    const hideSubscription = Keyboard.addListener("keyboardDidHide", () => setKeyboardVisible(false));
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   useEffect(() => {
     loadReferenceData();
@@ -306,9 +319,9 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
   return (
     <KeyboardAvoidingView 
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={undefined}
     >
-      <View style={[styles.header, { paddingTop: Math.max(insets.top + 20, 60) }]}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 20) }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
@@ -329,7 +342,14 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
         {!song && <View style={styles.placeholder} />}
       </View>
 
-      <ScrollView style={styles.content} contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 + insets.bottom }]} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        contentContainerStyle={[
+          styles.scrollContent, 
+          { paddingBottom: isKeyboardVisible ? 150 : 20 }
+        ]} 
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.form}>
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Tên bài hát *</Text>
@@ -439,6 +459,20 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
             )}
           </View>
 
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Lời bài hát</Text>
+            <TextInput
+              style={[styles.input, styles.lyricsInput]}
+              value={formData.lyrics}
+              onChangeText={(value) => handleInputChange('lyrics', value)}
+              placeholder="Nhập lời bài hát..."
+              multiline
+              numberOfLines={8}
+              textAlignVertical="top"
+              placeholderTextColor={COLORS.textSecondary}
+            />
+          </View>
+
           {/* Release Date Picker */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Ngày phát hành</Text>
@@ -542,23 +576,14 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
             </View>
           )}
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Lời bài hát</Text>
-            <TextInput
-              style={[styles.input, styles.lyricsInput]}
-              value={formData.lyrics}
-              onChangeText={(value) => handleInputChange('lyrics', value)}
-              placeholder="Nhập lời bài hát..."
-              multiline
-              numberOfLines={8}
-              textAlignVertical="top"
-              placeholderTextColor={COLORS.textSecondary}
-            />
-          </View>
+
         </View>
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom + 16, 16) }]}>
+      <View style={[
+        styles.footer, 
+        { paddingBottom: isKeyboardVisible ? 10 : Math.max(insets.bottom, 16) }
+      ]}>
         <TouchableOpacity
           style={[styles.button, styles.updateButton]}
           onPress={handleUpdate}
@@ -582,7 +607,7 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
         onRequestClose={() => setShowAlbumModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 24) }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Chọn album</Text>
               <TouchableOpacity onPress={() => setShowAlbumModal(false)}>
@@ -672,7 +697,7 @@ const ArtistEditSongScreen = ({ navigation, route }) => {
         onRequestClose={() => setShowCreateAlbumModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { maxHeight: '90%' }]}>
+          <View style={[styles.modalContent, { maxHeight: '90%', paddingBottom: Math.max(insets.bottom, 24) }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Tạo album mới</Text>
               <TouchableOpacity onPress={() => setShowCreateAlbumModal(false)}>
@@ -847,7 +872,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SIZES.padding,
-    paddingTop: 60,
+    paddingTop: 20,
     paddingBottom: 16,
     backgroundColor: COLORS.background,
     borderBottomWidth: 1,
@@ -878,7 +903,8 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: SIZES.padding,
-    paddingBottom: 100,
+    paddingBottom: 20,
+    flexGrow: 1,
   },
   form: {
     gap: 20,

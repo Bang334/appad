@@ -10,7 +10,7 @@ router.use(authenticateToken);
 // Premium subscription routes
 router.post('/subscribe', PremiumController.subscribe);
 router.get('/status', PremiumController.checkStatus);
-router.post('/cancel', PremiumController.cancel);
+
 
 // Song purchase routes
 router.post('/purchase', PremiumController.purchaseSong);

@@ -71,7 +71,7 @@ const PurchaseConfirmationModal = ({
         return {
           icon: 'star',
           color: '#8b5cf6',
-          refundInfo: 'Có thể hủy bất cứ lúc nào.',
+          refundInfo: '',
           description: 'Nghe không giới hạn toàn bộ kho nhạc.',
           badge: 'Gói Premium',
           badgeColor: ['#8b5cf6', '#d946ef']

@@ -238,6 +238,9 @@ export const PlayerProvider = ({ children }) => {
       if (!status || !status.isLoaded) {
         return;
       }
+
+      // 0. Update UI state based on current player status
+      setIsPlaying(status.isPlaying || false);
       
       // --- BACKGROUND CHECKS (Run on every status update) ---
       const now = Date.now();
@@ -259,7 +262,7 @@ export const PlayerProvider = ({ children }) => {
          const diff = now - lastInteractionRef.current;
          // DEMO: 1 minute = 1 * 60 * 1000
          // REAL: 30 minutes = 30 * 60 * 1000
-         if (diff > 30 * 60 * 1000) {
+         if (diff > 3 * 60 * 1000) {
            console.log('💤 [Background] AutoStop: User inactive for 1 min. Pausing...');
            sound.pauseAsync();
            setIsPlaying(false);
@@ -332,7 +335,7 @@ export const PlayerProvider = ({ children }) => {
         setDuration(songDurationMs);
       }
       
-      setIsPlaying(status.isPlaying || false);
+
       
       const audioDurationMs = status.durationMillis || 0;
       const dbDurationMs = (currentSongRef.current?.duration || 0) * 1000;

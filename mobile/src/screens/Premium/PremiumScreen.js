@@ -147,45 +147,7 @@ const PremiumScreen = ({ navigation }) => {
     );
   };
 
-  const handleCancel = async () => {
-    showWarning(
-      'Hủy Premium',
-      'Bạn có chắc muốn hủy gói Premium?',
-      {
-        buttons: [
-          {
-            text: 'Không',
-            onPress: () => {},
-          },
-          {
-            text: 'Có',
-            onPress: async () => {
-              try {
-                const response = await premiumService.cancel();
-                if (response.success) {
-                  showInfo('Thành công', 'Đã hủy gói Premium', {
-                    buttons: [
-                      {
-                        text: 'OK',
-                        onPress: async () => {
-                          await refreshUser();
-                          fetchPremiumStatus();
-                        },
-                      },
-                    ],
-                  });
-                }
-              } catch (error) {
-                const message = error.response?.data?.message || 'Có lỗi xảy ra';
-                showError('Lỗi', message);
-              }
-            },
-            closeOnPress: false,
-          },
-        ],
-      }
-    );
-  };
+
 
   const formatDate = (dateString) => {
     if (!dateString) return '';
@@ -264,12 +226,7 @@ const PremiumScreen = ({ navigation }) => {
                 </View>
               )}
               
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={handleCancel}
-              >
-                <Text style={styles.cancelButtonText}>Hủy tự động gia hạn</Text>
-              </TouchableOpacity>
+
             </View>
           </LinearGradient>
         ) : (
@@ -337,7 +294,7 @@ const PremiumScreen = ({ navigation }) => {
                  </LinearGradient>
                </TouchableOpacity>
                
-               <Text style={styles.termText}>Tự động gia hạn. Hủy bất cứ lúc nào.</Text>
+
              </LinearGradient>
           </View>
         )}

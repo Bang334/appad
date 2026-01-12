@@ -8,13 +8,13 @@ import {
   ScrollView,
   Dimensions,
   Animated,
-  SafeAreaView,
   Alert,
   ActivityIndicator,
   InteractionManager,
   Modal,
   TouchableWithoutFeedback,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
@@ -44,6 +44,7 @@ const FullPlayerScreen = ({ navigation, route }) => {
     isInfinitePlay, enableInfinitePlay
   } = usePlayer();
   const { position, duration } = usePlayerProgress();
+  const insets = useSafeAreaInsets();
   
   // Calculate premium status
   const isUserPremiumSub = user?.is_premium == 1; 
@@ -402,13 +403,13 @@ SET lyrics = 'Lời bài hát ở đây...'
 WHERE song_id = ${currentSong.song_id};`;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.safeArea}>
       <LinearGradient
         colors={[COLORS.background, COLORS.backgroundSecondary, COLORS.surface]}
-        style={styles.container}
+        style={[styles.container, { paddingBottom: insets.bottom }]}
       >
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: Math.max(insets.top, 20) }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Ionicons name="chevron-down" size={32} color={COLORS.text} />
           </TouchableOpacity>
@@ -1063,7 +1064,7 @@ WHERE song_id = ${currentSong.song_id};`;
           </View>
         </TouchableWithoutFeedback>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -1098,7 +1099,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SIZES.padding,
-    paddingTop: 60,
+    paddingTop: 10,
     paddingBottom: 20,
     marginTop: 10,
   },
