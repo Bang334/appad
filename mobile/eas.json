@@ -8,14 +8,24 @@
             "distribution": "internal"
         },
         "preview": {
+            "env": {
+                "EXPO_PUBLIC_APP_ENV": "production",
+                "EXPO_PUBLIC_API_URL": "https://appad-coral.vercel.app/api",
+                "EXPO_PUBLIC_SOCKET_URL": "https://appad-coral.vercel.app"
+            },
             "android": {
                 "buildType": "apk"
             },
             "distribution": "internal"
         },
         "production": {
+            "env": {
+                "EXPO_PUBLIC_APP_ENV": "production",
+                "EXPO_PUBLIC_API_URL": "https://appad-coral.vercel.app/api",
+                "EXPO_PUBLIC_SOCKET_URL": "https://appad-coral.vercel.app"
+            },
             "android": {
-                "buildType": "aab"
+                "buildType": "app-bundle"
             }
         }
     },

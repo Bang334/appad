@@ -7,7 +7,7 @@
  */
 
 // 🔧 CHỌN MÔI TRƯỜNG (chỉ thay đổi dòng này):
-const ENV = process.env.EXPO_PUBLIC_APP_ENV || 'development';
+const ENV = process.env.EXPO_PUBLIC_APP_ENV || 'production';
 
 // 📝 Cấu hình cho từng môi trường
 const environments = {
@@ -29,8 +29,8 @@ const environments = {
 
   // Môi trường production (server thực tế)
   production: {
-    API_BASE_URL: 'https://api.yourapp.com/api',
-    SOCKET_URL: 'https://api.yourapp.com',
+    API_BASE_URL: 'https://appad-coral.vercel.app/api',
+    SOCKET_URL: 'https://appad-coral.vercel.app',
     ENV_NAME: 'Production',
     DEBUG: false,
   },
