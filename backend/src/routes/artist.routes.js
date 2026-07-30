@@ -6,6 +6,7 @@ const { authenticateToken, isArtistOwner } = require('../middleware/auth.middlew
 const { uploadSong, uploadCover, uploadMedia } = require('../config/upload-cloudinary');
 // Public routes
 router.get('/', ArtistController.getAll);
+router.get('/search', ArtistController.search);
 router.get('/:id', ArtistController.getById);
 router.post('/:artist_id/upload-song', authenticateToken, isArtistOwner, uploadSong.single('song'), ArtistController.uploadSong);
 router.post('/:artist_id/upload-cover', authenticateToken, isArtistOwner, uploadCover.single('cover'), ArtistController.uploadCover);

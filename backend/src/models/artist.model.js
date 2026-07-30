@@ -156,12 +156,13 @@ class ArtistModel {
 
   // Search artists
   static async search(keyword, limit = 20) {
+    const limitNum = Math.max(1, Math.min(parseInt(limit) || 20, 100));
     const [rows] = await db.execute(
       `SELECT * FROM artists 
-       WHERE name LIKE ? OR country LIKE ?
+       WHERE name ILIKE ? OR country ILIKE ?
        ORDER BY name ASC
-       LIMIT ?`,
-      [`%${keyword}%`, `%${keyword}%`, parseInt(limit)]
+       LIMIT ${limitNum}`,
+      [`%${keyword}%`, `%${keyword}%`]
     );
     return rows;
   }

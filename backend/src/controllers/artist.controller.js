@@ -26,6 +26,37 @@ class ArtistController {
     }
   }
 
+  // Search artists (public)
+  static async search(req, res) {
+    try {
+      const query = String(req.query.q || '').trim();
+      const limit = Math.max(
+        1,
+        Math.min(Number.parseInt(req.query.limit, 10) || 20, 100)
+      );
+
+      if (!query) {
+        return res.status(400).json({
+          success: false,
+          message: 'Search query is required',
+        });
+      }
+
+      const artists = await ArtistModel.search(query, limit);
+
+      res.json({
+        success: true,
+        data: artists,
+      });
+    } catch (error) {
+      console.error('Search artists error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Server error',
+      });
+    }
+  }
+
   // Get artist by ID (public)
   static async getById(req, res) {
     try {

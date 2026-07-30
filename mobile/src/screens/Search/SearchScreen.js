@@ -80,30 +80,75 @@ const SearchScreen = ({ navigation }) => {
     loadInitialData();
   }, []);
 
+  const loadSongAccessTypes = async (songsData) => {
+    const premiumSongIds = songsData
+      .filter(
+        (song) => song.is_premium === 1 || song.album_is_premium === 1
+      )
+      .slice(0, 100)
+      .map((song) => song.song_id);
+
+    if (premiumSongIds.length === 0) {
+      setSongAccessTypes({});
+      return;
+    }
+
+    try {
+      const response = await premiumService.checkSongsAccess(premiumSongIds);
+      const accessTypesMap = {};
+
+      (response.data || []).forEach((access) => {
+        if (access.hasAccess && access.accessType) {
+          accessTypesMap[access.song_id] = access.accessType;
+        }
+      });
+
+      setSongAccessTypes(accessTypesMap);
+    } catch (error) {
+      // Access badges are supplementary; keep the catalog interactive if this fails.
+    }
+  };
+
   const loadInitialData = async () => {
     setLoadingInitial(true);
+
+    // Start secondary requests immediately without blocking the default Songs tab.
+    const catalogPromise = Promise.all([
+      artistService.getArtists().catch(() => ({ data: [] })),
+      genreService.getAllGenresWithSongCount().catch(() => ({ data: [] })),
+      albumService.getAllAlbums(50, 0).catch(() => ({ data: [] })),
+    ]);
+    const accountPromise = Promise.all([
+      premiumService.getPurchasedSongs().catch(() => ({ data: [] })),
+      followService.getMyFollowedArtists().catch(() => ({ data: [] })),
+      premiumService
+        .checkStatus()
+        .catch(() => ({ data: { is_premium: false } })),
+    ]);
+
     try {
-      const [songsRes, artistsRes, genresRes, albumsRes, purchased, followed, premiumStatus] = await Promise.all([
-        songService.getAllSongs(100, 0),
-        artistService.getArtists(),
-        genreService.getAllGenresWithSongCount().catch(() => ({ data: [] })),
-        albumService.getAllAlbums(50, 0).catch(() => ({ data: [] })),
-        premiumService.getPurchasedSongs().catch(() => ({ data: [] })),
-        followService.getMyFollowedArtists().catch(() => ({ data: [] })),
-        premiumService.checkStatus().catch(() => ({ data: { is_premium: false } })),
-      ]);
-      
+      const songsRes = await songService.getAllSongs(100, 0);
       const songsData = songsRes.data || [];
       setAllSongs(songsData);
       setFilteredSongs(songsData);
-      
-      setAllArtists(artistsRes.data || []);
-      setAllArtists(artistsRes.data || []);
-      setFilteredArtists(artistsRes.data || []);
-      
-      setAllAlbums(albumsRes.data || []);
-      setFilteredAlbums(albumsRes.data || []);
-      
+
+      // Render as soon as the active tab is ready. Access badges hydrate in the background.
+      setLoadingInitial(false);
+      void loadSongAccessTypes(songsData);
+
+      const [
+        [artistsRes, genresRes, albumsRes],
+        [purchased, followed, premiumStatus],
+      ] = await Promise.all([catalogPromise, accountPromise]);
+
+      const artistsData = artistsRes.data || [];
+      setAllArtists(artistsData);
+      setFilteredArtists(artistsData);
+
+      const albumsData = albumsRes.data || [];
+      setAllAlbums(albumsData);
+      setFilteredAlbums(albumsData);
+
       const genresData = genresRes.data || [];
       setGenres(genresData);
       
@@ -131,24 +176,6 @@ const SearchScreen = ({ navigation }) => {
       
       // Check if user has premium
       setUserIsPremium(premiumStatus.data?.is_premium || false);
-
-      // Check access types for premium songs (limit to first 50 to avoid too many requests)
-      const accessTypesMap = {};
-      const premiumSongs = songsData.filter(s => s.is_premium === 1).slice(0, 50);
-      
-      const accessChecks = premiumSongs.map(async (song) => {
-        try {
-          const accessRes = await premiumService.checkSongAccess(song.song_id);
-          if (accessRes.success && accessRes.data?.hasAccess && accessRes.data?.accessType) {
-            accessTypesMap[song.song_id] = accessRes.data.accessType;
-          }
-        } catch (error) {
-          // Silent fail for access checks
-        }
-      });
-      
-      await Promise.all(accessChecks);
-      setSongAccessTypes(accessTypesMap);
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {

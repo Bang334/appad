@@ -716,6 +716,34 @@ class PremiumController {
     }
   }
 
+  // Check access to multiple songs in one request
+  static async checkSongAccessBatch(req, res) {
+    try {
+      const userId = req.user.user_id;
+      const { song_ids: songIds } = req.body;
+
+      if (!Array.isArray(songIds) || songIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'song_ids must be a non-empty array',
+        });
+      }
+
+      const accessInfo = await SongModel.checkAccessBatch(songIds, userId);
+
+      res.json({
+        success: true,
+        data: accessInfo,
+      });
+    } catch (error) {
+      console.error('Batch check song access error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Server error',
+      });
+    }
+  }
+
   // Get all premium songs
   static async getPremiumSongs(req, res) {
     try {

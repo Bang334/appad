@@ -21,6 +21,7 @@ router.get('/purchase-history', PremiumController.getPurchaseHistory);
 router.get('/total-spent', PremiumController.getTotalSpent);
 
 // Song access check
+router.post('/songs/access', PremiumController.checkSongAccessBatch);
 router.get('/song/:id/access', PremiumController.checkSongAccess);
 
 // Get premium songs

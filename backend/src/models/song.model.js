@@ -82,7 +82,7 @@ class SongModel {
   // Search songs - show ALL songs including those in unreleased/premium albums
   // Frontend will handle click logic based on album status
   static async search(keyword, limit = 20, userId = null) {
-    limit = parseInt(limit) || 20;
+    limit = Math.max(1, Math.min(parseInt(limit) || 20, 100));
     const params = [`%${keyword}%`, `%${keyword}%`];
     
     const [rows] = await db.execute(
@@ -107,7 +107,7 @@ class SongModel {
          GROUP BY song_id
        ) rc ON s.song_id = rc.song_id
        WHERE s.status = 1 
-         AND (s.title LIKE ? OR a.name LIKE ?)
+         AND (s.title ILIKE ? OR a.name ILIKE ?)
        ORDER BY 
          CASE WHEN al.release_date IS NULL OR al.release_date <= NOW() THEN 0 ELSE 1 END,
          s.song_id DESC
@@ -379,6 +379,75 @@ class SongModel {
     }
 
     return { hasAccess: false, reason: 'Premium subscription, purchase, or artist membership required', song };
+  }
+
+  // Check access to many songs with one query.
+  // This prevents clients from issuing one HTTP + database request per song.
+  static async checkAccessBatch(songIds, userId) {
+    const normalizedSongIds = [
+      ...new Set(
+        (Array.isArray(songIds) ? songIds : [])
+          .map((songId) => Number.parseInt(songId, 10))
+          .filter((songId) => Number.isInteger(songId) && songId > 0)
+      ),
+    ].slice(0, 100);
+
+    if (normalizedSongIds.length === 0) {
+      return [];
+    }
+
+    const placeholders = normalizedSongIds.map(() => '?').join(', ');
+    const [rows] = await db.execute(
+      `SELECT
+         s.song_id,
+         CASE
+           WHEN a.user_id = u.user_id THEN TRUE
+           WHEN al.release_date IS NOT NULL AND al.release_date > NOW() THEN FALSE
+           WHEN COALESCE(s.is_premium, 0) = 0
+             AND COALESCE(al.is_premium, 0) = 0 THEN TRUE
+           WHEN u.is_premium = 1
+             AND u.premium_expiry IS NOT NULL
+             AND u.premium_expiry > NOW() THEN TRUE
+           WHEN ps.purchase_id IS NOT NULL THEN TRUE
+           WHEN pa.purchase_id IS NOT NULL THEN TRUE
+           WHEN am.membership_id IS NOT NULL THEN TRUE
+           ELSE FALSE
+         END AS has_access,
+         CASE
+           WHEN a.user_id = u.user_id THEN 'artist_owner'
+           WHEN al.release_date IS NOT NULL AND al.release_date > NOW() THEN NULL
+           WHEN COALESCE(s.is_premium, 0) = 0
+             AND COALESCE(al.is_premium, 0) = 0 THEN NULL
+           WHEN u.is_premium = 1
+             AND u.premium_expiry IS NOT NULL
+             AND u.premium_expiry > NOW() THEN 'premium'
+           WHEN ps.purchase_id IS NOT NULL THEN 'purchased'
+           WHEN pa.purchase_id IS NOT NULL THEN 'album_purchased'
+           WHEN am.membership_id IS NOT NULL THEN 'artist_membership'
+           ELSE NULL
+         END AS access_type
+       FROM songs s
+       LEFT JOIN artists a ON a.artist_id = s.artist_id
+       LEFT JOIN albums al ON al.album_id = s.album_id
+       LEFT JOIN users u ON u.user_id = ?
+       LEFT JOIN purchased_songs ps
+         ON ps.user_id = ? AND ps.song_id = s.song_id
+       LEFT JOIN purchased_albums pa
+         ON pa.user_id = ? AND pa.album_id = s.album_id
+       LEFT JOIN artist_memberships am
+         ON am.user_id = ?
+        AND am.artist_id = s.artist_id
+        AND am.status = 'active'
+        AND am.expiry_date > NOW()
+       WHERE s.song_id IN (${placeholders})`,
+      [userId, userId, userId, userId, ...normalizedSongIds]
+    );
+
+    return rows.map((row) => ({
+      song_id: row.song_id,
+      hasAccess: Boolean(row.has_access),
+      accessType: row.access_type || null,
+    }));
   }
 
   // Get all premium songs

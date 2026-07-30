@@ -81,7 +81,11 @@ app.use('/api/reports', reportRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', message: 'Music App API is running' });
+  res.json({
+    status: 'OK',
+    message: 'Music App API is running',
+    region: process.env.VERCEL_REGION || 'local',
+  });
 });
 
 // Error handling middleware

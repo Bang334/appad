@@ -55,6 +55,14 @@ export const premiumService = {
     return response.data;
   },
 
+  // Check access to many songs with one network request
+  checkSongsAccess: async (songIds) => {
+    const response = await api.post('/premium/songs/access', {
+      song_ids: songIds,
+    });
+    return response.data;
+  },
+
   // Purchase an album
   purchaseAlbum: async (albumId) => {
     const response = await api.post('/premium/purchase-album', { album_id: albumId });
