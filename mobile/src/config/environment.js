@@ -7,7 +7,7 @@
  */
 
 // 🔧 CHỌN MÔI TRƯỜNG (chỉ thay đổi dòng này):
-const ENV = 'development'; // Options: 'development', 'staging', 'production'
+const ENV = process.env.EXPO_PUBLIC_APP_ENV || 'development';
 
 // 📝 Cấu hình cho từng môi trường
 const environments = {
@@ -37,7 +37,14 @@ const environments = {
 };
 
 // Xuất config hiện tại
-const config = environments[ENV];
+const selectedEnvironment = environments[ENV] || environments.development;
+const config = {
+  ...selectedEnvironment,
+  API_BASE_URL:
+    process.env.EXPO_PUBLIC_API_URL || selectedEnvironment.API_BASE_URL,
+  SOCKET_URL:
+    process.env.EXPO_PUBLIC_SOCKET_URL || selectedEnvironment.SOCKET_URL,
+};
 
 // Log thông tin môi trường (chỉ khi debug)
 if (config.DEBUG) {

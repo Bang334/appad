@@ -199,12 +199,12 @@ class ArtistController {
       } else {
         chartQuery = `
           SELECT 
-            DATE_FORMAT(rs.created_at, '%Y-%m') as date,
+            TO_CHAR(rs.created_at, 'YYYY-MM') as date,
             SUM(rs.artist_share) as revenue,
             COUNT(*) as transactions
           FROM revenue_sharing rs
           WHERE rs.artist_id = ?${dateFilter}
-          GROUP BY DATE_FORMAT(rs.created_at, '%Y-%m')
+          GROUP BY TO_CHAR(rs.created_at, 'YYYY-MM')
           ORDER BY date ASC
         `;
       }
@@ -659,10 +659,10 @@ class ArtistController {
       // Handle file uploads if present (backward compatibility)
       if (req.files) {
         if (req.files.audio) {
-          songData.file_url = `/uploads/songs/${req.files.audio[0].filename}`;
+          songData.file_url = req.files.audio[0].path || req.files.audio[0].secure_url;
         }
         if (req.files.cover) {
-          songData.cover_url = `/uploads/covers/${req.files.cover[0].filename}`;
+          songData.cover_url = req.files.cover[0].path || req.files.cover[0].secure_url;
         }
       }
 
@@ -752,10 +752,10 @@ class ArtistController {
       // Handle file uploads if present
       if (req.files) {
         if (req.files.audio) {
-          songData.file_url = `/uploads/songs/${req.files.audio[0].filename}`;
+          songData.file_url = req.files.audio[0].path || req.files.audio[0].secure_url;
         }
         if (req.files.cover) {
-          songData.cover_url = `/uploads/covers/${req.files.cover[0].filename}`;
+          songData.cover_url = req.files.cover[0].path || req.files.cover[0].secure_url;
         }
       }
 

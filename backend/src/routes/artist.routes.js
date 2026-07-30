@@ -3,8 +3,7 @@ const router = express.Router();
 const ArtistController = require('../controllers/artist.controller');
 const ArtistMembershipController = require('../controllers/artist-membership.controller');
 const { authenticateToken, isArtistOwner } = require('../middleware/auth.middleware');
-const upload = require('../config/upload');
-const { uploadSong, uploadCover } = require('../config/upload-cloudinary');
+const { uploadSong, uploadCover, uploadMedia } = require('../config/upload-cloudinary');
 // Public routes
 router.get('/', ArtistController.getAll);
 router.get('/:id', ArtistController.getById);
@@ -27,11 +26,11 @@ router.put('/:artist_id/profile', authenticateToken, isArtistOwner, uploadCover.
 
 // Songs management
 router.get('/:artist_id/songs', authenticateToken, isArtistOwner, ArtistController.getMySongs);
-router.post('/:artist_id/songs', authenticateToken, isArtistOwner, upload.fields([
+router.post('/:artist_id/songs', authenticateToken, isArtistOwner, uploadMedia.fields([
   { name: 'audio', maxCount: 1 },
   { name: 'cover', maxCount: 1 }
 ]), ArtistController.createSong);
-router.put('/:artist_id/songs/:song_id', authenticateToken, isArtistOwner, upload.fields([
+router.put('/:artist_id/songs/:song_id', authenticateToken, isArtistOwner, uploadMedia.fields([
   { name: 'audio', maxCount: 1 },
   { name: 'cover', maxCount: 1 }
 ]), ArtistController.updateSong);

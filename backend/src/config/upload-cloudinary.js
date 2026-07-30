@@ -2,6 +2,7 @@ const multer = require('multer');
 const {
   songStorage,
   coverStorage,
+  mediaStorage,
   artistImageStorage,
   avatarStorage
 } = require('./cloudinary');
@@ -48,6 +49,33 @@ const uploadCover = multer({
   }
 });
 
+const uploadMedia = multer({
+  storage: mediaStorage,
+  limits: {
+    fileSize: 30 * 1024 * 1024,
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = [
+      'audio/mpeg',
+      'audio/mp3',
+      'audio/wav',
+      'audio/ogg',
+      'audio/m4a',
+      'audio/x-m4a',
+      'audio/mp4',
+      'audio/aac',
+      'audio/x-aac',
+      'video/mp4',
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+    ];
+    cb(null, allowedTypes.includes(file.mimetype));
+  },
+});
+
 const uploadArtistImage = multer({
   storage: artistImageStorage,
   limits: {
@@ -65,6 +93,7 @@ const uploadAvatar = multer({
 module.exports = {
   uploadSong,
   uploadCover,
+  uploadMedia,
   uploadArtistImage,
   uploadAvatar
 };

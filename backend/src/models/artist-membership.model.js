@@ -12,10 +12,10 @@ class ArtistMembershipModel {
     const [result] = await db.execute(
       `INSERT INTO artist_memberships (user_id, artist_id, price_paid, start_date, expiry_date, status)
        VALUES (?, ?, ?, ?, ?, 'active')
-       ON DUPLICATE KEY UPDATE
-         price_paid = VALUES(price_paid),
-         start_date = VALUES(start_date),
-         expiry_date = VALUES(expiry_date),
+       ON CONFLICT (user_id, artist_id) DO UPDATE SET
+         price_paid = EXCLUDED.price_paid,
+         start_date = EXCLUDED.start_date,
+         expiry_date = EXCLUDED.expiry_date,
          status = 'active',
          updated_at = CURRENT_TIMESTAMP`,
       [user_id, artist_id, price_paid, startDate, expiryDate]

@@ -142,7 +142,7 @@ class ReportModel {
 
   // Get pending reports count
   static async getPendingCount(artistId = null) {
-    let query = 'SELECT COUNT(*) as count FROM reports WHERE status = "pending"';
+    let query = "SELECT COUNT(*) as count FROM reports WHERE status = 'pending'";
     const params = [];
     
     if (artistId) {
@@ -150,7 +150,7 @@ class ReportModel {
         SELECT COUNT(*) as count 
         FROM reports r
         JOIN songs s ON r.song_id = s.song_id
-        WHERE r.status = "pending" AND s.artist_id = ?
+        WHERE r.status = 'pending' AND s.artist_id = ?
       `;
       params.push(artistId);
     }
@@ -162,7 +162,7 @@ class ReportModel {
   // Check if user already reported this song
   static async hasUserReported(songId, userId) {
     const [rows] = await db.execute(
-      'SELECT COUNT(*) as count FROM reports WHERE song_id = ? AND reporter_id = ? AND status != "rejected"',
+      "SELECT COUNT(*) as count FROM reports WHERE song_id = ? AND reporter_id = ? AND status != 'rejected'",
       [songId, userId]
     );
     return rows[0].count > 0;

@@ -39,9 +39,9 @@ class HistoryModel {
       // Check if record exists for today (using LIKE to match YYYY-MM-DD%)
       const [existing] = await db.execute(
         `SELECT * FROM listening_history 
-         WHERE user_id = ? AND song_id = ? AND day LIKE ?
+         WHERE user_id = ? AND song_id = ? AND day::date = ?::date
          LIMIT 1`,
-        [userId, songId, `${todayPrefix}%`]
+        [userId, songId, todayPrefix]
       );
       
       if (existing.length > 0) {
@@ -91,7 +91,7 @@ class HistoryModel {
                  completed_count = completed_count + ?,
                  is_premium_stream = CASE WHEN ? = 1 THEN 1 ELSE is_premium_stream END,
                  day = ?
-             WHERE user_id = ? AND song_id = ? AND day LIKE ?`,
+             WHERE user_id = ? AND song_id = ? AND day::date = ?::date`,
             [
               increment_count ? 1 : 0,
               duration_listened,
@@ -100,7 +100,7 @@ class HistoryModel {
               fullDateTime,
               userId,
               songId,
-              `${todayPrefix}%`
+              todayPrefix
             ]
           );
         } catch (updateError) {
@@ -298,7 +298,7 @@ class HistoryModel {
        LEFT JOIN artists a ON s.artist_id = a.artist_id
        LEFT JOIN albums al ON s.album_id = al.album_id
        WHERE lh.user_id = ? AND lh.day IS NOT NULL
-       GROUP BY s.song_id
+       GROUP BY s.song_id, a.name, al.title
        ORDER BY last_played DESC
        LIMIT ${limitNum}`,
       [userId]
@@ -390,7 +390,7 @@ class HistoryModel {
        WHERE lh.user_id = ? 
          AND lh.day >= ?
          AND s.status = 1
-       GROUP BY lh.song_id
+       GROUP BY s.song_id, a.name, al.title
        ORDER BY my_listen_count DESC
        LIMIT ?`,
       [userId, dateStr, limit]

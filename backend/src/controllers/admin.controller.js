@@ -20,7 +20,9 @@ class AdminController {
 
       // Get new users this month
       const [newUsersResult] = await db.query(
-        'SELECT COUNT(*) as total FROM users WHERE MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())'
+        `SELECT COUNT(*) as total
+         FROM users
+         WHERE DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)`
       );
       const newUsersThisMonth = newUsersResult[0].total;
 
@@ -238,7 +240,7 @@ class AdminController {
 
       // Nếu đang chờ duyệt (is_banned = 2), chấp nhận -> set role = artist, is_banned = 0
       if (currentStatus === 2) {
-        await db.query('UPDATE users SET is_banned = 0, role = "artist" WHERE user_id = ?', [id]);
+        await db.query("UPDATE users SET is_banned = 0, role = 'artist' WHERE user_id = ?", [id]);
         return res.json({
           success: true,
           message: 'Đã chấp nhận yêu cầu nghệ sĩ'
@@ -686,7 +688,7 @@ class AdminController {
 
       // Get new users in period
       const [newUsersResult] = await db.query(
-        `SELECT COUNT(*) as total FROM users WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)`,
+        `SELECT COUNT(*) as total FROM users WHERE created_at >= NOW() - (? * INTERVAL '1 day')`,
         [days]
       );
       const newUsers = newUsersResult[0].total;
@@ -697,7 +699,7 @@ class AdminController {
 
       // Get new songs in period
       const [newSongsResult] = await db.query(
-        `SELECT COUNT(*) as total FROM songs WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)`,
+        `SELECT COUNT(*) as total FROM songs WHERE created_at >= NOW() - (? * INTERVAL '1 day')`,
         [days]
       );
       const newSongs = newSongsResult[0].total;
@@ -710,7 +712,7 @@ class AdminController {
       const [dailyPlaysResult] = await db.query(
         `SELECT COALESCE(SUM(count), 0) / ? as daily 
          FROM listening_history 
-         WHERE day >= DATE_SUB(CURDATE(), INTERVAL ? DAY)`,
+         WHERE day >= CURRENT_DATE - (? * INTERVAL '1 day')`,
         [days, days]
       );
       const dailyPlays = Math.round(dailyPlaysResult[0].daily || 0);
@@ -723,7 +725,7 @@ class AdminController {
       let newAlbums = 0;
       try {
         const [newAlbumsResult] = await db.query(
-          `SELECT COUNT(*) as total FROM albums WHERE release_date >= DATE_SUB(NOW(), INTERVAL ? DAY)`,
+          `SELECT COUNT(*) as total FROM albums WHERE release_date >= NOW() - (? * INTERVAL '1 day')`,
           [days]
         );
         newAlbums = newAlbumsResult[0].total || 0;
@@ -760,7 +762,7 @@ class AdminController {
       const [activeUsersResult] = await db.query(`
         SELECT COUNT(DISTINCT user_id) as total
         FROM listening_history
-        WHERE day >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+        WHERE day >= CURRENT_DATE - INTERVAL '30 days'
       `);
       const activeUsers = activeUsersResult[0].total || 0;
 
@@ -816,7 +818,7 @@ class AdminController {
         FROM genres g
         LEFT JOIN songs s ON g.genre_id = s.genre_id
         GROUP BY g.genre_id, g.name
-        HAVING count > 0
+        HAVING COUNT(s.song_id) > 0
         ORDER BY count DESC
         LIMIT 10
       `);

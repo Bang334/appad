@@ -3,7 +3,7 @@ const { body } = require('express-validator');
 const AlbumController = require('../controllers/album.controller');
 const { authenticateToken, isAdmin } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validator.middleware');
-const upload = require('../config/upload');
+const { uploadCover } = require('../config/upload-cloudinary');
 
 const router = express.Router();
 
@@ -22,7 +22,7 @@ router.get('/:id', AlbumController.getById);
 router.get('/artist/:artistId', AlbumController.getByArtist);
 
 // Admin routes
-router.post('/', authenticateToken, isAdmin, upload.single('cover'), createAlbumValidation, validate, AlbumController.create);
+router.post('/', authenticateToken, isAdmin, uploadCover.single('cover'), createAlbumValidation, validate, AlbumController.create);
 router.put('/:id', authenticateToken, isAdmin, AlbumController.update);
 router.delete('/:id', authenticateToken, isAdmin, AlbumController.delete);
 

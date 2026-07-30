@@ -85,7 +85,7 @@ class AlbumController {
       const albumData = req.body;
       
       if (req.file) {
-        albumData.cover_url = `/uploads/covers/${req.file.filename}`;
+        albumData.cover_url = req.file.path || req.file.secure_url;
       }
 
       const albumId = await AlbumModel.create(albumData);

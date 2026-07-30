@@ -25,12 +25,12 @@ class PremiumExpiringJob {
 
       const [users] = await db.execute(
         `SELECT user_id, premium_expiry, 
-                DATEDIFF(premium_expiry, CURDATE()) as days_remaining
+                premium_expiry::date - CURRENT_DATE as days_remaining
          FROM users 
          WHERE is_premium = 1 
          AND premium_expiry IS NOT NULL
-         AND premium_expiry >= CURDATE()
-         AND premium_expiry <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)
+         AND premium_expiry >= CURRENT_DATE
+         AND premium_expiry <= CURRENT_DATE + INTERVAL '3 days'
          ORDER BY premium_expiry ASC`,
         []
       );
@@ -55,7 +55,7 @@ class PremiumExpiringJob {
              FROM notifications 
              WHERE user_id = ? 
              AND type = 'premium_expiring' 
-             AND created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)`,
+             AND created_at >= NOW() - INTERVAL '24 hours'`,
             [user.user_id]
           );
 

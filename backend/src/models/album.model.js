@@ -74,7 +74,7 @@ class AlbumModel {
   static async findByArtist(artistId, includeUnreleased = false) {
     let query = `SELECT al.*, 
               COUNT(s.song_id) as song_count,
-              YEAR(al.release_date) as release_year
+              EXTRACT(YEAR FROM al.release_date) as release_year
        FROM albums al
        LEFT JOIN songs s ON al.album_id = s.album_id
        WHERE al.artist_id = ?`;

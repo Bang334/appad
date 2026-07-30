@@ -121,7 +121,7 @@ class PremiumController {
           const [existing] = await db.execute(
             `SELECT notification_id FROM notifications 
              WHERE user_id = ? AND type = 'premium_expiring' 
-             AND created_at > DATE_SUB(NOW(), INTERVAL 1 DAY)`,
+             AND created_at > NOW() - INTERVAL '1 day'`,
             [userId]
           );
 

@@ -1,11 +1,12 @@
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
+require('./environment');
 
 // Configure Cloudinary
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dnd4apm6t',
-  api_key: process.env.CLOUDINARY_API_KEY || 'your_api_key',
-  api_secret: process.env.CLOUDINARY_API_SECRET || 'your_api_secret'
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
 // Storage for songs (audio files)
@@ -30,6 +31,24 @@ const coverStorage = new CloudinaryStorage({
       resource_type: 'image',
       allowed_formats: ['jpg', 'png', 'jpeg', 'gif', 'webp'],
       public_id: `cover-${Date.now()}`,
+    };
+  },
+});
+
+const mediaStorage = new CloudinaryStorage({
+  cloudinary,
+  params: async (req, file) => {
+    const isAudio =
+      file.mimetype.startsWith('audio/') || file.mimetype === 'video/mp4';
+    const prefix = isAudio ? 'song' : 'cover';
+
+    return {
+      folder: isAudio ? 'music-app/songs' : 'music-app/covers',
+      resource_type: isAudio ? 'video' : 'image',
+      allowed_formats: isAudio
+        ? ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'mp4']
+        : ['jpg', 'png', 'jpeg', 'gif', 'webp'],
+      public_id: `${prefix}-${Date.now()}-${Math.round(Math.random() * 1e9)}`,
     };
   },
 });
@@ -64,6 +83,7 @@ module.exports = {
   cloudinary,
   songStorage,
   coverStorage,
+  mediaStorage,
   artistImageStorage,
   avatarStorage
 };

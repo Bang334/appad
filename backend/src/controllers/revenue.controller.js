@@ -28,7 +28,7 @@ class RevenueController {
          FROM transactions
          WHERE type = 'subscription' 
          AND status = 'completed'
-         AND DATE_FORMAT(created_at, '%Y-%m') = ?`,
+         AND TO_CHAR(created_at, 'YYYY-MM') = ?`,
         [period]
       );
 

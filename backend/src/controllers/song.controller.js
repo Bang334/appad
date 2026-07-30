@@ -308,10 +308,10 @@ class SongController {
       // Handle file uploads if present
       if (req.files) {
         if (req.files.audio) {
-          songData.file_url = `/uploads/songs/${req.files.audio[0].filename}`;
+          songData.file_url = req.files.audio[0].path || req.files.audio[0].secure_url;
         }
         if (req.files.cover) {
-          songData.cover_url = `/uploads/covers/${req.files.cover[0].filename}`;
+          songData.cover_url = req.files.cover[0].path || req.files.cover[0].secure_url;
         }
       }
 

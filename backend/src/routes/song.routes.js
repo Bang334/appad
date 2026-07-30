@@ -3,7 +3,7 @@ const { body } = require('express-validator');
 const SongController = require('../controllers/song.controller');
 const { authenticateToken, isAdmin } = require('../middleware/auth.middleware');
 const validate = require('../middleware/validator.middleware');
-const upload = require('../config/upload');
+const { uploadMedia } = require('../config/upload-cloudinary');
 
 const router = express.Router();
 
@@ -34,7 +34,7 @@ router.get('/album/:albumId', SongController.getByAlbum);
 router.post('/:id/play', authenticateToken, SongController.play);
 
 // Admin routes
-router.post('/', authenticateToken, isAdmin, upload.fields([
+router.post('/', authenticateToken, isAdmin, uploadMedia.fields([
   { name: 'audio', maxCount: 1 },
   { name: 'cover', maxCount: 1 }
 ]), createSongValidation, validate, SongController.create);

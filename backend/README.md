@@ -1,11 +1,52 @@
 # Music App Backend API
 
-REST API backend cho ứng dụng nghe nhạc, được xây dựng với Node.js, Express và MySQL.
+## PostgreSQL / Supabase
+
+Backend hiện sử dụng PostgreSQL qua package `pg`. Cấu hình production tối thiểu:
+
+```env
+NODE_ENV=production
+DATABASE_URL=postgresql://postgres.PROJECT_REF:PASSWORD@POOLER_HOST:6543/postgres
+DB_SSL=true
+DB_POOL_MAX=10
+JWT_SECRET=replace_with_a_long_random_secret
+CORS_ORIGIN=https://your-frontend-domain.example
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
+```
+
+Kiểm tra kết nối:
+
+```bash
+npm run db:test
+```
+
+Chuyển dữ liệu từ MySQL local sang một database Supabase đang trống:
+
+```bash
+npm run db:migrate
+```
+
+Script migration đọc schema từ `src/database/schema.sql`, giữ nguyên khóa chính và
+đồng bộ lại identity sequence. Script sẽ dừng nếu phát hiện bảng đích đã có dữ
+liệu để tránh nhập trùng.
+
+Khi deploy chỉ cần chạy:
+
+```bash
+npm ci --omit=dev
+npm start
+```
+
+File upload mới được lưu trên Cloudinary, không phụ thuộc ổ đĩa tạm của server.
+
+REST API backend cho ứng dụng nghe nhạc, được xây dựng với Node.js, Express và PostgreSQL.
 
 ## 📋 Yêu cầu
 
-- Node.js >= 14.x
-- MySQL >= 8.0
+- Node.js >= 18.x
+- PostgreSQL hoặc Supabase
 - npm hoặc yarn
 
 ## 🚀 Cài đặt
@@ -21,21 +62,19 @@ REST API backend cho ứng dụng nghe nhạc, được xây dựng với Node.j
    ```
 
 3. **Tạo database:**
-   - Chạy SQL script để tạo database (xem file database schema đã cung cấp)
-   - Hoặc import file SQL
+   - Schema PostgreSQL nằm tại `src/database/schema.sql`.
+   - Nếu chuyển từ MySQL local, chạy `npm run db:migrate`.
 
 4. **Cấu hình environment:**
    ```bash
-   cp .env.template .env
+   cp .env.example .env
    ```
    
    Chỉnh sửa file `.env` với thông tin của bạn:
    ```
    PORT=5000
-   DB_HOST=localhost
-   DB_USER=root
-   DB_PASSWORD=your_password
-   DB_NAME=music_app_db
+   DATABASE_URL=postgresql://postgres.PROJECT_REF:PASSWORD@POOLER_HOST:6543/postgres
+   DB_SSL=true
    JWT_SECRET=your_secret_key
    ```
 
@@ -175,7 +214,8 @@ API sử dụng JWT tokens. Để truy cập các protected endpoints:
 ## 📦 Dependencies
 
 - **express** - Web framework
-- **mysql2** - MySQL client
+- **pg** - PostgreSQL client
+- **mysql2** - Chỉ dùng trong development để chuyển dữ liệu MySQL cũ
 - **jsonwebtoken** - JWT authentication
 - **bcryptjs** - Password hashing
 - **express-validator** - Input validation

@@ -13,10 +13,10 @@ class PremiumListeningStatsModel {
         `INSERT INTO premium_listening_stats 
          (user_id, song_id, artist_id, listen_date, listen_count, total_duration, completed_count)
          VALUES (?, ?, ?, ?, 1, ?, ?)
-         ON DUPLICATE KEY UPDATE
-           listen_count = listen_count + 1,
-           total_duration = total_duration + VALUES(total_duration),
-           completed_count = completed_count + VALUES(completed_count)`,
+         ON CONFLICT (user_id, song_id, listen_date) DO UPDATE SET
+           listen_count = premium_listening_stats.listen_count + 1,
+           total_duration = premium_listening_stats.total_duration + EXCLUDED.total_duration,
+           completed_count = premium_listening_stats.completed_count + EXCLUDED.completed_count`,
         [user_id, song_id, artist_id, today, duration_listened, is_completed ? 1 : 0]
       );
       
