@@ -23,16 +23,6 @@ export const adminService = {
     return response.data;
   },
 
-  createUser: async (userData) => {
-    const response = await api.post('/admin/users', userData);
-    return response.data;
-  },
-
-  updateUser: async (userId, userData) => {
-    const response = await api.put(`/admin/users/${userId}`, userData);
-    return response.data;
-  },
-
   deleteUser: async (userId) => {
     const response = await api.delete(`/admin/users/${userId}`);
     return response.data;
@@ -107,11 +97,6 @@ export const adminService = {
     return response.data;
   },
 
-  createAlbum: async (albumData) => {
-    const response = await api.post('/admin/albums', albumData);
-    return response.data;
-  },
-
   createGenre: async (genreData) => {
     const response = await api.post('/admin/genres', genreData);
     return response.data;
@@ -124,33 +109,6 @@ export const adminService = {
 
   getSongAnalytics: async () => {
     const response = await api.get('/admin/analytics/songs');
-    return response.data;
-  },
-
-  // System Management
-  getSystemSettings: async () => {
-    const response = await api.get('/admin/settings');
-    return response.data;
-  },
-
-  updateSystemSettings: async (settings) => {
-    const response = await api.put('/admin/settings', settings);
-    return response.data;
-  },
-
-  // Backup & Restore
-  createBackup: async () => {
-    const response = await api.post('/admin/backup');
-    return response.data;
-  },
-
-  restoreBackup: async (backupId) => {
-    const response = await api.post(`/admin/restore/${backupId}`);
-    return response.data;
-  },
-
-  getBackups: async () => {
-    const response = await api.get('/admin/backups');
     return response.data;
   },
 

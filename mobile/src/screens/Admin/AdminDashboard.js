@@ -7,6 +7,7 @@ import {
   ScrollView,
   Alert,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -14,7 +15,6 @@ import { useAuth } from '../../context/AuthContext';
 import { COLORS, SIZES } from '../../config/theme';
 import { adminService } from '../../services/adminService';
 import MiniPlayer from '../../components/Player/MiniPlayer';
-import { songService } from '../../services/songService';
 
 const AdminDashboard = ({ navigation }) => {
   const { user } = useAuth();
@@ -24,8 +24,9 @@ const AdminDashboard = ({ navigation }) => {
     totalAlbums: 0,
     totalPlays: 0,
   });
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [statsError, setStatsError] = useState('');
 
   useEffect(() => {
     loadStats();
@@ -33,19 +34,13 @@ const AdminDashboard = ({ navigation }) => {
 
   const loadStats = async () => {
     setLoading(true);
+    setStatsError('');
     try {
-      // Use admin API for real data
       const response = await adminService.getDashboardStats();
       setStats(response.data);
     } catch (error) {
       console.error('Error loading stats:', error);
-      // Fallback to mock data if admin API fails
-      setStats({
-        totalUsers: 1250,
-        totalSongs: 850,
-        totalAlbums: 120,
-        totalPlays: 45600,
-      });
+      setStatsError('Không thể tải thống kê. Vui lòng kiểm tra kết nối và thử lại.');
     } finally {
       setLoading(false);
     }
@@ -58,133 +53,19 @@ const AdminDashboard = ({ navigation }) => {
   };
 
   const handleQuickSettings = () => {
-    Alert.alert(
-      'Cài đặt hệ thống',
-      'Chọn loại cài đặt:',
-      [
-        { text: 'Hủy', style: 'cancel' },
-        { 
-          text: 'Cài đặt chung', 
-          onPress: () => {
-            Alert.alert('Thông báo', 'Tính năng cài đặt chung sẽ sớm có mặt');
-          }
-        },
-        { 
-          text: 'Cài đặt bảo mật', 
-          onPress: () => {
-            Alert.alert('Thông báo', 'Tính năng cài đặt bảo mật sẽ sớm có mặt');
-          }
-        },
-        { 
-          text: 'Cài đặt thông báo', 
-          onPress: () => {
-            Alert.alert('Thông báo', 'Tính năng cài đặt thông báo sẽ sớm có mặt');
-          }
-        },
-        { 
-          text: 'Cài đặt lưu trữ', 
-          onPress: () => {
-            Alert.alert('Thông báo', 'Tính năng cài đặt lưu trữ sẽ sớm có mặt');
-          }
-        }
-      ]
-    );
+    navigation.navigate('Settings');
   };
 
-  const handleQuickBackup = async () => {
+  const handleQuickBackup = () => {
     Alert.alert(
-      'Sao lưu dữ liệu',
-      'Chọn loại sao lưu:',
-      [
-        { text: 'Hủy', style: 'cancel' },
-        { 
-          text: 'Sao lưu toàn bộ', 
-          onPress: async () => {
-            try {
-              Alert.alert('Thông báo', 'Đang tạo bản sao lưu toàn bộ...');
-              // Simulate backup process
-              setTimeout(() => {
-                Alert.alert('Thành công', 'Đã tạo bản sao lưu thành công!');
-              }, 2000);
-            } catch (error) {
-              Alert.alert('Lỗi', 'Không thể tạo bản sao lưu');
-            }
-          }
-        },
-        { 
-          text: 'Sao lưu cơ sở dữ liệu', 
-          onPress: async () => {
-            try {
-              Alert.alert('Thông báo', 'Đang sao lưu cơ sở dữ liệu...');
-              setTimeout(() => {
-                Alert.alert('Thành công', 'Đã sao lưu cơ sở dữ liệu!');
-              }, 1500);
-            } catch (error) {
-              Alert.alert('Lỗi', 'Không thể sao lưu cơ sở dữ liệu');
-            }
-          }
-        },
-        { 
-          text: 'Sao lưu file media', 
-          onPress: async () => {
-            try {
-              Alert.alert('Thông báo', 'Đang sao lưu file media...');
-              setTimeout(() => {
-                Alert.alert('Thành công', 'Đã sao lưu file media!');
-              }, 3000);
-            } catch (error) {
-              Alert.alert('Lỗi', 'Không thể sao lưu file media');
-            }
-          }
-        }
-      ]
+      'Sao lưu do dịch vụ quản lý',
+      'Cơ sở dữ liệu đang dùng Supabase và file media dùng Cloudinary. Hãy tạo hoặc khôi phục bản sao lưu trong bảng điều khiển của từng dịch vụ; ứng dụng không giả lập thao tác này.',
+      [{ text: 'Đã hiểu' }]
     );
   };
 
   const handleQuickReport = () => {
-    Alert.alert(
-      'Báo cáo',
-      'Chọn loại báo cáo:',
-      [
-        { text: 'Hủy', style: 'cancel' },
-        { 
-          text: 'Báo cáo người dùng', 
-          onPress: () => {
-            Alert.alert('Thông báo', 'Đang tạo báo cáo người dùng...');
-            setTimeout(() => {
-              Alert.alert('Thành công', 'Báo cáo người dùng đã được tạo!');
-            }, 2000);
-          }
-        },
-        { 
-          text: 'Báo cáo bài hát', 
-          onPress: () => {
-            Alert.alert('Thông báo', 'Đang tạo báo cáo bài hát...');
-            setTimeout(() => {
-              Alert.alert('Thành công', 'Báo cáo bài hát đã được tạo!');
-            }, 2000);
-          }
-        },
-        { 
-          text: 'Báo cáo thống kê', 
-          onPress: () => {
-            Alert.alert('Thông báo', 'Đang tạo báo cáo thống kê...');
-            setTimeout(() => {
-              Alert.alert('Thành công', 'Báo cáo thống kê đã được tạo!');
-            }, 2000);
-          }
-        },
-        { 
-          text: 'Báo cáo tổng hợp', 
-          onPress: () => {
-            Alert.alert('Thông báo', 'Đang tạo báo cáo tổng hợp...');
-            setTimeout(() => {
-              Alert.alert('Thành công', 'Báo cáo tổng hợp đã được tạo!');
-            }, 3000);
-          }
-        }
-      ]
-    );
+    navigation.navigate('AdminAnalytics');
   };
 
   const StatCard = ({ icon, title, value, color = COLORS.primary, onPress }) => (
@@ -246,7 +127,30 @@ const AdminDashboard = ({ navigation }) => {
 
       <View style={styles.statsSection}>
         <Text style={styles.sectionTitle}>Thống kê tổng quan</Text>
-        <View style={styles.statsGrid}>
+        {loading && !refreshing ? (
+          <View
+            style={styles.statsStatus}
+            accessibilityRole="progressbar"
+            accessibilityLabel="Đang tải thống kê quản trị"
+          >
+            <ActivityIndicator color={COLORS.primary} />
+            <Text style={styles.statsStatusText}>Đang tải thống kê...</Text>
+          </View>
+        ) : statsError ? (
+          <View style={styles.statsError} accessibilityRole="alert">
+            <Ionicons name="cloud-offline-outline" size={28} color={COLORS.warning} />
+            <Text style={styles.statsStatusText}>{statsError}</Text>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={loadStats}
+              accessibilityRole="button"
+              accessibilityLabel="Thử tải lại thống kê"
+            >
+              <Text style={styles.retryButtonText}>Thử lại</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.statsGrid}>
           <StatCard
             icon="people-outline"
             title="Người dùng"
@@ -275,7 +179,8 @@ const AdminDashboard = ({ navigation }) => {
             color={COLORS.info}
             onPress={() => navigation.navigate('AdminAnalytics')}
           />
-        </View>
+          </View>
+        )}
       </View>
 
       <View style={styles.adminMenuSection}>
@@ -339,10 +244,10 @@ const AdminDashboard = ({ navigation }) => {
 
         <AdminMenuItem
           icon="settings"
-          title="Cài đặt hệ thống"
-          subtitle="Cấu hình ứng dụng"
+          title="Cài đặt ứng dụng"
+          subtitle="Tùy chỉnh trải nghiệm trên thiết bị này"
           gradientColors={['#607D8B', '#78909C']}
-          onPress={() => Alert.alert('Thông báo', 'Tính năng cài đặt hệ thống sẽ sớm có mặt')}
+          onPress={handleQuickSettings}
         />
       </View>
 
@@ -473,6 +378,46 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
+  },
+  statsStatus: {
+    minHeight: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    backgroundColor: COLORS.surface,
+    borderRadius: SIZES.borderRadius,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  statsError: {
+    minHeight: 140,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    padding: 16,
+    backgroundColor: COLORS.surface,
+    borderRadius: SIZES.borderRadius,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  statsStatusText: {
+    color: COLORS.textSecondary,
+    fontSize: SIZES.sm,
+    textAlign: 'center',
+  },
+  retryButton: {
+    minHeight: 44,
+    minWidth: 96,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    borderRadius: 22,
+    backgroundColor: COLORS.primary,
+  },
+  retryButtonText: {
+    color: COLORS.white,
+    fontSize: SIZES.sm,
+    fontWeight: '600',
   },
   statCard: {
     backgroundColor: COLORS.surface,

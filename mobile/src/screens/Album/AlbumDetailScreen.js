@@ -51,6 +51,7 @@ const AlbumDetailScreen = ({ route, navigation }) => {
   const [showSongPurchaseModal, setShowSongPurchaseModal] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [userPremiumStatus, setUserPremiumStatus] = useState(false);
+  const [hasAlbumAccess, setHasAlbumAccess] = useState(false);
   const [purchasedSongIds, setPurchasedSongIds] = useState(new Set());
 
   useEffect(() => {
@@ -67,25 +68,42 @@ const AlbumDetailScreen = ({ route, navigation }) => {
   const loadAlbumData = async () => {
     setLoading(true);
     try {
-      // Load album details specifically to get price/premium info
-      const response = await albumService.getAlbumById(albumId);
+      const [
+        response,
+        songsResponse,
+        accessResponse,
+        purchasedSongsRes,
+      ] = await Promise.all([
+        albumService.getAlbumById(albumId),
+        songService.getSongsByAlbum(albumId),
+        premiumService.checkAlbumAccess(albumId).catch((error) => {
+          console.error('Error checking album access:', error);
+          return null;
+        }),
+        premiumService.getPurchasedSongs().catch((error) => {
+          console.error('Error loading purchased songs:', error);
+          return null;
+        }),
+      ]);
       
       if (response.success) {
         const albumData = response.data;
         setAlbum(albumData);
         setIsPremium(albumData.is_premium === 1);
-        
-        // Check user premium/purchase status
-        checkAccessStatus(albumData);
       }
 
-      // Load songs
-      const songsResponse = await songService.getSongsByAlbum(albumId);
       setSongs(songsResponse.data || []);
 
-      // Load purchased songs to check individual song access
-      const purchasedSongsRes = await premiumService.getPurchasedSongs();
-      if (purchasedSongsRes.success) {
+      if (accessResponse?.success) {
+        const { hasAccess, accessType } = accessResponse.data;
+        setHasAlbumAccess(
+          Boolean(hasAccess) && ['premium', 'purchased', 'artist_owner'].includes(accessType)
+        );
+        setUserPremiumStatus(accessType === 'premium');
+        setIsPurchased(accessType === 'purchased');
+      }
+
+      if (purchasedSongsRes?.success) {
         const purchasedIds = new Set(purchasedSongsRes.data.map(s => s.song_id));
         setPurchasedSongIds(purchasedIds);
       }
@@ -97,26 +115,6 @@ const AlbumDetailScreen = ({ route, navigation }) => {
     }
   };
 
-  const checkAccessStatus = async (albumData) => {
-    try {
-      // Check if user has premium subscription
-      const statusRes = await premiumService.checkStatus();
-      if (statusRes.success && statusRes.data.is_premium) {
-        setUserPremiumStatus(true);
-        return; // User has access via subscription
-      }
-
-      // Check if user purchased this album
-      const purchasedRes = await premiumService.getPurchasedAlbums();
-      if (purchasedRes.success) {
-        const hasPurchased = purchasedRes.data.some(a => a.album_id === albumId);
-        setIsPurchased(hasPurchased);
-      }
-    } catch (error) {
-      console.error('Error checking access:', error);
-    }
-  };
-
   const checkAccessAndShowModal = (song) => {
     // 1. Unreleased check
     if (album.release_date && new Date(album.release_date) > new Date()) {
@@ -125,8 +123,8 @@ const AlbumDetailScreen = ({ route, navigation }) => {
             hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
         });
         Alert.alert(
-            '🎵 Sắp ra mắt',
-            `Album "${album.title}" sẽ được phát hành vào:\n\n⏰ ${formattedDate}`,
+            'Album sắp ra mắt',
+            `Album "${album.title}" sẽ được phát hành vào:\n\n${formattedDate}`,
             [{ text: 'Đã hiểu' }]
         );
         return false;
@@ -237,7 +235,7 @@ const AlbumDetailScreen = ({ route, navigation }) => {
 
   const hasSongAccess = (song) => {
     if (!song) return false;
-    if (userPremiumStatus || isPurchased) return true;
+    if (hasAlbumAccess || userPremiumStatus || isPurchased) return true;
     if (purchasedSongIds.has(song.song_id)) return true;
     return false;
   };

@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   Linking,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../../config/theme';
@@ -55,22 +54,10 @@ const HelpScreen = ({ navigation }) => {
 
   const contactMethods = [
     {
-      icon: 'mail-outline',
-      title: 'Email hỗ trợ',
-      subtitle: 'support@musicapp.com',
-      onPress: () => Linking.openURL('mailto:support@musicapp.com')
-    },
-    {
-      icon: 'chatbubble-outline',
-      title: 'Chat trực tuyến',
-      subtitle: 'Hỗ trợ 24/7',
-      onPress: () => Alert.alert('Chat', 'Tính năng chat sẽ sớm có mặt')
-    },
-    {
-      icon: 'call-outline',
-      title: 'Hotline',
-      subtitle: '1900-xxxx',
-      onPress: () => Linking.openURL('tel:1900123456')
+      icon: 'logo-github',
+      title: 'Báo lỗi trên GitHub',
+      subtitle: 'Mở biểu mẫu mô tả lỗi hoặc đề xuất',
+      onPress: () => Linking.openURL('https://github.com/Bang334/appad/issues/new')
     }
   ];
 

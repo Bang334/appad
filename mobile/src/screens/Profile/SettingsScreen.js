@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -9,18 +9,25 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, SIZES } from '../../config/theme';
 import MiniPlayer from '../../components/Player/MiniPlayer';
 import SuccessModal from '../../components/Common/SuccessModal';
+import { historyService } from '../../services/historyService';
+
+const SETTINGS_STORAGE_KEY = 'app_settings';
+const DEFAULT_SETTINGS = {
+  autoPlay: true,
+};
+const PLAYBACK_CACHE_KEYS = [
+  'isPlayingAlbum',
+  'currentAlbumId',
+  'isPlayingPlaylist',
+  'currentPlaylistId',
+];
 
 const SettingsScreen = ({ navigation }) => {
-  const [settings, setSettings] = useState({
-    notifications: true,
-    autoPlay: false,
-    highQuality: true,
-    downloadOnWifi: true,
-    darkMode: true,
-  });
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
 
   // Custom Alert State
   const [alertVisible, setAlertVisible] = useState(false);
@@ -30,6 +37,21 @@ const SettingsScreen = ({ navigation }) => {
     icon: 'checkmark-circle',
     onClose: null
   });
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const savedSettings = await AsyncStorage.getItem(SETTINGS_STORAGE_KEY);
+        if (savedSettings) {
+          setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings) });
+        }
+      } catch (error) {
+        console.error('Error loading settings:', error);
+      }
+    };
+
+    loadSettings();
+  }, []);
 
   const showAlert = (title, message, icon = 'checkmark-circle', callback = null) => {
     setAlertConfig({
@@ -48,8 +70,18 @@ const SettingsScreen = ({ navigation }) => {
     }
   };
 
-  const handleSettingChange = (key, value) => {
-    setSettings({ ...settings, [key]: value });
+  const handleSettingChange = async (key, value) => {
+    const previousSettings = settings;
+    const nextSettings = { ...previousSettings, [key]: value };
+    setSettings(nextSettings);
+
+    try {
+      await AsyncStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(nextSettings));
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      setSettings(previousSettings);
+      showAlert('Không thể lưu', 'Vui lòng thử lại.', 'alert-circle');
+    }
   };
 
   const SettingItem = ({ icon, title, subtitle, onPress, rightComponent }) => (
@@ -67,16 +99,21 @@ const SettingsScreen = ({ navigation }) => {
 
   const handleClearCache = () => {
     Alert.alert(
-      'Xóa bộ nhớ đệm',
-      'Bạn có chắc chắn muốn xóa bộ nhớ đệm? Điều này có thể ảnh hưởng đến hiệu suất ứng dụng.',
+      'Đặt lại phiên phát nhạc',
+      'Thao tác này xóa album hoặc playlist đang ghi nhớ, nhưng không đăng xuất tài khoản.',
       [
         { text: 'Hủy', style: 'cancel' },
         {
           text: 'Xóa',
           style: 'destructive',
-          onPress: () => {
-            // Implement cache clearing logic
-            showAlert('Thành công', 'Đã xóa bộ nhớ đệm', 'checkmark-circle');
+          onPress: async () => {
+            try {
+              await AsyncStorage.multiRemove(PLAYBACK_CACHE_KEYS);
+              showAlert('Thành công', 'Đã xóa dữ liệu phát nhạc tạm thời.', 'checkmark-circle');
+            } catch (error) {
+              console.error('Error clearing playback cache:', error);
+              showAlert('Không thể xóa', 'Vui lòng thử lại.', 'alert-circle');
+            }
           },
         },
       ]
@@ -92,9 +129,17 @@ const SettingsScreen = ({ navigation }) => {
         {
           text: 'Xóa',
           style: 'destructive',
-          onPress: () => {
-            // Implement history clearing logic
-            showAlert('Thành công', 'Đã xóa lịch sử nghe nhạc', 'checkmark-circle');
+          onPress: async () => {
+            try {
+              const response = await historyService.clearHistory();
+              if (!response?.success) {
+                throw new Error(response?.message || 'Clear history failed');
+              }
+              showAlert('Thành công', 'Đã xóa lịch sử nghe nhạc.', 'checkmark-circle');
+            } catch (error) {
+              console.error('Error clearing listening history:', error);
+              showAlert('Không thể xóa', 'Vui lòng kiểm tra kết nối và thử lại.', 'alert-circle');
+            }
           },
         },
       ]
@@ -122,20 +167,6 @@ const SettingsScreen = ({ navigation }) => {
         <Text style={styles.sectionTitle}>Phát nhạc</Text>
         
         <SettingItem
-          icon="notifications-outline"
-          title="Thông báo"
-          subtitle="Nhận thông báo về bài hát mới"
-          rightComponent={
-            <Switch
-              value={settings.notifications}
-              onValueChange={(value) => handleSettingChange('notifications', value)}
-              trackColor={{ false: COLORS.border, true: COLORS.primary }}
-              thumbColor={settings.notifications ? COLORS.white : COLORS.textMuted}
-            />
-          }
-        />
-
-        <SettingItem
           icon="play-circle-outline"
           title="Tự động phát"
           subtitle="Tự động phát bài tiếp theo"
@@ -148,56 +179,6 @@ const SettingsScreen = ({ navigation }) => {
             />
           }
         />
-
-        <SettingItem
-          icon="musical-notes-outline"
-          title="Chất lượng cao"
-          subtitle="Phát nhạc ở chất lượng cao nhất"
-          rightComponent={
-            <Switch
-              value={settings.highQuality}
-              onValueChange={(value) => handleSettingChange('highQuality', value)}
-              trackColor={{ false: COLORS.border, true: COLORS.primary }}
-              thumbColor={settings.highQuality ? COLORS.white : COLORS.textMuted}
-            />
-          }
-        />
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Tải xuống</Text>
-        
-        <SettingItem
-          icon="wifi-outline"
-          title="Chỉ tải khi có WiFi"
-          subtitle="Tiết kiệm dữ liệu di động"
-          rightComponent={
-            <Switch
-              value={settings.downloadOnWifi}
-              onValueChange={(value) => handleSettingChange('downloadOnWifi', value)}
-              trackColor={{ false: COLORS.border, true: COLORS.primary }}
-              thumbColor={settings.downloadOnWifi ? COLORS.white : COLORS.textMuted}
-            />
-          }
-        />
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Giao diện</Text>
-        
-        <SettingItem
-          icon="moon-outline"
-          title="Chế độ tối"
-          subtitle="Giao diện tối"
-          rightComponent={
-            <Switch
-              value={settings.darkMode}
-              onValueChange={(value) => handleSettingChange('darkMode', value)}
-              trackColor={{ false: COLORS.border, true: COLORS.primary }}
-              thumbColor={settings.darkMode ? COLORS.white : COLORS.textMuted}
-            />
-          }
-        />
       </View>
 
       <View style={styles.section}>
@@ -205,8 +186,8 @@ const SettingsScreen = ({ navigation }) => {
         
         <SettingItem
           icon="trash-outline"
-          title="Xóa bộ nhớ đệm"
-          subtitle="Giải phóng dung lượng"
+          title="Đặt lại phiên phát nhạc"
+          subtitle="Xóa trạng thái album và playlist đang ghi nhớ"
           onPress={handleClearCache}
           rightComponent={<Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />}
         />

@@ -23,6 +23,7 @@ router.get('/total-spent', PremiumController.getTotalSpent);
 // Song access check
 router.post('/songs/access', PremiumController.checkSongAccessBatch);
 router.get('/song/:id/access', PremiumController.checkSongAccess);
+router.get('/album/:id/access', PremiumController.checkAlbumAccess);
 
 // Get premium songs
 router.get('/songs', PremiumController.getPremiumSongs);

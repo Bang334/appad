@@ -71,15 +71,8 @@ export const premiumService = {
 
   // Check access to a specific album
   checkAlbumAccess: async (albumId) => {
-    // We can reuse checkSongAccess if the backend supports it, or just rely on checkStatus + purchased list.
-    // However, for now, we'll assume we check purchased status via getPurchasedSongs or similar.
-    // Actually, let's add a specific endpoint if needed, but for now we can check purchased-songs (which includes albums in some logic?)
-    // No, we added purchased_albums table.
-    // Let's add a helper here that might not call a direct API if one doesn't exist, or just rely on the UI to check.
-    // But wait, we didn't add checkAlbumAccess API in backend.
-    // We can check if user purchased album by calling getPurchasedSongs (which might need update) or just use the fact that we have purchased_albums.
-    // Let's just add purchaseAlbum for now.
-    return null; 
+    const response = await api.get(`/premium/album/${albumId}/access`);
+    return response.data;
   },
 
   // Get all premium songs

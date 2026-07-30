@@ -208,9 +208,22 @@ export const PlayerProvider = ({ children }) => {
           });
       }
       
-      // Now play next song
-      console.log('🎵 [AUTO-FINISH] Calling playNext()');
-      playNext();
+      let shouldAutoPlay = true;
+      try {
+        const savedSettings = await AsyncStorage.getItem('app_settings');
+        if (savedSettings) {
+          shouldAutoPlay = JSON.parse(savedSettings).autoPlay !== false;
+        }
+      } catch (error) {
+        console.error('Error reading autoplay setting:', error);
+      }
+
+      if (shouldAutoPlay) {
+        console.log('🎵 [AUTO-FINISH] Calling playNext()');
+        playNext();
+      } else {
+        setIsPlaying(false);
+      }
     }
   }, [duration]);
 

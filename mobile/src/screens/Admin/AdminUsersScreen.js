@@ -18,22 +18,27 @@ import MiniPlayer from '../../components/Player/MiniPlayer';
 
 const AdminUsersScreen = ({ navigation }) => {
   const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const [filter, setFilter] = useState('all'); // 'all', 'pending_artist'
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
-    loadUsers();
-  }, []);
+    const timer = setTimeout(() => {
+      loadUsers(true, searchQuery);
+    }, searchQuery ? 400 : 0);
 
-  const loadUsers = async (reset = true) => {
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const loadUsers = async (reset = true, query = searchQuery) => {
     if (reset) setPage(1);
     setLoading(true);
+    setLoadError('');
     try {
-      // Use admin API for real data
-      const response = await adminService.getAllUsers(100, 0, searchQuery); // Load more to filter client-side
+      const response = await adminService.getAllUsers(100, 0, query);
       if (reset) {
         setUsers(response.data || []);
       } else {
@@ -41,51 +46,10 @@ const AdminUsersScreen = ({ navigation }) => {
       }
     } catch (error) {
       console.error('Error loading users:', error);
-      // Fallback to mock data if API fails
-      const mockUsers = [
-        {
-          user_id: 1,
-          username: 'admin_user',
-          email: 'admin@example.com',
-          role: 'admin',
-          is_banned: 0,
-        },
-        {
-          user_id: 2,
-          username: 'john_doe',
-          email: 'john@example.com',
-          role: 'user',
-          is_banned: 0,
-        },
-        {
-          user_id: 3,
-          username: 'jane_smith',
-          email: 'jane@example.com',
-          role: 'user',
-          is_banned: 1,
-        },
-        {
-          user_id: 4,
-          username: 'artist_wannabe',
-          email: 'artist@example.com',
-          role: 'user',
-          is_banned: 2, // Pending artist
-        },
-      ];
-
-      // Filter by search query if provided
-      const filteredUsers = searchQuery 
-        ? mockUsers.filter(user => 
-            user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            user.email.toLowerCase().includes(searchQuery.toLowerCase())
-          )
-        : mockUsers;
-
       if (reset) {
-        setUsers(filteredUsers);
-      } else {
-        setUsers(prev => [...prev, ...filteredUsers]);
+        setUsers([]);
       }
+      setLoadError('Không thể tải danh sách người dùng. Vui lòng thử lại.');
     } finally {
       setLoading(false);
     }
@@ -99,7 +63,6 @@ const AdminUsersScreen = ({ navigation }) => {
 
   const handleSearch = (query) => {
     setSearchQuery(query);
-    setTimeout(() => loadUsers(), 500); // Debounce search
   };
 
   const handleBanUser = async (user) => {
@@ -241,13 +204,13 @@ const AdminUsersScreen = ({ navigation }) => {
             <Text style={styles.userEmail}>{item.email}</Text>
             <View style={styles.userMeta}>
               <Text style={styles.userRole}>
-                {item.role === 'admin' ? '👑 Admin' : item.role === 'artist' ? '🎵 Artist' : '👤 User'}
+                {item.role === 'admin' ? 'Admin' : item.role === 'artist' ? 'Artist' : 'User'}
               </Text>
               <Text style={[
                 styles.userStatus,
                 { color: item.is_banned === 1 ? COLORS.error : item.is_banned === 2 ? COLORS.info : COLORS.success }
               ]}>
-                {item.is_banned === 1 ? '🚫 Bị cấm' : item.is_banned === 2 ? '⏳ Chờ duyệt Artist' : '✅ Hoạt động'}
+                {item.is_banned === 1 ? 'Bị cấm' : item.is_banned === 2 ? 'Chờ duyệt Artist' : 'Hoạt động'}
               </Text>
             </View>
           </View>
@@ -304,12 +267,7 @@ const AdminUsersScreen = ({ navigation }) => {
           <Ionicons name="arrow-back" size={24} color={COLORS.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Quản lý người dùng</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => navigation.navigate('AdminAddUser')}
-        >
-          <Ionicons name="add" size={24} color={COLORS.primary} />
-        </TouchableOpacity>
+        <View style={styles.addButton} />
       </View>
 
       <View style={styles.searchContainer}>
@@ -360,7 +318,27 @@ const AdminUsersScreen = ({ navigation }) => {
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>Không tìm thấy người dùng nào</Text>
+              <Ionicons
+                name={loadError ? 'cloud-offline-outline' : 'people-outline'}
+                size={48}
+                color={COLORS.textSecondary}
+              />
+              <Text
+                style={styles.emptyText}
+                accessibilityRole={loadError ? 'alert' : undefined}
+              >
+                {loadError || 'Không tìm thấy người dùng nào'}
+              </Text>
+              {loadError ? (
+                <TouchableOpacity
+                  style={styles.retryButton}
+                  onPress={() => loadUsers(true, searchQuery)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Thử tải lại danh sách người dùng"
+                >
+                  <Text style={styles.retryButtonText}>Thử lại</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           }
         />
@@ -602,10 +580,26 @@ const styles = StyleSheet.create({
   emptyContainer: {
     padding: 32,
     alignItems: 'center',
+    gap: 12,
   },
   emptyText: {
     color: COLORS.textSecondary,
     fontSize: SIZES.md,
+    textAlign: 'center',
+  },
+  retryButton: {
+    minWidth: 96,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    borderRadius: 22,
+    backgroundColor: COLORS.primary,
+  },
+  retryButtonText: {
+    color: COLORS.white,
+    fontSize: SIZES.sm,
+    fontWeight: '600',
   },
 });
 

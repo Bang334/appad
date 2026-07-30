@@ -70,6 +70,52 @@ class AlbumModel {
     return rows;
   }
 
+  // Check album access with one query to avoid loading the user's full purchase list.
+  static async checkAccess(albumId, userId) {
+    const [rows] = await db.execute(
+      `SELECT
+         al.album_id,
+         al.release_date,
+         CASE
+           WHEN a.user_id = u.user_id THEN TRUE
+           WHEN al.release_date IS NOT NULL AND al.release_date > NOW() THEN FALSE
+           WHEN COALESCE(al.is_premium, 0) = 0 THEN TRUE
+           WHEN u.is_premium = 1
+             AND u.premium_expiry IS NOT NULL
+             AND u.premium_expiry > NOW() THEN TRUE
+           WHEN pa.purchase_id IS NOT NULL THEN TRUE
+           ELSE FALSE
+         END AS has_access,
+         CASE
+           WHEN a.user_id = u.user_id THEN 'artist_owner'
+           WHEN al.release_date IS NOT NULL AND al.release_date > NOW() THEN NULL
+           WHEN COALESCE(al.is_premium, 0) = 0 THEN 'free'
+           WHEN u.is_premium = 1
+             AND u.premium_expiry IS NOT NULL
+             AND u.premium_expiry > NOW() THEN 'premium'
+           WHEN pa.purchase_id IS NOT NULL THEN 'purchased'
+           ELSE NULL
+         END AS access_type
+       FROM albums al
+       LEFT JOIN artists a ON a.artist_id = al.artist_id
+       LEFT JOIN users u ON u.user_id = ?
+       LEFT JOIN purchased_albums pa
+         ON pa.user_id = ? AND pa.album_id = al.album_id
+       WHERE al.album_id = ?`,
+      [userId, userId, albumId]
+    );
+
+    const row = rows[0];
+    if (!row) return null;
+
+    return {
+      album_id: row.album_id,
+      hasAccess: Boolean(row.has_access),
+      accessType: row.access_type || null,
+      release_date: row.release_date || null,
+    };
+  }
+
   // Get albums by artist with song count
   static async findByArtist(artistId, includeUnreleased = false) {
     let query = `SELECT al.*, 

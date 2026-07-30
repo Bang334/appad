@@ -7,6 +7,7 @@ import {
   ScrollView,
   Linking,
   Alert,
+  Share,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SIZES } from '../../config/theme';
@@ -21,27 +22,22 @@ const AboutScreen = ({ navigation }) => {
 
   const handleRateApp = () => {
     Alert.alert(
-      'Đánh giá ứng dụng',
-      'Bạn có muốn đánh giá ứng dụng trên cửa hàng không?',
-      [
-        { text: 'Không', style: 'cancel' },
-        { text: 'Có', onPress: () => handleOpenLink('https://play.google.com/store') },
-      ]
+      'Chưa phát hành trên Play Store',
+      'Bản hiện tại đang được thử nghiệm bằng Expo Go. Liên kết đánh giá sẽ có sau khi ứng dụng được phát hành.',
+      [{ text: 'Đã hiểu' }]
     );
   };
 
-  const handleShareApp = () => {
-    Alert.alert(
-      'Chia sẻ ứng dụng',
-      'Chia sẻ ứng dụng với bạn bè',
-      [
-        { text: 'Hủy', style: 'cancel' },
-        { text: 'Chia sẻ', onPress: () => {
-          // Implement share functionality
-          Alert.alert('Thành công', 'Đã chia sẻ ứng dụng');
-        }},
-      ]
-    );
+  const handleShareApp = async () => {
+    try {
+      await Share.share({
+        title: 'Music App',
+        message: 'Music App - nghe nhạc, tạo playlist và khám phá nghệ sĩ yêu thích.',
+      });
+    } catch (error) {
+      console.error('Error sharing app:', error);
+      Alert.alert('Lỗi', 'Không thể mở bảng chia sẻ.');
+    }
   };
 
   const InfoItem = ({ icon, title, subtitle, onPress, showArrow = true }) => (
@@ -109,31 +105,10 @@ const AboutScreen = ({ navigation }) => {
         <Text style={styles.sectionTitle}>Liên hệ</Text>
         
         <InfoItem
-          icon="mail-outline"
-          title="Email hỗ trợ"
-          subtitle="support@musicapp.com"
-          onPress={() => handleOpenLink('mailto:support@musicapp.com')}
-        />
-
-        <InfoItem
-          icon="globe-outline"
-          title="Website"
-          subtitle="www.musicapp.com"
-          onPress={() => handleOpenLink('https://www.musicapp.com')}
-        />
-
-        <InfoItem
-          icon="logo-facebook"
-          title="Facebook"
-          subtitle="Music App Official"
-          onPress={() => handleOpenLink('https://facebook.com/musicapp')}
-        />
-
-        <InfoItem
-          icon="logo-twitter"
-          title="Twitter"
-          subtitle="@musicapp"
-          onPress={() => handleOpenLink('https://twitter.com/musicapp')}
+          icon="logo-github"
+          title="Dự án trên GitHub"
+          subtitle="github.com/Bang334/appad"
+          onPress={() => handleOpenLink('https://github.com/Bang334/appad')}
         />
       </View>
 
@@ -144,20 +119,26 @@ const AboutScreen = ({ navigation }) => {
           icon="document-text-outline"
           title="Điều khoản sử dụng"
           subtitle="Đọc điều khoản"
-          onPress={() => Alert.alert('Điều khoản', 'Điều khoản sử dụng sẽ được hiển thị ở đây')}
+          onPress={() => Alert.alert(
+            'Điều khoản sử dụng',
+            'Không tải lên hoặc chia sẻ nội dung vi phạm bản quyền. Tài khoản có thể bị hạn chế khi lạm dụng dịch vụ hoặc gây ảnh hưởng đến người dùng khác.'
+          )}
         />
 
         <InfoItem
           icon="shield-checkmark-outline"
           title="Chính sách bảo mật"
           subtitle="Thông tin bảo mật"
-          onPress={() => Alert.alert('Bảo mật', 'Chính sách bảo mật sẽ được hiển thị ở đây')}
+          onPress={() => Alert.alert(
+            'Chính sách bảo mật',
+            'Ứng dụng lưu thông tin tài khoản, lịch sử nghe và dữ liệu giao dịch để cung cấp dịch vụ. Không chia sẻ mật khẩu hoặc mã đăng nhập với người khác.'
+          )}
         />
 
         <InfoItem
           icon="information-circle-outline"
           title="Bản quyền"
-          subtitle="© 2024 Music App"
+          subtitle="© 2026 Music App"
           onPress={() => Alert.alert('Bản quyền', 'Tất cả quyền được bảo lưu')}
           showArrow={false}
         />
@@ -165,10 +146,10 @@ const AboutScreen = ({ navigation }) => {
 
       <View style={styles.footer}>
         <Text style={styles.footerText}>
-          Được phát triển với ❤️ bởi đội ngũ Music App
+          Được phát triển bởi đội ngũ Music App
         </Text>
         <Text style={styles.footerText}>
-          © 2024 Music App. Tất cả quyền được bảo lưu.
+          © 2026 Music App. Tất cả quyền được bảo lưu.
         </Text>
       </View>
       </ScrollView>

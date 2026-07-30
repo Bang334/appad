@@ -744,6 +744,33 @@ class PremiumController {
     }
   }
 
+  // Check access to a specific album
+  static async checkAlbumAccess(req, res) {
+    try {
+      const userId = req.user.user_id;
+      const { id } = req.params;
+      const accessInfo = await AlbumModel.checkAccess(id, userId);
+
+      if (!accessInfo) {
+        return res.status(404).json({
+          success: false,
+          message: 'Album not found',
+        });
+      }
+
+      res.json({
+        success: true,
+        data: accessInfo,
+      });
+    } catch (error) {
+      console.error('Check album access error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Server error',
+      });
+    }
+  }
+
   // Get all premium songs
   static async getPremiumSongs(req, res) {
     try {

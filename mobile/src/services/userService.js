@@ -1,12 +1,6 @@
 import api from '../config/api';
 
 export const userService = {
-  // Get user profile
-  getProfile: async () => {
-    const response = await api.get('/users/profile');
-    return response.data;
-  },
-
   // Upload avatar
   uploadAvatar: async (imageUri) => {
     const formData = new FormData();
@@ -47,30 +41,6 @@ export const userService = {
     const response = await api.put('/users/background-video', {
       background_video_url: videoUrl
     });
-    return response.data;
-  },
-
-  // Get user statistics
-  getUserStats: async () => {
-    const response = await api.get('/users/stats');
-    return response.data;
-  },
-
-  // Get user playlists
-  getUserPlaylists: async () => {
-    const response = await api.get('/users/playlists');
-    return response.data;
-  },
-
-  // Get user favorite songs
-  getUserFavorites: async () => {
-    const response = await api.get('/users/favorites');
-    return response.data;
-  },
-
-  // Get user listening history
-  getUserHistory: async (limit = 20, offset = 0) => {
-    const response = await api.get(`/users/history?limit=${limit}&offset=${offset}`);
     return response.data;
   },
 

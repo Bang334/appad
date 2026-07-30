@@ -1,6 +1,8 @@
 import React from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { useAuth } from '../context/AuthContext';
+import { COLORS, SIZES } from '../config/theme';
 
 // Auth Screens
 import LoginScreen from '../screens/Auth/LoginScreen';
@@ -15,7 +17,17 @@ const AppNavigator = () => {
   const { isAuthenticated, loading } = useAuth();
 
   if (loading) {
-    return null; // Or loading screen
+    return (
+      <View
+        style={styles.loadingContainer}
+        accessibilityRole="progressbar"
+        accessibilityLabel="Đang khởi động Music App"
+      >
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={styles.loadingTitle}>Music App</Text>
+        <Text style={styles.loadingMessage}>Đang tải dữ liệu của bạn...</Text>
+      </View>
+    );
   }
 
   return (
@@ -31,6 +43,27 @@ const AppNavigator = () => {
     </Stack.Navigator>
   );
 };
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.background,
+    padding: SIZES.padding,
+  },
+  loadingTitle: {
+    marginTop: 20,
+    color: COLORS.text,
+    fontSize: SIZES.xl,
+    fontWeight: '700',
+  },
+  loadingMessage: {
+    marginTop: 8,
+    color: COLORS.textSecondary,
+    fontSize: SIZES.md,
+  },
+});
 
 export default AppNavigator;
 
